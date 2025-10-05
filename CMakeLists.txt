@@ -28,7 +28,7 @@ set(PICO_BOARD pico CACHE STRING "Board type")
 # Pull in Raspberry Pi Pico SDK (must be before project)
 include(pico_sdk_import.cmake)
 
-project(timesync C CXX ASM)
+project(powermonitor C CXX ASM)
 
 # Initialise the Raspberry Pi Pico SDK
 pico_sdk_init()
@@ -62,16 +62,22 @@ target_link_libraries(powermonitor
 
 pico_add_extra_outputs(powermonitor)
 
-add_executable(timesync 
-timesync_test.cpp
-time_sync.cpp
-)
+# add_executable(timesync 
+# timesync_test.cpp
+# time_sync.cpp
+# )
 
-target_link_libraries(timesync 
-        pico_stdlib
-        )
+# target_link_libraries(timesync 
+#         pico_stdlib
+#         )
 
-pico_add_extra_outputs(timesync)
+# pico_add_extra_outputs(timesync)
+# # Modify the below lines to enable/disable output over UART/USB
+# pico_enable_stdio_uart(timesync 0)
+# pico_enable_stdio_usb(timesync 1)
+
+
+pico_add_extra_outputs(powermonitor)
 # Modify the below lines to enable/disable output over UART/USB
-pico_enable_stdio_uart(timesync 0)
-pico_enable_stdio_usb(timesync 1)
+pico_enable_stdio_uart(powermonitor 0)
+pico_enable_stdio_usb(powermonitor 1)

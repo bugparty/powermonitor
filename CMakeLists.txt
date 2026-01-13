@@ -23,7 +23,7 @@ if (EXISTS ${picoVscode})
     include(${picoVscode})
 endif()
 # ====================================================================================
-set(PICO_BOARD pico CACHE STRING "Board type")
+set(PICO_BOARD adafruit_feather_rp2040 CACHE STRING "Board type")
 
 # Pull in Raspberry Pi Pico SDK (must be before project)
 include(pico_sdk_import.cmake)
@@ -35,7 +35,7 @@ pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(powermonitor powermonitor.cpp )
+add_executable(powermonitor powermonitor.cpp INA228.cpp )
 
 pico_set_program_name(powermonitor "powermonitor")
 pico_set_program_version(powermonitor "0.1")

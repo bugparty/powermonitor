@@ -1,48 +1,41 @@
 #include <stdio.h>
 #include "pico/stdlib.h"
 #include "hardware/i2c.h"
-#include "hardware/timer.h"
-#include "hardware/clocks.h"
+#include <inttypes.h>
+#include "INA228.hpp"
 
-// I2C defines
-// This example will use I2C0 on GPIO8 (SDA) and GPIO9 (SCL) running at 400KHz.
-// Pins can be changed, see the GPIO function select table in the datasheet for information on GPIO assignments
-#define I2C_PORT i2c0
-#define I2C_SDA 8
-#define I2C_SCL 9
+#define I2C_PORT i2c1
+#define I2C_SDA 2 //adafruit feature I2C_SDA GPIO2
+#define I2C_SCL  3 //adafruit feature I2C_SCL GPIO3
+#define INA228_ADDR 0x40 // Default I2C address for INA228
 
-int64_t alarm_callback(alarm_id_t id, void *user_data) {
-    // Put your timeout handler code in here
-    return 0;
-}
-
-
-
-
-int main()
-{
+int main() {
     stdio_init_all();
-
-    // I2C Initialisation. Using it at 400Khz.
-    i2c_init(I2C_PORT, 400*1000);
-    
+    i2c_init(I2C_PORT, 100 * 1000);   // use default 100khz rate
     gpio_set_function(I2C_SDA, GPIO_FUNC_I2C);
     gpio_set_function(I2C_SCL, GPIO_FUNC_I2C);
     gpio_pull_up(I2C_SDA);
     gpio_pull_up(I2C_SCL);
-    // For more examples of I2C use see https://github.com/raspberrypi/pico-examples/tree/master/i2c
 
-    // Timer example code - This example fires off the callback after 2000ms
-    add_alarm_in_ms(2000, alarm_callback, NULL, false);
-    // For more examples of timer use see https://github.com/raspberrypi/pico-examples/tree/master/timer
+    sleep_ms(1500);
 
-    printf("System Clock Frequency is %d Hz\n", clock_get_hz(clk_sys));
-    printf("USB Clock Frequency is %d Hz\n", clock_get_hz(clk_usb));
-    // For more examples of clocks use see https://github.com/raspberrypi/pico-examples/tree/master/clocks
+    INA228 ina228(I2C_PORT, INA228_ADDR, 1000); // 1k ohm shunt
 
-    while (true) {
-        printf("System Clock Frequency is %d Hz\n", clock_get_hz(clk_sys));
-        printf("USB Clock Frequency is %d Hz\n", clock_get_hz(clk_usb));
+    for(int i=8;i>0;i--){
+        printf("Starting in %d...\n",i);
+        sleep_ms(1000);
+    }
+    ina228.configure();
+    sleep_ms(20);
+    ina228.print_manufacturer_id();
+    ina228.print_device_id();
+    while (1) {
+        ina228.get_vbus();
+        ina228.get_current();
+        ina228.get_power();
+        ina228.get_energy();
+        ina228.get_temp();
+        ina228.get_charge();
         sleep_ms(1000);
     }
 }

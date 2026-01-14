@@ -208,14 +208,29 @@ public:
        ======================================================================== */
     static constexpr float VBUS_LSB = 195.3125e-6f;       // V/LSB for VBUS register
     static constexpr float DIETEMP_LSB = 7.8125e-3f;      // °C/LSB for temperature register
+    static constexpr float INVERSE_TEMP_LSB = 128.0f;        // 1/°C LSB for temperature coefficient
     static constexpr float VSHUNT_LSB_163MV = 312.5e-9f;  // V/LSB for ±163.84mV range
     static constexpr float VSHUNT_LSB_40MV = 78.125e-9f;  // V/LSB for ±40.96mV range
 
-    i2c_inst_t *i2c;
-    uint8_t addr;
-    float shunt_ohms; ///< Shunt resistance value in ohms
-    float max_current; ///< Maximum expected current in A
-    float _current_lsb; ///< Current LSB value used for calculations
+    /* ========================================================================
+       INA228 Calculation Constants (from datasheet)
+       ======================================================================== */
+    static constexpr float POWER_COEFF = 3.2f;            // Power register coefficient
+    static constexpr float ENERGY_COEFF = 3.2f * 16.0f;   // Energy register coefficient (51.2)
+    static constexpr float SHUNT_CAL_COEFF = 13107.2e6f;  // Shunt calibration coefficient (13107.2 * 10^6)
+    static constexpr float CURRENT_LSB_DIVISOR = 524288.0f; // 2^19 for current LSB calculation
+    static constexpr uint16_t SHUNT_CAL_MAX = 32767;      // 15-bit max for SHUNT_CAL register
+
+private:
+    i2c_inst_t *i2c_;
+    uint8_t addr_;
+    float shunt_ohms_; ///< Shunt resistance value in ohms
+    float max_current_; ///< Maximum expected current in A
+    float current_lsb_; ///< Current LSB value used for calculations
+    
+    void update_shunt_cal_register();
+
+public:
     INA228(i2c_inst_t *i2c_inst, uint8_t i2c_addr, float shunt_ohms, float max_current = 3.5f);
     
     [[nodiscard]] bool i2c_read_reg_stop(uint8_t addr, uint8_t reg, uint8_t *buf, size_t n) const;
@@ -231,12 +246,11 @@ public:
     [[nodiscard]] bool get_config(uint16_t &config) const;
     [[nodiscard]] bool set_adc_config();
     [[nodiscard]] uint8_t get_adc_range() const;
-    [[nodiscard]] float get_current_lsb() const noexcept;
+    [[nodiscard]] inline float get_current_lsb() const noexcept;
     [[nodiscard]] bool shunt_calib();
     [[nodiscard]] bool shunt_tempco();
-    void _updateShuntCalRegister();
     [[nodiscard]] bool get_shunt_cal_register(uint16_t &cal_value) const;
-    void setShunt(float shunt_res, float max_current) noexcept;
+    void set_shunt(float shunt_res, float max_current) noexcept;
     [[nodiscard]] bool reset_all();
     [[nodiscard]] bool reset_energy();
     
@@ -257,8 +271,8 @@ public:
     [[nodiscard]] bool set_shunt_undervoltage(float value);
     [[nodiscard]] bool set_bus_overvoltage(float value);
     [[nodiscard]] bool set_bus_undervoltage(float value);
-    [[nodiscard]] bool set_temp_limit(float value, float consta);
-    [[nodiscard]] bool set_power_overlimit(float value, float consta);
+    [[nodiscard]] bool set_temp_limit(float value);
+    [[nodiscard]] bool set_power_overlimit(float value);
     
     void configure();
 };

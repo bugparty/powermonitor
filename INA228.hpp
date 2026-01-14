@@ -203,74 +203,85 @@ public:
     // ADC sample averaging count ADC_CONFIG [2:0]
     static constexpr uint8_t AVG_NBIT = 0;
 
+    /* ========================================================================
+       INA228 LSB Conversion Factors (from datasheet)
+       ======================================================================== */
+    static constexpr float VBUS_LSB = 195.3125e-6f;       // V/LSB for VBUS register
+    static constexpr float DIETEMP_LSB = 7.8125e-3f;      // °C/LSB for temperature register
+    static constexpr float VSHUNT_LSB_163MV = 312.5e-9f;  // V/LSB for ±163.84mV range
+    static constexpr float VSHUNT_LSB_40MV = 78.125e-9f;  // V/LSB for ±40.96mV range
+
     i2c_inst_t *i2c;
     uint8_t addr;
     float shunt_ohms; ///< Shunt resistance value in ohms
+    float max_current; ///< Maximum expected current in A
     float _current_lsb; ///< Current LSB value used for calculations
-    INA228(i2c_inst_t *i2c_inst, uint8_t i2c_addr, float shunt_ohms);
+    INA228(i2c_inst_t *i2c_inst, uint8_t i2c_addr, float shunt_ohms, float max_current = 3.5f);
     
-    bool i2c_read_reg_stop(uint8_t addr, uint8_t reg, uint8_t *buf, size_t n);
-    bool i2c_write_reg_stop(uint8_t addr, uint8_t reg, uint8_t *buf, size_t n);
-    bool i2c_read_reg_stop_timeout(uint8_t addr, uint8_t reg, uint8_t *buf, size_t n);
-    uint16_t to_bytes16(uint16_t register_value);
-    uint8_t getADCMode();
-    bool write_register16(INA228_Register reg, uint16_t register_value);
-    bool read_register16(INA228_Register reg, uint16_t &register_value);
-    bool read_register24(INA228_Register reg, uint32_t &register_value);
-    bool read_register40(INA228_Register reg, uint64_t &register_value);
+    [[nodiscard]] bool i2c_read_reg_stop(uint8_t addr, uint8_t reg, uint8_t *buf, size_t n) const;
+    [[nodiscard]] bool i2c_write_reg_stop(uint8_t addr, uint8_t reg, uint8_t *buf, size_t n) const;
+    [[nodiscard]] bool i2c_read_reg_stop_timeout(uint8_t addr, uint8_t reg, uint8_t *buf, size_t n);
+    [[nodiscard]] static constexpr uint16_t to_bytes16(uint16_t register_value) noexcept;
+    [[nodiscard]] bool write_register16(INA228_Register reg, uint16_t register_value);
+    [[nodiscard]] bool read_register16(INA228_Register reg, uint16_t &register_value) const;
+    [[nodiscard]] bool read_register24(INA228_Register reg, uint32_t &register_value) const;
+    [[nodiscard]] bool read_register40(INA228_Register reg, uint64_t &register_value) const;
     
-    bool set_config();
-    bool get_config(uint16_t &config);
-    bool set_adc_config();
-    uint8_t get_adc_range();
-    float get_current_lsb();
-    bool shunt_calib();
-    bool shunt_tempco();
+    [[nodiscard]] bool set_config();
+    [[nodiscard]] bool get_config(uint16_t &config) const;
+    [[nodiscard]] bool set_adc_config();
+    [[nodiscard]] uint8_t get_adc_range() const;
+    [[nodiscard]] float get_current_lsb() const noexcept;
+    [[nodiscard]] bool shunt_calib();
+    [[nodiscard]] bool shunt_tempco();
     void _updateShuntCalRegister();
-    bool get_shunt_cal_register(uint16_t &cal_value);
-    void setShunt(float shunt_res, float max_current);
-    bool reset_all();
-    bool reset_energy();
+    [[nodiscard]] bool get_shunt_cal_register(uint16_t &cal_value) const;
+    void setShunt(float shunt_res, float max_current) noexcept;
+    [[nodiscard]] bool reset_all();
+    [[nodiscard]] bool reset_energy();
     
-    float convert2comp2float(int64_t twocompdata, uint8_t nrofbit, float factor);
+    [[nodiscard]] float get_energy() const;
+    [[nodiscard]] float get_power() const;
+    [[nodiscard]] float get_temp() const;
+    [[nodiscard]] float get_vbus() const;
+    [[nodiscard]] float get_current() const;
+    [[nodiscard]] float get_charge() const;
     
-    float get_energy();
-    float get_power();
-    float get_temp();
-    float get_vbus();
-    float get_current();
-    float get_charge();
+    void print_manufacturer_id() const;
+    void print_device_id() const;
     
-    void print_manufacturer_id();
-    void print_device_id();
+    [[nodiscard]] float get_shunt_conv_factor() const noexcept;
+    void get_diag_alerts(INA228_Alert alert) const;
     
-    float get_shunt_conv_factor();
-    void get_diag_alerts(INA228_Alert alert);
-    
-    bool set_shunt_overvoltage(float value);
-    bool set_shunt_undervoltage(float value);
-    bool set_bus_overvoltage(float value);
-    bool set_bus_undervoltage(float value);
-    bool set_temp_limit(float value, float consta);
-    bool set_power_overlimit(float value, float consta);
+    [[nodiscard]] bool set_shunt_overvoltage(float value);
+    [[nodiscard]] bool set_shunt_undervoltage(float value);
+    [[nodiscard]] bool set_bus_overvoltage(float value);
+    [[nodiscard]] bool set_bus_undervoltage(float value);
+    [[nodiscard]] bool set_temp_limit(float value, float consta);
+    [[nodiscard]] bool set_power_overlimit(float value, float consta);
     
     void configure();
 };
 
-template<typename T> T  constexpr  get_mask(uint8_t nrofbit) {
-   T mask = 0;
-   for (uint8_t i = 0; i < nrofbit; i++) {
-       mask |= (1 << i);
-   }
-   return mask;
-}
-template<typename T>  float varint2float(T twocompdata,const uint8_t shift,const uint8_t nrofbit,const float factor) {
-   twocompdata = (twocompdata >> shift) & get_mask<T>(nrofbit);
-   if (twocompdata & (1 << (nrofbit-1))) {
-       twocompdata -= (1 << (nrofbit));
-   }
-   return (float)twocompdata * factor;
-}
+namespace detail {
+    template<typename T> 
+    constexpr T get_mask(uint8_t nrofbit) {
+        T mask = 0;
+        for (uint8_t i = 0; i < nrofbit; i++) {
+            mask |= (1 << i);
+        }
+        return mask;
+    }
+    
+    template<typename T>  
+    float varint2float(T twocompdata, const uint8_t shift, const uint8_t nrofbit, const float factor) {
+        twocompdata = (twocompdata >> shift) & get_mask<T>(nrofbit);
+        if (twocompdata & (1 << (nrofbit-1))) {
+            twocompdata -= (1 << (nrofbit));
+        }
+        return (float)twocompdata * factor;
+    }
+} // namespace detail
 
 
 #endif // INA228_HPP

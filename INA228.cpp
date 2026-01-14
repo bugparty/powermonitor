@@ -1,9 +1,9 @@
 #include "INA228.hpp"
 
-INA228::INA228(i2c_inst_t *i2c_inst, uint8_t i2c_addr, float shunt_ohms) 
-    : i2c(i2c_inst), addr(i2c_addr), shunt_ohms(shunt_ohms) {}
+INA228::INA228(i2c_inst_t *i2c_inst, uint8_t i2c_addr, float shunt_ohms, float max_current) 
+    : i2c(i2c_inst), addr(i2c_addr), shunt_ohms(shunt_ohms), max_current(max_current) {}
 
-bool INA228::i2c_read_reg_stop(uint8_t addr, uint8_t reg, uint8_t *buf, size_t n) {
+bool INA228::i2c_read_reg_stop(uint8_t addr, uint8_t reg, uint8_t *buf, size_t n) const {
     int w = i2c_write_blocking(this->i2c, addr, &reg, 1, true);
     if (w != 1) {
         INA228_PRINTF("write reg ptr failed, w=%d\n", w);
@@ -17,7 +17,7 @@ bool INA228::i2c_read_reg_stop(uint8_t addr, uint8_t reg, uint8_t *buf, size_t n
     return r == (int)n;
 }
 
-bool INA228::i2c_write_reg_stop(uint8_t addr, uint8_t reg, uint8_t *buf, size_t n) {
+bool INA228::i2c_write_reg_stop(uint8_t addr, uint8_t reg, uint8_t *buf, size_t n) const {
     int w = i2c_write_blocking(this->i2c, addr, &reg, 1, true);
     if (w != 1) {
         INA228_PRINTF("write reg ptr failed, w=%d\n", w);
@@ -45,7 +45,7 @@ bool INA228::i2c_read_reg_stop_timeout(uint8_t addr, uint8_t reg, uint8_t *buf, 
     return r == (int)n;
 }
 
-uint16_t INA228::to_bytes16(uint16_t register_value) {
+constexpr uint16_t INA228::to_bytes16(uint16_t register_value) noexcept {
     uint16_t b = (register_value >> 8) & 0xFF;
     b |= (register_value & 0xFF) << 8;
     return b;
@@ -65,7 +65,7 @@ bool INA228::write_register16(INA228_Register reg, uint16_t register_value) {
     return true;
 }
 
-bool INA228::read_register16(INA228_Register reg, uint16_t &register_value) {
+bool INA228::read_register16(INA228_Register reg, uint16_t &register_value) const {
     uint8_t b[2] = {0};
     if (!i2c_read_reg_stop(this->addr, static_cast<uint8_t>(reg), b, 2)) {
         return false;
@@ -74,7 +74,7 @@ bool INA228::read_register16(INA228_Register reg, uint16_t &register_value) {
     return true;
 }
 
-bool INA228::read_register24(INA228_Register reg, uint32_t &register_value) {
+bool INA228::read_register24(INA228_Register reg, uint32_t &register_value) const {
     uint8_t b[3] = {0};
     if (!i2c_read_reg_stop(this->addr, static_cast<uint8_t>(reg), b, 3)) {
         return false;
@@ -83,7 +83,7 @@ bool INA228::read_register24(INA228_Register reg, uint32_t &register_value) {
     return true;
 }
 
-bool INA228::read_register40(INA228_Register reg, uint64_t &register_value) {
+bool INA228::read_register40(INA228_Register reg, uint64_t &register_value) const {
     uint8_t b[5] = {0};
     if (!i2c_read_reg_stop(this->addr, static_cast<uint8_t>(reg), b, 5)) {
         return false;
@@ -97,7 +97,7 @@ bool INA228::set_config() {
     INA228_PRINTF("Config reg value to set: 0x%04X\n", config);
     return write_register16(INA228_Register::CONFIG, config);
 }
-bool INA228::get_config(uint16_t &config) {
+bool INA228::get_config(uint16_t &config) const {
     if (!read_register16(INA228_Register::CONFIG, config)) {
         INA228_PRINTF("Failed to read CONFIG register\n");
         return false;
@@ -116,9 +116,11 @@ bool INA228::set_adc_config() {
     @return Shunt full scale ADC range (0: +/-163.84 mV or 1: +/-40.96 mV)
 */
 /**************************************************************************/
-uint8_t INA228::get_adc_range() {
+uint8_t INA228::get_adc_range() const {
     uint16_t config;
-    get_config(config);
+    if (!get_config(config)) {
+        return 0; // Default to 0 on failure
+    }
     return (config >> ADCRANGE_NBIT) & 1;
 }
 
@@ -130,13 +132,13 @@ uint8_t INA228::get_adc_range() {
     @param max_current Maximum expected current in A (floating point)
 */
 /**************************************************************************/
-void INA228::setShunt(float shunt_res, float max_current) {
+void INA228::setShunt(float shunt_res, float max_current) noexcept {
   this->shunt_ohms = shunt_res;
   // INA228 uses 2^19 as the divisor
   _current_lsb = max_current / (float)(1UL << 19);
   _updateShuntCalRegister();
 }
-float INA228::get_current_lsb() {
+float INA228::get_current_lsb() const noexcept {
     return _current_lsb;
 }
 void INA228::_updateShuntCalRegister() {
@@ -152,17 +154,13 @@ void INA228::_updateShuntCalRegister() {
     INA228_PRINTF("Warning: shunt_cal overflow, clamped to 32767\n");
   }
   INA228_PRINTF("Shunt calibration value: %x\n", cal_value);
-  write_register16(INA228_Register::SHUNT_CAL, cal_value);
+  (void)write_register16(INA228_Register::SHUNT_CAL, cal_value);
 }
-bool INA228::get_shunt_cal_register(uint16_t &cal_value) {
+bool INA228::get_shunt_cal_register(uint16_t &cal_value) const {
     return read_register16(INA228_Register::SHUNT_CAL, cal_value);
 }
 bool INA228::shunt_calib() {
-    // float current_lsb = get_current_lsb();
-    // uint16_t calib_value = (uint16_t)(13107.2e6 * current_lsb * this->shunt_ohms);
-    // INA228_PRINTF("Shunt calibration value: %d\n", calib_value);
-    // return write_register16(INA228_SHUNT_CAL, calib_value);
-    this->setShunt(this->shunt_ohms, 3.5); // Assume max current of 3.5A for calibration
+    this->setShunt(this->shunt_ohms, this->max_current);
     return true;
 }
 
@@ -183,17 +181,7 @@ bool INA228::reset_energy() {
     return write_register16(INA228_Register::CONFIG, config);
 }
 
-float INA228::convert2comp2float(int64_t twocompdata, uint8_t nrofbit, float factor) {
-    int64_t isnegative = 1LL << (nrofbit - 1);
-    if (twocompdata >= isnegative) {
-        twocompdata = (twocompdata - (2 * isnegative)) * factor;
-    } else {
-        twocompdata = twocompdata * factor;
-    }
-    return (float)twocompdata;
-}
-
-float INA228::get_energy() {
+float INA228::get_energy() const {
     uint64_t raw = 0;
     if (!read_register40(INA228_Register::ENERGY, raw)) {
         INA228_PRINTF("Failed to read energy register\n");
@@ -205,7 +193,7 @@ float INA228::get_energy() {
     return energy;
 }
 
-float INA228::get_power() {
+float INA228::get_power() const {
     uint32_t raw = 0;
     if (!read_register24(INA228_Register::POWER, raw)) {
         INA228_PRINTF("Failed to read power register\n");
@@ -217,30 +205,28 @@ float INA228::get_power() {
     return power;
 }
 
-float INA228::get_temp() {
+float INA228::get_temp() const {
     uint16_t raw = 0;
     if (!read_register16(INA228_Register::DIETEMP, raw)) {
         INA228_PRINTF("Failed to read temperature register\n");
         return 0.0;
     }
-    float conversion_factor = 7.8125e-3;
-    float temp = convert2comp2float((int64_t)raw, 16, conversion_factor);
+    float temp = detail::varint2float(raw, 0, 16, DIETEMP_LSB);
     INA228_PRINTF("Temperature raw=0x%04X, value=%f°C\n", raw, temp);
     return temp;
 }
 
-float INA228::get_vbus() {
+float INA228::get_vbus() const {
     uint32_t raw = 0;
     if (!read_register24(INA228_Register::VBUS, raw)) {
         INA228_PRINTF("Failed to read VBUS register\n");
         return 0.0;
     }
-    float conversion_factor = 195.3125e-6;
-    float vbus = convert2comp2float((int64_t)(raw >> 4), 20, conversion_factor);
+    float vbus = detail::varint2float(raw, 4, 20, VBUS_LSB);
     INA228_PRINTF("VBUS raw=0x%06X (shifted=0x%05X), value=%f V\n", raw, raw >> 4, vbus);
     return vbus;
 }
-float INA228::get_current() {
+float INA228::get_current() const {
     uint32_t raw = 0;
     if (!read_register24(INA228_Register::CURRENT, raw)) {
         INA228_PRINTF("Failed to read current register\n");
@@ -252,24 +238,25 @@ float INA228::get_current() {
         code20 -= (1 << 20);
     }
     //float current =  float(code20) * _current_lsb;
-    float current = varint2float(raw, 4, 20, _current_lsb);
+    float current = detail::varint2float(raw, 4, 20, _current_lsb);
     //float current = raw / 16.0 * _current_lsb * 1000.0;
     INA228_PRINTF("Current raw=0x%06X (shifted=0x%05X), value=%f A\n", raw, raw >> 4, current);
     return current;
 }
 
-float INA228::get_charge() {
+float INA228::get_charge() const {
     uint64_t raw = 0;
     if (!read_register40(INA228_Register::CHARGE, raw)) {
         INA228_PRINTF("Failed to read charge register\n");
         return 0.0;
     }
-    float charge = convert2comp2float((int64_t)raw, 40, 1.0);
+    //float charge = convert2comp2float((int64_t)raw, 40, 1.0);
+    float charge = detail::varint2float(raw, 0, 40, 1.0);
     INA228_PRINTF("Charge raw=0x%llX, value=%f\n", raw, charge);
     return charge;
 }
 
-void INA228::print_manufacturer_id() {
+void INA228::print_manufacturer_id() const {
     uint16_t raw_id = 0;
     if (!read_register16(INA228_Register::MANUFACTURER_ID, raw_id)) {
         INA228_PRINTF("Failed to read manufacturer ID\n");
@@ -281,7 +268,7 @@ void INA228::print_manufacturer_id() {
     printf("Manufacturer ID (CHAR): %c%c\n", first_byte, second_byte);
 }
 
-void INA228::print_device_id() {
+void INA228::print_device_id() const {
     uint16_t raw_id = 0;
     if (!read_register16(INA228_Register::DEVICE_ID, raw_id)) {
         INA228_PRINTF("Failed to read device ID\n");
@@ -293,15 +280,15 @@ void INA228::print_device_id() {
     printf("Revision: 0x%X\n", revision);
 }
 
-float INA228::get_shunt_conv_factor() {
+float INA228::get_shunt_conv_factor() const noexcept {
     if (this->get_adc_range() == 0) {
-        return 163.84e-3 / 32768.0;
+        return VSHUNT_LSB_163MV * 524288.0f;  // 163.84mV / 32768 = 312.5nV * 2^19
     } else {
-        return 40.96e-3 / 32768.0;
+        return VSHUNT_LSB_40MV * 524288.0f;   // 40.96mV / 32768 = 78.125nV * 2^19
     }
 }
 
-void INA228::get_diag_alerts(INA228_Alert alert) {
+void INA228::get_diag_alerts(INA228_Alert alert) const {
     uint16_t raw = 0;
     if (!read_register16(INA228_Register::DIAG_ALRT, raw)) {
         printf("Failed to read DIAG_ALRT register\n");
@@ -425,13 +412,13 @@ bool INA228::set_shunt_undervoltage(float value) {
 }
 
 bool INA228::set_bus_overvoltage(float value) {
-    uint16_t data = (uint16_t)(value / (16.0 * 195.3125e-6));
+    uint16_t data = (uint16_t)(value / (16.0f * VBUS_LSB));
     INA228_PRINTF("Setting bus overvoltage threshold: %f V (data=0x%04X)\n", value, data);
     return write_register16(INA228_Register::BOVL, data);
 }
 
 bool INA228::set_bus_undervoltage(float value) {
-    uint16_t data = (uint16_t)(value / (16.0 * 195.3125e-6));
+    uint16_t data = (uint16_t)(value / (16.0f * VBUS_LSB));
     INA228_PRINTF("Setting bus undervoltage threshold: %f V (data=0x%04X)\n", value, data);
     return write_register16(INA228_Register::BUVL, data);
 }
@@ -449,14 +436,14 @@ bool INA228::set_power_overlimit(float value, float consta) {
 }
 
 void INA228::configure() {
-    set_config();
+    (void)set_config();
     sleep_ms(10);
-    set_adc_config();
+    (void)set_adc_config();
     sleep_ms(10);
-    shunt_calib();
+    (void)shunt_calib();
     sleep_ms(10);
-    shunt_tempco();
+    (void)shunt_tempco();
     sleep_ms(10);
-    reset_energy();
+    (void)reset_energy();
     sleep_ms(10);
 }

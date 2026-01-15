@@ -40,7 +40,6 @@ int main() {
         } else {
             printf("Failed to read Shunt Calibration Register\n");
         }
-        (void)ina228.shunt_calib();
         (void)ina228.get_vbus();
         (void)ina228.get_current();
         (void)ina228.get_power();

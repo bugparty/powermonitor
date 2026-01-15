@@ -1,20 +1,25 @@
 #ifndef INA228_HPP
 #define INA228_HPP
 
-#include <stdio.h>
+#include <cstdio>
 #include "pico/stdlib.h"
 #include "hardware/i2c.h"
-#include <inttypes.h>
-
+#include <cinttypes>
+#include <utility>
 /* ========================================================================
    INA228 Debug Control
    ======================================================================== */
-#define INA228_DEBUG 1
-#if INA228_DEBUG
-#define INA228_PRINTF(...) printf(__VA_ARGS__)
-#else
-#define INA228_PRINTF(...)
-#endif
+constexpr bool INA228_DEBUG = true;
+namespace detail {
+   template<typename... Args>
+void DEBUG_PRINTF(const char* fmt, Args&&... args) {
+      if constexpr (INA228_DEBUG) {
+         printf(fmt, std::forward<Args>(args)...);
+      }
+   }
+}
+
+
 
 class INA228 {
 public:

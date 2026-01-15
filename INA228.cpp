@@ -6,12 +6,12 @@ INA228::INA228(i2c_inst_t *i2c_inst, uint8_t i2c_addr, float shunt_ohms, float m
 bool INA228::i2c_read_reg_stop(uint8_t addr, uint8_t reg, uint8_t *buf, size_t n) const {
     int w = i2c_write_blocking(this->i2c_, addr, &reg, 1, true);
     if (w != 1) {
-        INA228_PRINTF("write reg ptr failed, w=%d\n", w);
+        detail::DEBUG_PRINTF("write reg ptr failed, w=%d\n", w);
         return false;
     }
     int r = i2c_read_blocking(this->i2c_, addr, buf, n, false);
     if (r != (int)n) {
-        INA228_PRINTF("read failed, r=%d\n", r);
+        detail::DEBUG_PRINTF("read failed, r=%d\n", r);
         return false;
     }
     return r == (int)n;
@@ -20,12 +20,12 @@ bool INA228::i2c_read_reg_stop(uint8_t addr, uint8_t reg, uint8_t *buf, size_t n
 bool INA228::i2c_write_reg_stop(uint8_t addr, uint8_t reg, uint8_t *buf, size_t n) const {
     int w = i2c_write_blocking(this->i2c_, addr, &reg, 1, true);
     if (w != 1) {
-        INA228_PRINTF("write reg ptr failed, w=%d\n", w);
+        detail::DEBUG_PRINTF("write reg ptr failed, w=%d\n", w);
         return false;
     }
     int r = i2c_write_blocking(this->i2c_, addr, buf, n, false);
     if (r != (int)n) {
-        INA228_PRINTF("write failed, r=%d\n", r);
+        detail::DEBUG_PRINTF("write failed, r=%d\n", r);
         return false;
     }
     return r == (int)n;
@@ -34,12 +34,12 @@ bool INA228::i2c_write_reg_stop(uint8_t addr, uint8_t reg, uint8_t *buf, size_t 
 bool INA228::i2c_read_reg_stop_timeout(uint8_t addr, uint8_t reg, uint8_t *buf, size_t n) {
     int w = i2c_write_timeout_us(this->i2c_, addr, &reg, 1, false, 20000);
     if (w != 1) {
-        INA228_PRINTF("write reg ptr failed, w=%d\n", w);
+        detail::DEBUG_PRINTF("write reg ptr failed, w=%d\n", w);
         return false;
     }
     int r = i2c_read_timeout_us(this->i2c_, addr, buf, n, false, 20000);
     if (r != (int)n) {
-        INA228_PRINTF("read failed, r=%d\n", r);
+        detail::DEBUG_PRINTF("read failed, r=%d\n", r);
         return false;
     }
     return r == (int)n;
@@ -56,10 +56,10 @@ bool INA228::write_register16(INA228_Register reg, uint16_t register_value) {
     b[0] = static_cast<uint8_t>(reg);
     b[1] = (register_value >> 8) & 0xFF;
     b[2] = register_value & 0xFF;
-    INA228_PRINTF("write reg 0x%02X  --  val 0x%.4X\n", reg, register_value);
+    detail::DEBUG_PRINTF("write reg 0x%02X  --  val 0x%.4X\n", reg, register_value);
     int w = i2c_write_blocking(this->i2c_, addr_, b, 3, false);
     if (w != 3) {
-        INA228_PRINTF("write reg ptr failed, w=%d\n", w);
+        detail::DEBUG_PRINTF("write reg ptr failed, w=%d\n", w);
         return false;
     }
     return true;
@@ -94,20 +94,20 @@ bool INA228::read_register40(INA228_Register reg, uint64_t &register_value) cons
 
 bool INA228::set_config() {
     uint16_t config = (CONVERSION_DELAY << CONVDLY_NBIT) | (TEMP_COMP << TEMPCOMP_NBIT) | (ADCRANGE << ADCRANGE_NBIT);
-    INA228_PRINTF("Config reg value to set: 0x%04X\n", config);
+    detail::DEBUG_PRINTF("Config reg value to set: 0x%04X\n", config);
     return write_register16(INA228_Register::CONFIG, config);
 }
 bool INA228::get_config(uint16_t &config) const {
     if (!read_register16(INA228_Register::CONFIG, config)) {
-        INA228_PRINTF("Failed to read CONFIG register\n");
+        detail::DEBUG_PRINTF("Failed to read CONFIG register\n");
         return false;
     }
-    INA228_PRINTF("Config reg value read: 0x%04X\n", config);
+    detail::DEBUG_PRINTF("Config reg value read: 0x%04X\n", config);
     return true;
 }
 bool INA228::set_adc_config() {
     uint16_t config = (ADC_MODE << ADC_MODE_NBIT) | (VBUS_CONV_TIME << VBUS_CONV_TIME_NBIT) | (VSHCT_CONV_TIME << VSHCT_CONV_TIME_NBIT) | (VTCT_CONV_TIME << VTCT_CONV_TIME_NBIT) | (ADC_AVG << AVG_NBIT);
-    INA228_PRINTF("ADC Config reg value to set: 0x%04X\n", config);
+    detail::DEBUG_PRINTF("ADC Config reg value to set: 0x%04X\n", config);
     return write_register16(INA228_Register::ADC_CONFIG, config);
 }
 /**************************************************************************/
@@ -150,9 +150,9 @@ void INA228::update_shunt_cal_register() {
   uint16_t cal_value = (uint16_t)(shunt_cal + 0.5f);
   if (shunt_cal > static_cast<float>(SHUNT_CAL_MAX)) {
     cal_value = SHUNT_CAL_MAX;
-    INA228_PRINTF("Warning: shunt_cal overflow, clamped to %u\n", SHUNT_CAL_MAX);
+    detail::DEBUG_PRINTF("Warning: shunt_cal overflow, clamped to %u\n", SHUNT_CAL_MAX);
   }
-  INA228_PRINTF("Shunt calibration value: %x\n", cal_value);
+  detail::DEBUG_PRINTF("Shunt calibration value: %x\n", cal_value);
   (void)write_register16(INA228_Register::SHUNT_CAL, cal_value);
 }
 bool INA228::get_shunt_cal_register(uint16_t &cal_value) const {
@@ -164,91 +164,91 @@ bool INA228::shunt_calib() {
 }
 
 bool INA228::shunt_tempco() {
-    INA228_PRINTF("Setting shunt temperature compensation value\n");
+    detail::DEBUG_PRINTF("Setting shunt temperature compensation value\n");
     return write_register16(INA228_Register::SHUNT_TEMPCO, SHUNT_TEMPCO_VALUE);
 }
 
 bool INA228::reset_all() {
     uint16_t config = 1 << RST_NBIT;
-    INA228_PRINTF("Resetting all (config=0x%04X)\n", config);
+    detail::DEBUG_PRINTF("Resetting all (config=0x%04X)\n", config);
     return write_register16(INA228_Register::CONFIG, config);
 }
 
 bool INA228::reset_energy() {
     uint16_t config = 1 << RSTACC_NBIT;
-    INA228_PRINTF("Resetting energy/charge accumulation (config=0x%04X)\n", config);
+    detail::DEBUG_PRINTF("Resetting energy/charge accumulation (config=0x%04X)\n", config);
     return write_register16(INA228_Register::CONFIG, config);
 }
 
 float INA228::get_energy() const {
     uint64_t raw = 0;
     if (!read_register40(INA228_Register::ENERGY, raw)) {
-        INA228_PRINTF("Failed to read energy register\n");
+        detail::DEBUG_PRINTF("Failed to read energy register\n");
         return 0.0;
     }
     float energy = raw * ENERGY_COEFF * current_lsb_;
-    INA228_PRINTF("Energy raw=0x%llX, value=%f\n", raw, energy);
+    detail::DEBUG_PRINTF("Energy raw=0x%llX, value=%f\n", raw, energy);
     return energy;
 }
 
 float INA228::get_power() const {
     uint32_t raw = 0;
     if (!read_register24(INA228_Register::POWER, raw)) {
-        INA228_PRINTF("Failed to read power register\n");
+        detail::DEBUG_PRINTF("Failed to read power register\n");
         return 0.0;
     }
     float power = POWER_COEFF * raw * current_lsb_;
-    INA228_PRINTF("Power raw=0x%06X, value=%f\n", raw, power);
+    detail::DEBUG_PRINTF("Power raw=0x%06X, value=%f\n", raw, power);
     return power;
 }
 
 float INA228::get_temp() const {
     uint16_t raw = 0;
     if (!read_register16(INA228_Register::DIETEMP, raw)) {
-        INA228_PRINTF("Failed to read temperature register\n");
+        detail::DEBUG_PRINTF("Failed to read temperature register\n");
         return 0.0;
     }
     float temp = detail::varint2float(raw, 0, 16, DIETEMP_LSB);
-    INA228_PRINTF("Temperature raw=0x%04X, value=%f°C\n", raw, temp);
+    detail::DEBUG_PRINTF("Temperature raw=0x%04X, value=%f°C\n", raw, temp);
     return temp;
 }
 
 float INA228::get_vbus() const {
     uint32_t raw = 0;
     if (!read_register24(INA228_Register::VBUS, raw)) {
-        INA228_PRINTF("Failed to read VBUS register\n");
+        detail::DEBUG_PRINTF("Failed to read VBUS register\n");
         return 0.0;
     }
     float vbus = detail::varint2float(raw, 4, 20, VBUS_LSB);
-    INA228_PRINTF("VBUS raw=0x%06X (shifted=0x%05X), value=%f V\n", raw, raw >> 4, vbus);
+    detail::DEBUG_PRINTF("VBUS raw=0x%06X (shifted=0x%05X), value=%f V\n", raw, raw >> 4, vbus);
     return vbus;
 }
 float INA228::get_current() const {
     uint32_t raw = 0;
     if (!read_register24(INA228_Register::CURRENT, raw)) {
-        INA228_PRINTF("Failed to read current register\n");
+        detail::DEBUG_PRINTF("Failed to read current register\n");
         return 0.0;
     }
     float current = detail::varint2float(raw, 4, 20, current_lsb_);
-    INA228_PRINTF("Current raw=0x%06X (shifted=0x%05X), value=%f A\n", raw, raw >> 4, current);
+    detail::DEBUG_PRINTF("Current raw=0x%06X (shifted=0x%05X), value=%f A\n", raw, raw >> 4, current);
     return current;
 }
 
 float INA228::get_charge() const {
     uint64_t raw = 0;
     if (!read_register40(INA228_Register::CHARGE, raw)) {
-        INA228_PRINTF("Failed to read charge register\n");
+        detail::DEBUG_PRINTF("Failed to read charge register\n");
         return 0.0;
     }
     float charge = detail::varint2float(raw, 0, 40, current_lsb_);
-    INA228_PRINTF("Charge raw=0x%llX, value=%f\n", raw, charge);
+    detail::DEBUG_PRINTF("Charge raw=0x%llX, value=%f\n", raw, charge);
     return charge;
 }
 
 void INA228::print_manufacturer_id() const {
     uint16_t raw_id = 0;
     if (!read_register16(INA228_Register::MANUFACTURER_ID, raw_id)) {
-        INA228_PRINTF("Failed to read manufacturer ID\n");
+        detail::DEBUG_PRINTF("Failed to read manufacturer ID\n");
         return;
     }
     uint8_t first_byte = (raw_id >> 8) & 0xFF;
@@ -260,7 +260,7 @@ void INA228::print_manufacturer_id() const {
 void INA228::print_device_id() const {
     uint16_t raw_id = 0;
     if (!read_register16(INA228_Register::DEVICE_ID, raw_id)) {
-        INA228_PRINTF("Failed to read device ID\n");
+        detail::DEBUG_PRINTF("Failed to read device ID\n");
         return;
     }
     uint16_t device_id = (raw_id >> 4) & 0xFFF;
@@ -380,7 +380,7 @@ bool INA228::set_shunt_overvoltage(float value) {
         data = (uint16_t)(~temp + 1);
     }
     
-    INA228_PRINTF("Setting shunt overvoltage threshold: %f (data=0x%04X)\n", value, data);
+    detail::DEBUG_PRINTF("Setting shunt overvoltage threshold: %f (data=0x%04X)\n", value, data);
     return write_register16(INA228_Register::SOVL, data);
 }
 
@@ -396,31 +396,31 @@ bool INA228::set_shunt_undervoltage(float value) {
         data = (uint16_t)(~temp + 1);
     }
     
-    INA228_PRINTF("Setting shunt undervoltage threshold: %f (data=0x%04X)\n", value, data);
+    detail::DEBUG_PRINTF("Setting shunt undervoltage threshold: %f (data=0x%04X)\n", value, data);
     return write_register16(INA228_Register::SUVL, data);
 }
 
 bool INA228::set_bus_overvoltage(float value) {
     uint16_t data = (uint16_t)(value / (16.0f * VBUS_LSB));
-    INA228_PRINTF("Setting bus overvoltage threshold: %f V (data=0x%04X)\n", value, data);
+    detail::DEBUG_PRINTF("Setting bus overvoltage threshold: %f V (data=0x%04X)\n", value, data);
     return write_register16(INA228_Register::BOVL, data);
 }
 
 bool INA228::set_bus_undervoltage(float value) {
     uint16_t data = (uint16_t)(value / (16.0f * VBUS_LSB));
-    INA228_PRINTF("Setting bus undervoltage threshold: %f V (data=0x%04X)\n", value, data);
+    detail::DEBUG_PRINTF("Setting bus undervoltage threshold: %f V (data=0x%04X)\n", value, data);
     return write_register16(INA228_Register::BUVL, data);
 }
 
 bool INA228::set_temp_limit(float value) {
     uint16_t data = (uint16_t)(value * INVERSE_TEMP_LSB);
-    INA228_PRINTF("Setting temperature limit: %f (data=0x%04X)\n", value, data);
+    detail::DEBUG_PRINTF("Setting temperature limit: %f (data=0x%04X)\n", value, data);
     return write_register16(INA228_Register::TEMP_LIMIT, data);
 }
 
 bool INA228::set_power_overlimit(float value) {
     uint16_t data = (uint16_t)(value / (256 * 3.2 * current_lsb_));
-    INA228_PRINTF("Setting power overlimit: %f (data=0x%04X)\n", value, data);
+    detail::DEBUG_PRINTF("Setting power overlimit: %f (data=0x%04X)\n", value, data);
     return write_register16(INA228_Register::PWR_LIMIT, data);
 }
 

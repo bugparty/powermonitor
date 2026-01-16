@@ -223,6 +223,9 @@ float INA228::get_vbus() const {
     detail::DEBUG_PRINTF("VBUS raw=0x%06X (shifted=0x%05X), value=%f V\n", raw, raw >> 4, vbus);
     return vbus;
 }
+void INA228::get_current_raw(bool &succeed, uint8_t *buf) const {
+    succeed = read_register24(INA228_Register::CURRENT, reinterpret_cast<uint32_t &>(buf));
+}
 float INA228::get_current() const {
     uint32_t raw = 0;
     if (!read_register24(INA228_Register::CURRENT, raw)) {
@@ -280,7 +283,7 @@ float INA228::get_shunt_conv_factor() const noexcept {
 void INA228::get_diag_alerts(INA228_Alert alert) const {
     uint16_t raw = 0;
     if (!read_register16(INA228_Register::DIAG_ALRT, raw)) {
-        printf("Failed to read DIAG_ALRT register\n");
+        detail::DEBUG_PRINTF("Failed to read DIAG_ALRT register\n");
         return;
     }
     

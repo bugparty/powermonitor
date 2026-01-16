@@ -9,17 +9,7 @@
 /* ========================================================================
    INA228 Debug Control
    ======================================================================== */
-constexpr bool INA228_DEBUG = true;
-namespace detail {
-   template<typename... Args>
-void DEBUG_PRINTF(const char* fmt, Args&&... args) {
-      if constexpr (INA228_DEBUG) {
-         printf(fmt, std::forward<Args>(args)...);
-      }
-   }
-}
-
-
+constexpr bool INA228_DEBUG = false;
 
 class INA228 {
 public:
@@ -263,6 +253,9 @@ public:
     [[nodiscard]] float get_power() const;
     [[nodiscard]] float get_temp() const;
     [[nodiscard]] float get_vbus() const;
+
+    void get_current_raw(bool &succeed, uint8_t *buf) const;
+
     [[nodiscard]] float get_current() const;
     [[nodiscard]] float get_charge() const;
     
@@ -300,6 +293,12 @@ namespace detail {
         }
         return (float)twocompdata * factor;
     }
+    template<typename... Args>
+void DEBUG_PRINTF(const char* fmt, Args&&... args) {
+      if constexpr (INA228_DEBUG) {
+         printf(fmt, std::forward<Args>(args)...);
+      }
+   }
 } // namespace detail
 
 

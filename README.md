@@ -125,18 +125,18 @@ flowchart LR
 sequenceDiagram
     participant Loop as EventLoop
     participant PC as PCNode
-    participant Link as VirtualLink
+    participant Transport as VirtualLink
     participant Dev as DeviceNode
 
     Loop->>PC: tick(now_us)
-    PC->>Link: write(CMD frame)
-    Loop->>Link: pump(now_us)
-    Link->>Dev: bytes arrive
+    PC->>Transport: write(CMD frame)
+    Loop->>Transport: pump(now_us)
+    Transport->>Dev: bytes arrive
     Loop->>Dev: tick(now_us)
     Dev->>Dev: parser.feed(bytes)
-    Dev->>Link: write(RSP/EVT/DATA)
-    Loop->>Link: pump(now_us)
-    Link->>PC: bytes arrive
+    Dev->>Transport: write(RSP/EVT/DATA)
+    Loop->>Transport: pump(now_us)
+    Transport->>PC: bytes arrive
     Loop->>PC: tick(now_us)
     PC->>PC: parser.feed(bytes)
 ```
@@ -144,7 +144,7 @@ sequenceDiagram
 ### frame handling pipeline
 ```mermaid
 flowchart TD
-    In[Incoming bytes] --> Parser[parser.feed()]
+    In[Incoming bytes] --> Parser[parser.feed]
     Parser -->|CRC OK| Frame[Frame object]
     Parser -->|CRC fail| Drop[Drop + count]
     Frame --> PCDispatch[PC/Device dispatch]

@@ -26,7 +26,7 @@ FetchContent_Declare(
 FetchContent_Declare(
     yaml-cpp
     GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
-    GIT_TAG 0.8.0
+    GIT_TAG 89ff142b991af432b5d7a7cee55282f082a7e629
 )
 
 FetchContent_MakeAvailable(cli11 nlohmann_json yaml-cpp)

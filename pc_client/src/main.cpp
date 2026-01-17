@@ -349,12 +349,20 @@ public:
 
     bool stream_active() const { return streaming_on_; }
 
+    // Thread-safe getters for interactive mode status query
+    size_t sample_count_atomic() const { return sample_count_.load(std::memory_order_relaxed); }
+    bool stream_active_atomic() const { return stream_active_atomic_.load(std::memory_order_relaxed); }
+
     void start_streaming(uint64_t now_us) {
         streaming_on_ = true;
+        stream_active_atomic_.store(true, std::memory_order_relaxed);
         last_data_rx_us_ = now_us;
     }
 
-    void stop_streaming() { streaming_on_ = false; }
+    void stop_streaming() {
+        streaming_on_ = false;
+        stream_active_atomic_.store(false, std::memory_order_relaxed);
+    }
 
     bool data_timeout(uint64_t now_us) const {
         return streaming_on_ && last_data_rx_us_ > 0 &&
@@ -506,6 +514,7 @@ private:
         record.current_a = sample.current_a;
         record.temp_c = sample.temp_c;
         samples_.push_back(record);
+        sample_count_.fetch_add(1, std::memory_order_relaxed);
 
         last_data_rx_us_ = current_rx_time_us_;
     }
@@ -528,6 +537,8 @@ private:
     uint16_t adc_config_reg_ = 0;
     bool cfg_report_received_ = false;
     bool streaming_on_ = false;
+    std::atomic<size_t> sample_count_{0};
+    std::atomic<bool> stream_active_atomic_{false};
     bool stop_requested_ = false;
     bool has_data_seq_ = false;
     uint8_t last_data_seq_ = 0;
@@ -816,8 +827,8 @@ int main(int argc, char **argv) {
                     g_stop_requested = true;
                     break;
                 } else if (line == "status") {
-                    std::cout << "samples=" << session.samples().size()
-                              << " streaming=" << session.stream_active() << "\n";
+                    std::cout << "samples=" << session.sample_count_atomic()
+                              << " streaming=" << session.stream_active_atomic() << "\n";
                 }
             }
         });

@@ -855,17 +855,21 @@ int main(int argc, char **argv) {
         session.start_streaming(now_steady_us());
     }
 
-    while (!g_stop_requested) {
-        const uint64_t now_us = now_steady_us();
-        session.tick(now_us);
-        if (session.data_timeout(now_us)) {
-            std::cerr << "No DATA received for 5 seconds, stopping\n";
-            break;
+    try {
+        while (!g_stop_requested) {
+            const uint64_t now_us = now_steady_us();
+            session.tick(now_us);
+            if (session.data_timeout(now_us)) {
+                std::cerr << "No DATA received for 5 seconds, stopping\n";
+                break;
+            }
+            if (interactive_stop.load()) {
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
         }
-        if (interactive_stop.load()) {
-            break;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    } catch (const std::exception &ex) {
+        std::cerr << "Error during streaming: " << ex.what() << "\n";
     }
 
     if (input_thread.joinable()) {

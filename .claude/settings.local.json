@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cmake --build:*)",
+      "Bash(build/pc_sim/pc_sim)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

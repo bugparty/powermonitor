@@ -716,15 +716,30 @@ int main(int argc, char **argv) {
     serial.setTimeout(timeout);
 
     std::optional<serial::PortInfo> selected_port;
+    int wait_count = 0;
     while (!g_stop_requested) {
         selected_port = select_port(options);
         if (selected_port.has_value() && !selected_port->port.empty()) {
+            if (wait_count > 0) {
+                std::cout << "\n";
+            }
             break;
         }
         if (!options.port.empty()) {
             std::cerr << "Specified port not found\n";
             return 1;
         }
+        const int dots = (wait_count % 3) + 1;
+        std::cout << "\rWaiting for device (VID=" << hex_u16(options.vid) 
+                  << ", PID=" << hex_u16(options.pid) << ")";
+        for (int i = 0; i < dots; ++i) {
+            std::cout << ".";
+        }
+        for (int i = dots; i < 3; ++i) {
+            std::cout << " ";
+        }
+        std::cout << std::flush;
+        ++wait_count;
         std::this_thread::sleep_for(std::chrono::seconds(1));
     }
 

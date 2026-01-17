@@ -61,6 +61,12 @@ g++ -std=c++17 -I. \
   -o pc_sim
 ```
 
+## build (cmake, host)
+```
+cmake -S pc_sim -B build_pc
+cmake --build build_pc --target pc_sim
+```
+
 ## run
 ```
 ./pc_sim

@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(cmake --build:*)",
-      "Bash(build/pc_sim/pc_sim)"
+      "Bash(build/pc_sim/pc_sim)",
+      "Bash(cmake:*)",
+      "Bash(ctest:*)",
+      "Bash(build/pc_sim/pc_sim_test)",
+      "Bash(./pc_sim/pc_sim_test:*)"
     ],
     "deny": [],
     "ask": []

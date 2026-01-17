@@ -4,6 +4,12 @@
 #include "sim/event_loop.h"
 #include "sim/virtual_link.h"
 
+// ===========================
+// FUNCTIONAL TESTS
+// ===========================
+// These tests verify end-to-end functionality of the power monitor system,
+// including command handling, data streaming, and error tolerance.
+
 // Test fixture for common setup
 class PowerMonitorTest : public ::testing::Test {
 protected:

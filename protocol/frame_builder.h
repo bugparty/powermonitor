@@ -26,6 +26,7 @@ struct Frame {
     std::vector<uint8_t> data;
 };
 
+// Build a complete protocol frame with SOF, header, payload, and CRC16.
 std::vector<uint8_t> build_frame(FrameType type, uint8_t flags, uint8_t seq, uint8_t msgid,
                                  const std::vector<uint8_t> &data);
 

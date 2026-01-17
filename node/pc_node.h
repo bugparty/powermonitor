@@ -30,12 +30,13 @@ public:
     uint64_t retransmit_count() const { return retransmit_count_; }
 
 private:
+    // Tracks an outstanding command awaiting RSP, used for timeout/retransmit logic.
     struct PendingCmd {
-        uint8_t msgid = 0;
-        uint8_t seq = 0;
-        uint8_t retries = 0;
-        uint64_t deadline_us = 0;
-        std::vector<uint8_t> bytes;
+        uint8_t msgid = 0;              // Original command message ID
+        uint8_t seq = 0;                // Sequence number for RSP matching
+        uint8_t retries = 0;            // Retransmit count (max 3)
+        uint64_t deadline_us = 0;       // Timeout deadline in microseconds
+        std::vector<uint8_t> bytes;     // Raw frame bytes for retransmission
     };
 
     void on_frame(const protocol::Frame &frame);

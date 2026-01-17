@@ -471,7 +471,7 @@ include(FetchContent)
 
 FetchContent_Declare(serial
   GIT_REPOSITORY https://github.com/wjwwood/serial.git
-  GIT_TAG main)
+  GIT_TAG 1.2.1)
 
 FetchContent_Declare(cli11
   GIT_REPOSITORY https://github.com/CLIUtils/CLI11.git

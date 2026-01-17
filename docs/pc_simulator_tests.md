@@ -1,10 +1,10 @@
 # PC Simulator Tests
 
-This document describes the test scenarios executed by the PC-side protocol simulator (`app/main.cpp`).
+This document describes the test scenarios executed by the PC-side protocol simulator (`pc_sim/pc_sim_main.cpp`).
 
 ## Overview
 
-The PC simulator (`app/main.cpp`) performs end-to-end integration testing of the communication protocol between a PC node and a device node. It simulates a complete power monitoring session with configurable fault injection.
+The PC simulator (`pc_sim/pc_sim_main.cpp`) performs end-to-end integration testing of the communication protocol between a PC node and a device node. It simulates a complete power monitoring session with configurable fault injection.
 
 ## Test Scenario
 

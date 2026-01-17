@@ -5,10 +5,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Common source files for the library
 add_library(powermonitor_lib
-        ../protocol/crc16_ccitt_false.cpp
-        ../protocol/frame_builder.cpp
-        ../protocol/parser.cpp
-        ../protocol/unpack.cpp
         ../sim/event_loop.cpp
         ../sim/virtual_link.cpp
         ../node/ina228_model.cpp
@@ -16,10 +12,11 @@ add_library(powermonitor_lib
         ../node/device_node.cpp
 )
 target_include_directories(powermonitor_lib PUBLIC .. )
+target_link_libraries(powermonitor_lib PUBLIC powermonitor_protocol)
 
 # Demo application
 add_executable(pc_sim
-        ../app/main.cpp
+        pc_sim_main.cpp
 )
 target_link_libraries(pc_sim powermonitor_lib)
 

@@ -19,8 +19,9 @@ powermonitor/
 │   ├── INA228.cpp/hpp  # INA228 sensor driver
 │   ├── powermonitor.cpp # Main device firmware
 │   └── CMakeLists.txt  # Pico SDK build configuration
+├── pc_client/          # PC-side serial client
 ├── pc_sim/             # PC-side simulator and tests
-│   ├── main.cpp        # Google Test test suites
+│   ├── pc_sim_main.cpp # Simulator demo entry
 │   └── CMakeLists.txt  # Host build configuration with GTest
 ├── protocol/           # Protocol implementation
 │   ├── crc16_ccitt_false.cpp
@@ -94,7 +95,7 @@ python device/timesync.py
 
 ### Protocol Simulator Configuration
 
-Edit `pc_sim/main.cpp` to adjust simulation parameters:
+Edit `pc_sim/pc_sim_main.cpp` to adjust simulation parameters:
 
 - **LinkConfig**: Fault injection settings
   - `drop_prob`: Packet drop probability (0.0-1.0)

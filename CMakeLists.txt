@@ -1,3 +1,5 @@
 cmake_minimum_required(VERSION 3.13)
 project(powermonitor)
+add_subdirectory(protocol)
 add_subdirectory(pc_sim)
+add_subdirectory(pc_client)

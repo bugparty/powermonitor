@@ -477,7 +477,7 @@ FetchContent_Declare(cli11
   GIT_REPOSITORY https://github.com/CLIUtils/CLI11.git
   GIT_TAG v2.4.2)
 
-FetchContent_Declare(json
+FetchContent_Declare(nlohmann_json
   GIT_REPOSITORY https://github.com/nlohmann/json.git
   GIT_TAG v3.11.3)
 
@@ -485,7 +485,18 @@ FetchContent_Declare(yaml-cpp
   GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
   GIT_TAG 0.8.0)
 
-FetchContent_MakeAvailable(serial cli11 json yaml-cpp)
+FetchContent_MakeAvailable(cli11 nlohmann_json yaml-cpp)
+
+FetchContent_GetProperties(serial)
+if (NOT serial_POPULATED)
+  FetchContent_Populate(serial)
+endif()
+
+add_library(serial
+  ${serial_SOURCE_DIR}/src/serial.cc
+  ${serial_SOURCE_DIR}/src/impl/unix.cc
+  ${serial_SOURCE_DIR}/src/impl/list_ports/list_ports_linux.cc)
+target_include_directories(serial PUBLIC ${serial_SOURCE_DIR}/include)
 ```
 
 ### Targets
@@ -494,7 +505,6 @@ FetchContent_MakeAvailable(serial cli11 json yaml-cpp)
 |--------|------|-------------|
 | `powermonitor_protocol` | STATIC | Shared protocol library (parser, frame builder, CRC) |
 | `powermonitor` | EXECUTABLE | PC client application |
-| `powermonitor_client_test` | EXECUTABLE | Client unit tests |
 
 ### Example pc_client/CMakeLists.txt
 
@@ -506,9 +516,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_executable(powermonitor
     src/main.cpp
-    src/session.cpp
-    src/serial_reader.cpp
-    src/cli.cpp
 )
 
 target_link_libraries(powermonitor

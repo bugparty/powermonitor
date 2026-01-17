@@ -64,7 +64,7 @@ private:
     VirtualLinkEndpoint dev_;
     std::deque<PendingChunk> pending_;
     std::mt19937 rng_;
-    uint64_t last_delivery_[2] = {};
+    uint64_t last_delivery_[2] = {}; // Last delivery timestamp for each direction: [0]=PC-to-device, [1]=device-to-PC
 
     friend class VirtualLinkEndpoint;
 };

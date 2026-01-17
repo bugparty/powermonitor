@@ -13,7 +13,7 @@ All documentation in this project must be written in **English**, regardless of 
 **All documentation, comments, and written outputs must be in ENGLISH.**
 
 This includes but is not limited to:
-- Documentation files (`docs/*.md`, `README.md`, `device/*.md`)
+- Documentation files (`docs/**/*.md`, `README.md`, `device/*.md`)
 - Code comments
 - Commit messages
 - Test descriptions
@@ -85,17 +85,18 @@ This project is a power monitoring system based on the INA228 power monitoring c
 | Document Path | Description |
 |--------------|-------------|
 | `README.md` | **Main project document** - Project overview, build instructions, test instructions, architecture diagram |
-| `docs/INA228_uart_protocol.md` | **INA228 UART Communication Protocol Specification** - Defines complete communication protocol between PC and device, including frame format, message types, data format, CRC validation, etc. |
-| `docs/pc_simulator_tests.md` | **PC Simulator Test Documentation** - Detailed description of test scenarios, metrics, fault injection configuration |
-| `docs/state_machine_tests.md` | **State Machine Test Documentation** - Complete test cases and coverage requirements for protocol parser state machine |
+| `docs/protocol/uart_protocol.md` | **INA228 UART Communication Protocol Specification** - Defines complete communication protocol between PC and device, including frame format, message types, data format, CRC validation, etc. |
+| `docs/pc_sim/simulator_tests.md` | **PC Simulator Test Documentation** - Detailed description of test scenarios, metrics, fault injection configuration |
+| `docs/pc_sim/state_machine_tests.md` | **State Machine Test Documentation** - Complete test cases and coverage requirements for protocol parser state machine |
+| `docs/naming_convention.md` | Documentation naming convention and code mapping rules |
 | `device/README.md` | Hardware information, development environment setup, build and flash guide |
-| `device/time_sync_documentation.md` | Technical documentation for time synchronization module |
+| `docs/device/time_sync.md` | Technical documentation for time synchronization module |
 
 ---
 
 ## Key Protocol Points (Quick Reference)
 
-> For detailed information, please refer to `docs/INA228_uart_protocol.md`
+> For detailed information, please refer to `docs/protocol/uart_protocol.md`
 
 - **Frame Format**: SOF(0xAA 0x55) + Header + Payload + CRC16
 - **CRC Algorithm**: CRC-16/CCITT-FALSE (Poly=0x1021, Init=0xFFFF)
@@ -375,14 +376,14 @@ Must output the following logs/statistics:
 
 ### 9.1 Before Modifying Code
 
-1. **Read relevant documentation**: Review `docs/INA228_uart_protocol.md` and `README.md`
-2. **Understand tests**: Review `docs/pc_simulator_tests.md` to understand test coverage
+1. **Read relevant documentation**: Review `docs/protocol/uart_protocol.md` and `README.md`
+2. **Understand tests**: Review `docs/pc_sim/simulator_tests.md` to understand test coverage
 3. **Run current tests**: `./test.sh` to ensure clean starting point
 
 ### 9.2 While Modifying Code
 
 1. **Incremental development**: Small steps, frequent testing
-2. **Follow protocol specification**: Strictly implement per `docs/INA228_uart_protocol.md`
+2. **Follow protocol specification**: Strictly implement per `docs/protocol/uart_protocol.md`
 3. **Maintain compilation**: Ensure code compiles after each modification
 
 ### 9.3 After Modifying Code (Mandatory Requirement)
@@ -424,7 +425,7 @@ Must output the following logs/statistics:
 
 ### 9.6 Test Documentation and Test Code Synchronization Principle
 
-**Important principle: Test documentation (`docs/state_machine_tests.md`) and test code (`pc_sim/*.cpp`) must be kept in sync!**
+**Important principle: Test documentation (`docs/pc_sim/state_machine_tests.md`) and test code (`pc_sim/*.cpp`) must be kept in sync!**
 
 #### 9.6.1 Document Update → Test Code Must Update
 

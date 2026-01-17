@@ -1,5 +1,8 @@
 # PC Simulator Tests
 
+Related code:
+- `pc_sim/pc_sim_main.cpp`
+
 This document describes the test scenarios executed by the PC-side protocol simulator (`pc_sim/pc_sim_main.cpp`).
 
 ## Overview
@@ -302,6 +305,6 @@ Potential additions for more comprehensive testing:
 
 ## Related Documentation
 
-- [INA228 UART Protocol](INA228_uart_protocol.md) - Protocol specification
-- [Time Sync Documentation](time_sync_documentation.md) - Time synchronization details
-- [README](../README.md) - Project overview and build instructions
+- [INA228 UART Protocol](../protocol/uart_protocol.md) - Protocol specification
+- [Time Sync Documentation](../device/time_sync.md) - Time synchronization details
+- [README](../../README.md) - Project overview and build instructions

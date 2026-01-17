@@ -1,5 +1,8 @@
 # PC Client (Serial) Design
 
+Related code:
+- `pc_client/`
+
 This document defines the PC client behavior and integration plan for the INA228 power monitor.
 It uses the `serial` library (wjwwood/serial) to connect to a USB CDC/UART device, perform the
 protocol handshake, and stream data for local storage.

@@ -1,5 +1,9 @@
 # Parser Design and Architecture
 
+Related code:
+- `protocol/parser.cpp`
+- `protocol/parser.h`
+
 ## Current Implementation
 
 The protocol parser uses a **switch-based state machine** pattern implemented in `protocol/parser.cpp` and `protocol/parser.h`.

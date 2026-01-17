@@ -1,5 +1,11 @@
 # INA228 USB-TTL Serial Communication Protocol Specification
 
+Related code:
+- `protocol/frame_builder.cpp`
+- `protocol/parser.cpp`
+- `protocol/unpack.cpp`
+- `protocol/crc16_ccitt_false.cpp`
+
 |||
 |---|---|
 |**Property**|**Content**|

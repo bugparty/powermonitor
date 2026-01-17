@@ -36,8 +36,17 @@ powermonitor/
 │   ├── device_node.cpp # Device-side protocol logic
 │   └── ina228_model.cpp # INA228 behavior model
 └── docs/               # Documentation
-    ├── INA228_uart_protocol.md
-    └── time_sync_documentation.md
+    ├── pc_client/
+    │   ├── overview.md
+    │   └── implementation_plan.md
+    ├── pc_sim/
+    │   ├── simulator_tests.md
+    │   └── state_machine_tests.md
+    ├── protocol/
+    │   ├── uart_protocol.md
+    │   └── parser_design.md
+    └── device/
+        └── time_sync.md
 ```
 
 ## Building
@@ -115,7 +124,7 @@ The communication protocol uses framed messages with the following features:
 - ACK/NACK responses with automatic retransmission
 - Configurable timeout and retry mechanisms
 
-See [docs/INA228_uart_protocol.md](docs/INA228_uart_protocol.md) for detailed protocol specification.
+See [docs/protocol/uart_protocol.md](docs/protocol/uart_protocol.md) for detailed protocol specification.
 
 ## Hardware
 

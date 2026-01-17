@@ -6,7 +6,8 @@
       "Bash(cmake:*)",
       "Bash(ctest:*)",
       "Bash(build/pc_sim/pc_sim_test)",
-      "Bash(./pc_sim/pc_sim_test:*)"
+      "Bash(./pc_sim/pc_sim_test:*)",
+      "Bash(tree:*)"
     ],
     "deny": [],
     "ask": []

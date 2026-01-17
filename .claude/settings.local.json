@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cmake --build:*)",
+      "Bash(build/pc_sim/pc_sim)",
+      "Bash(cmake:*)",
+      "Bash(ctest:*)",
+      "Bash(build/pc_sim/pc_sim_test)",
+      "Bash(./pc_sim/pc_sim_test:*)",
+      "Bash(tree:*)",
+      "Bash(./build_pc/pc_sim:*)",
+      "Bash(./build/pc_sim/pc_sim_test:*)",
+      "Bash(chmod:*)",
+      "Bash(./test.sh:*)",
+      "Bash(bash:*)",
+      "Bash(dos2unix:*)",
+      "Bash(wget:*)",
+      "Bash(curl:*)",
+      "Bash(git -C /mnt/d/powermonitor diff protocol/parser.h protocol/parser.cpp)",
+      "Bash(./pc_sim_test --gtest_filter=\"ParserStateMachine*\":*)",
+      "Bash(./pc_sim_test:*)",
+      "Bash(./build_pc_test/pc_sim_test --gtest_filter=\"PowerMonitor*\" 2>&1:*)",
+      "Bash(ls -la build_pc_test/*.test build_pc_test/pc_sim*:*)",
+      "Bash(./build_pc_test/pc_sim_test --gtest_filter=\"ParserStateMachine.WAIT_SOF0*\")",
+      "Bash(./build_pc_test/pc_sim_test --gtest_list_tests)",
+      "Bash(./build_pc_test/pc_sim_test --gtest_filter=\"ParserStateMachineTest.WAIT_SOF0*\" 2>&1:*)",
+      "Bash(./build_pc_test/pc_sim_test:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

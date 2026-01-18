@@ -43,7 +43,10 @@ public:
     
     void add_sample(const Sample& sample);
     void save(const std::string& filepath) const;
-    size_t sample_count() const { return samples_.size(); }
+    size_t sample_count() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return samples_.size();
+    }
     
     // 时间戳溢出处理
     uint64_t process_device_timestamp(uint32_t ts_us);

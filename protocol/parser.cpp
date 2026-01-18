@@ -1,4 +1,4 @@
-#include "protocol/parser.h"
+﻿#include "protocol/parser.h"
 
 #include <algorithm>
 

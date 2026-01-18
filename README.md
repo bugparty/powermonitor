@@ -1,4 +1,4 @@
-# Power Monitor
+﻿# Power Monitor
 
 A power monitoring system based on the INA228 current/voltage/power sensor and Raspberry Pi Pico (RP2040), with a custom UART communication protocol and PC-side simulator for testing.
 
@@ -19,8 +19,9 @@ powermonitor/
 │   ├── INA228.cpp/hpp  # INA228 sensor driver
 │   ├── powermonitor.cpp # Main device firmware
 │   └── CMakeLists.txt  # Pico SDK build configuration
+├── pc_client/          # PC-side serial client
 ├── pc_sim/             # PC-side simulator and tests
-│   ├── main.cpp        # Google Test test suites
+│   ├── pc_sim_main.cpp # Simulator demo entry
 │   └── CMakeLists.txt  # Host build configuration with GTest
 ├── protocol/           # Protocol implementation
 │   ├── crc16_ccitt_false.cpp
@@ -35,8 +36,17 @@ powermonitor/
 │   ├── device_node.cpp # Device-side protocol logic
 │   └── ina228_model.cpp # INA228 behavior model
 └── docs/               # Documentation
-    ├── INA228_uart_protocol.md
-    └── time_sync_documentation.md
+    ├── pc_client/
+    │   ├── overview.md
+    │   └── implementation_plan.md
+    ├── pc_sim/
+    │   ├── simulator_tests.md
+    │   └── state_machine_tests.md
+    ├── protocol/
+    │   ├── uart_protocol.md
+    │   └── parser_design.md
+    └── device/
+        └── time_sync.md
 ```
 
 ## Building
@@ -94,7 +104,7 @@ python device/timesync.py
 
 ### Protocol Simulator Configuration
 
-Edit `pc_sim/main.cpp` to adjust simulation parameters:
+Edit `pc_sim/pc_sim_main.cpp` to adjust simulation parameters:
 
 - **LinkConfig**: Fault injection settings
   - `drop_prob`: Packet drop probability (0.0-1.0)
@@ -114,7 +124,7 @@ The communication protocol uses framed messages with the following features:
 - ACK/NACK responses with automatic retransmission
 - Configurable timeout and retry mechanisms
 
-See [docs/INA228_uart_protocol.md](docs/INA228_uart_protocol.md) for detailed protocol specification.
+See [docs/protocol/uart_protocol.md](docs/protocol/uart_protocol.md) for detailed protocol specification.
 
 ## Hardware
 

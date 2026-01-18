@@ -1,4 +1,4 @@
-# Testing Guide
+﻿# Testing Guide
 
 ## Quick Start
 
@@ -113,7 +113,7 @@ Low-level parser state machine tests ensuring complete state coverage.
 - Byte-by-byte feed
 - Length validation
 
-See [State Machine Test Specification](docs/state_machine_tests.md) for detailed test documentation.
+See [State Machine Test Specification](docs/pc_sim/state_machine_tests.md) for detailed test documentation.
 
 ## Manual Testing
 
@@ -256,5 +256,5 @@ Typical test execution time:
 ## References
 
 - [Google Test Documentation](https://google.github.io/googletest/)
-- [Test Details](docs/pc_simulator_tests.md) - Detailed test scenario documentation
-- [Protocol Specification](docs/INA228_uart_protocol.md) - Protocol details
+- [Test Details](docs/pc_sim/simulator_tests.md) - Detailed test scenario documentation
+- [Protocol Specification](docs/protocol/uart_protocol.md) - Protocol details

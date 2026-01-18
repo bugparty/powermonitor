@@ -1,8 +1,14 @@
-# INA228 Protocol State Machine Test Specification
+﻿# INA228 Protocol State Machine Test Specification
 
 ## Overview
 
-This document defines comprehensive test cases for the PC-side protocol parser state machine defined in `docs/INA228_uart_protocol.md`. Each state must be covered at least 2 times to ensure robustness.
+Related code:
+- `pc_sim/state_machine_test.cpp`
+- `protocol/parser.cpp`
+- `protocol/parser.h`
+
+This document defines comprehensive test cases for the PC-side protocol parser state machine defined in `docs/protocol/uart_protocol.md`. Each state must be covered at least 2 times to ensure robustness.
+
 
 ## State Machine States
 

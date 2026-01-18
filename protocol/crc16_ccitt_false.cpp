@@ -1,4 +1,4 @@
-#include "protocol/crc16_ccitt_false.h"
+﻿#include "protocol/crc16_ccitt_false.h"
 
 namespace protocol {
 

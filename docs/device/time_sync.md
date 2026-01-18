@@ -1,4 +1,9 @@
-# Time Synchronization Protocol Documentation
+﻿# Time Synchronization Protocol Documentation
+
+Related code:
+- `device/time_sync.cpp`
+- `device/time_sync.hpp`
+- `device/timesync.py`
 
 This document describes the time synchronization protocol implemented between a host computer (Master) and a Raspberry Pi Pico device (Slave) over a serial connection.
 

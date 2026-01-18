@@ -1,4 +1,4 @@
-// slave.cpp
+﻿// slave.cpp
 #include "time_sync.hpp"
 #include "pico/stdlib.h"
 #include "hardware/uart.h"

@@ -1,4 +1,8 @@
-# Parser Design and Architecture
+﻿# Parser Design and Architecture
+
+Related code:
+- `protocol/parser.cpp`
+- `protocol/parser.h`
 
 ## Current Implementation
 

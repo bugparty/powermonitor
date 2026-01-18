@@ -1,4 +1,4 @@
-// time_sync.hpp
+﻿// time_sync.hpp
 #ifndef TIME_SYNC_HPP
 #define TIME_SYNC_HPP
 

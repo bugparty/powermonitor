@@ -1,4 +1,4 @@
-#include "../INA228.hpp"
+﻿#include "../INA228.hpp"
 
 INA228::INA228(i2c_inst_t *i2c_inst, uint8_t i2c_addr, float shunt_ohms, float max_current) 
     : i2c_(i2c_inst), addr_(i2c_addr), shunt_ohms_(shunt_ohms), max_current_(max_current) {}

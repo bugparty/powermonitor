@@ -1,7 +1,4 @@
-# PC Client Dual-Thread Architecture Implementation Plan
-
-Related code:
-- `pc_client/`
+# pc_client 双线程架构实现计划
 
 ## 1. 现状分析
 
@@ -43,40 +40,49 @@ Related code:
 ### 2.2 新增类设计
 
 ```cpp
-// Thread-safe sample queue
+// Thread-safe sample queue (for high-throughput data)
 class SampleQueue {
 public:
     struct Sample {
         uint32_t seq;
         uint64_t host_timestamp_us;
-        std::vector<uint8_t> raw_data;  // 完整的DATA_SAMPLE帧
+        std::vector<uint8_t> raw_data;
         uint32_t device_timestamp_us;
     };
-    
+    // ... 接口同上
     void push(Sample&& sample);
-    bool pop(Sample& sample);  // 非阻塞
-    bool pop_wait(Sample& sample);  // 阻塞直到有数据或停止
-    void stop();
-    size_t size() const;
+    // ...
+};
+
+// Thread-safe response queue (for control frames like RSP, CFG_REPORT)
+class ResponseQueue {
+public:
+    void push(protocol::Frame&& frame);
+    bool pop_wait(protocol::Frame& frame, int timeout_ms);
+
+private:
+    std::queue<protocol::Frame> queue_;
+    std::mutex mutex_;
+    std::condition_variable cv_;
 };
 
 // Read Thread implementation
 class ReadThread {
 public:
-    ReadThread(serial::Serial* serial, SampleQueue* queue, 
-               std::atomic<bool>* stop_flag);
+    ReadThread(serial::Serial* serial, SampleQueue* sample_q, 
+               ResponseQueue* response_q, std::atomic<bool>* stop_flag);
     ~ReadThread();
-    void start();
-    void join();
-    
+    void start();  // 必须在发送任何命令前启动
+    // ...
+
 private:
-    void run();  // 线程入口
-    
+    void run();
+    void on_frame(const protocol::Frame& frame);
+
     serial::Serial* serial_;
-    SampleQueue* queue_;
-    std::atomic<bool>* stop_flag_;
-    std::thread thread_;
-    std::atomic<bool> running_{false};
+    SampleQueue* sample_q_;
+    ResponseQueue* response_q_;
+    // ...
 };
 
 // Session data accumulation
@@ -88,17 +94,20 @@ public:
         uint16_t stream_period_us;
         uint16_t stream_mask;
     };
-    
+
     void add_sample(const SampleQueue::Sample& sample);
     void save(const std::string& filepath) const;
     void set_config(const Config& cfg) { config_ = cfg; }
-    
+
 private:
     Config config_;
     std::vector<nlohmann::json> samples_;
     mutable std::mutex mutex_;
 };
 ```
+
+Note: the implementation uses `frame.data` as the payload field and helper functions like `unpack_u32()` instead of protocol helpers that do not exist in the current library.
+
 
 ---
 
@@ -161,8 +170,7 @@ bool pop_wait(Sample& sample) {
 
 **性能指标**：
 - 入队/出队操作：~50-100ns（无竞争情况下）
-- 内存占用：~200字节/采样 × 10,000 = 2MB队列缓冲
-- 1kHz采样率下，队列可缓冲10秒数据
+- 1kHz采样率下，队列可缓冲数小时数据（取决于max_size设置）
 
 ---
 
@@ -172,34 +180,29 @@ bool pop_wait(Sample& sample) {
 
 ```cpp
 void ReadThread::run() {
-    protocol::Parser parser;
-    
-    // 缓冲区大小：足够容纳多个完整帧
+    protocol::Parser parser([this](const protocol::Frame& frame) {
+        this->on_frame(frame);
+    });
+
     std::vector<uint8_t> buffer(4096);
-    
+
     while (running_ && !(*stop_flag)) {
         try {
-            // 非阻塞读取（超时100ms）
-            size_t bytes_read = serial_->read(buffer.data(), buffer.size(), 100);
-            
-            if (bytes_read == 0) continue;  // 超时
-            
-            // 喂给解析器
-            for (size_t i = 0; i < bytes_read; ++i) {
-                if (parser.feed_byte(buffer[i])) {
-                    // 获得完整帧
-                    process_frame(parser.get_frame());
-                }
+            const size_t bytes_read = serial_->read(buffer.data(), buffer.size());
+            if (bytes_read == 0) {
+                continue;
             }
+
+            buffer.resize(bytes_read);
+            parser.feed(buffer);
+            buffer.resize(4096);
         } catch (const serial::PortNotOpenedException& e) {
-            // 串口断开
             break;
         } catch (const serial::SerialException& e) {
-            // 其他串口错误
             break;
         }
     }
-    
+
     running_ = false;
 }
 ```
@@ -207,26 +210,24 @@ void ReadThread::run() {
 ### 4.2 帧处理逻辑
 
 ```cpp
-void ReadThread::process_frame(const protocol::Frame& frame) {
-    // 更新统计（原子操作，无锁）
+void ReadThread::on_frame(const protocol::Frame& frame) {
     stats_->rx_counts[frame.msgid].fetch_add(1, std::memory_order_relaxed);
-    
+
     if (frame.msgid == kMsgDataSample) {
-        if (frame.payload.size() < kDataSampleMinSize) {
+        if (frame.data.size() < kDataSampleMinSize) {
             stats_->crc_fail.fetch_add(1, std::memory_order_relaxed);
             return;
         }
-        
+
         SampleQueue::Sample sample;
         sample.seq = frame.seq;
         sample.host_timestamp_us = now_steady_us();
-        sample.device_timestamp_us = protocol::unpack_u32(frame.payload.data());
-        sample.raw_data = frame.payload;  // 完整保存
-        
-        queue_->push(std::move(sample));
-    } else if (frame.msgid == kMsgCfgReport) {
-        // 配置帧，直接传给主线程
-        config_queue_->push(frame.payload);
+        sample.device_timestamp_us = unpack_u32(frame.data.data());
+        sample.raw_data = frame.data;
+
+        sample_q_->push(std::move(sample));
+    } else {
+        response_q_->push(protocol::Frame(frame));
     }
 }
 ```
@@ -258,6 +259,7 @@ private:
     
     serial::Serial serial_;
     SampleQueue sample_queue_;
+    ResponseQueue response_queue_; // 新增
     ReadThread read_thread_;
     Session session_;
     std::atomic<bool> stop_requested_{false};
@@ -268,6 +270,9 @@ private:
 
 ```cpp
 bool PowerMonitorSession::initialize_device() {
+    // 关键修正：在发送任何命令前，必须先启动ReadThread，否则无法接收RSP
+    read_thread_.start();
+
     // 1. PING
     if (!send_command_with_retry(kMsgPing, {})) {
         return false;
@@ -311,38 +316,38 @@ bool PowerMonitorSession::initialize_device() {
 bool PowerMonitorSession::send_command_with_retry(
     uint8_t msgid, const std::vector<uint8_t>& payload,
     std::vector<uint8_t>* rsp_data) {
-    
-    std::vector<uint8_t> frame = protocol::build_frame(
-        msgid, cmd_seq_++, payload);
-    
+
     for (uint8_t retry = 0; retry <= kMaxRetries; ++retry) {
         try {
+            std::vector<uint8_t> frame = protocol::build_frame(
+                protocol::FrameType::kCmd, 0, cmd_seq_++, msgid, payload);
+            const uint8_t sent_seq = cmd_seq_ - 1;
+
             serial_.write(frame);
             stats_.tx_counts[msgid].fetch_add(1, std::memory_order_relaxed);
-            
-            // 等待响应
+
             protocol::Frame rsp;
-            if (wait_for_response(cmd_seq_ - 1, &rsp, kCmdTimeoutUs)) {
-                if (rsp.payload.size() > 0 && rsp.payload[0] == kStatusOk) {
-                    if (rsp_data) *rsp_data = rsp.payload;
+            if (wait_for_response_from_queue(sent_seq, &rsp, kCmdTimeoutUs)) {
+                if (!rsp.data.empty() && rsp.data[0] == kStatusOk) {
+                    if (rsp_data) {
+                        *rsp_data = rsp.data;
+                    }
                     return true;
                 }
-                // 非OK状态，不重试
                 return false;
             }
-            
+
         } catch (const serial::SerialException& e) {
             log_error("Write failed: {}", e.what());
             return false;
         }
-        
-        // 超时，重试（保持相同的SEQ）
+
         stats_.timeouts.fetch_add(1, std::memory_order_relaxed);
         log_warn("Command 0x{:02X} timeout, retry {}/{}",
                  msgid, retry + 1, kMaxRetries);
     }
-    
-    return false;  // 超过最大重试次数
+
+    return false;
 }
 ```
 
@@ -395,7 +400,7 @@ void PowerMonitorSession::stop() {
 
 ---
 
-## 7. 内存管理策略
+## 7. 数据存储优化
 
 ### 7.1 预分配优化
 
@@ -408,11 +413,6 @@ class Session {
     
     void add_sample(const SampleQueue::Sample& sample) {
         std::lock_guard<std::mutex> lock(mutex_);
-        
-        // 如果接近容量限制，先保存部分数据
-        if (samples_.size() >= 90000) {
-            flush_to_temp_file();
-        }
         
         samples_.push_back(convert_to_json(sample));
     }
@@ -549,7 +549,6 @@ void PowerMonitorSession::check_data_timeout() {
 
 3. **P2 - 性能优化**
    - [ ] 批量处理优化
-   - [ ] JSON写入优化
    - [ ] 内存使用监控
 
 4. **P3 - 可观测性**

@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+﻿#include <gtest/gtest.h>
 #include "protocol/frame_builder.h"
 #include "protocol/parser.h"
 
@@ -7,7 +7,7 @@
 // ===========================
 // These tests verify the protocol parser state machine behavior,
 // ensuring all states are properly covered and transitions work correctly.
-// Reference: docs/state_machine_tests.md
+// Reference: docs/pc_sim/state_machine_tests.md
 
 // Helper class for building test frames
 class TestFrameBuilder {

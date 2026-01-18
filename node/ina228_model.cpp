@@ -1,4 +1,4 @@
-#include "node/ina228_model.h"
+﻿#include "node/ina228_model.h"
 
 #include <algorithm>
 #include <cmath>

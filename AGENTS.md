@@ -1,4 +1,4 @@
-# AGENTS.md
+﻿# AGENTS.md
 
 **IMPORTANT**: This document is used to guide AI Agents in understanding the project structure and documentation.
 

@@ -1,4 +1,4 @@
-# INA228 Protocol State Machine Test Specification
+﻿# INA228 Protocol State Machine Test Specification
 
 ## Overview
 

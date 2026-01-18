@@ -1,4 +1,4 @@
-# Power Monitor
+﻿# Power Monitor
 
 A power monitoring system based on the INA228 current/voltage/power sensor and Raspberry Pi Pico (RP2040), with a custom UART communication protocol and PC-side simulator for testing.
 

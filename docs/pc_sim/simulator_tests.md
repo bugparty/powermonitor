@@ -1,4 +1,4 @@
-# PC Simulator Tests
+﻿# PC Simulator Tests
 
 Related code:
 - `pc_sim/pc_sim_main.cpp`

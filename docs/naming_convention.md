@@ -1,4 +1,4 @@
-# Documentation Naming Convention
+﻿# Documentation Naming Convention
 
 ## Goals
 

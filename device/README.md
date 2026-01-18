@@ -1,4 +1,4 @@
-# hardware info
+﻿# hardware info
 
 ## parts
 [Adafruit Feather RP2040 x1](https://learn.adafruit.com/adafruit-feather-rp2040-pico)

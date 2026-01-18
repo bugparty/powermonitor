@@ -1,4 +1,4 @@
-# Time Synchronization Protocol Documentation
+﻿# Time Synchronization Protocol Documentation
 
 Related code:
 - `device/time_sync.cpp`

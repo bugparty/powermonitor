@@ -1,4 +1,4 @@
-project(powermonitor_protocol LANGUAGES CXX)
+﻿project(powermonitor_protocol LANGUAGES CXX)
 
 add_library(powermonitor_protocol
     crc16_ccitt_false.cpp

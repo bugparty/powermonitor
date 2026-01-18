@@ -1,4 +1,4 @@
-# Parser Design and Architecture
+﻿# Parser Design and Architecture
 
 Related code:
 - `protocol/parser.cpp`

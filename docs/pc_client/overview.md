@@ -1,4 +1,4 @@
-# PC Client (Serial) Design
+﻿# PC Client (Serial) Design
 
 Related code:
 - `pc_client/`

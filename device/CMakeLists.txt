@@ -1,4 +1,4 @@
-# Generated Cmake Pico project file
+﻿# Generated Cmake Pico project file
 
 cmake_minimum_required(VERSION 3.13)
 

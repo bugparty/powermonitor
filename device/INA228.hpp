@@ -1,4 +1,4 @@
-#ifndef INA228_HPP
+﻿#ifndef INA228_HPP
 #define INA228_HPP
 
 #include <cstdio>

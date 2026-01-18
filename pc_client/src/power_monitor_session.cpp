@@ -1,11 +1,20 @@
-﻿#include "power_monitor_session.h"
+#include "power_monitor_session.h"
 
 #include <algorithm>
 #include <atomic>
 #include <csignal>
 #include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <thread>
+
+#ifdef _WIN32
+#define NOMINMAX
+#include <windows.h>
+#endif
+
+
+#include "power_monitor_session.h"
 
 #include <CLI/CLI.hpp>
 #include <nlohmann/json.hpp>
@@ -20,15 +29,37 @@
 #include "sample_queue.h"
 #include "session.h"
 
+
 namespace powermonitor {
 namespace client {
 
 namespace {
 std::atomic<bool> g_signal_interrupted{false};
 
+#ifdef _WIN32
+BOOL WINAPI console_ctrl_handler(DWORD ctrl_type) {
+    switch (ctrl_type) {
+    case CTRL_C_EVENT:
+    case CTRL_BREAK_EVENT:
+        g_signal_interrupted.store(true);
+        // 立即返回 TRUE，阻止系统的默认处理和异常
+        return TRUE;
+    case CTRL_CLOSE_EVENT:
+    case CTRL_LOGOFF_EVENT:
+    case CTRL_SHUTDOWN_EVENT:
+        g_signal_interrupted.store(true);
+        // 给一点时间让主线程响应
+        Sleep(1000);
+        return TRUE;
+    default:
+        return FALSE;
+    }
+}
+#else
 void signal_handler(int) {
     g_signal_interrupted.store(true);
 }
+#endif
 }  // namespace
 
 PowerMonitorSession::PowerMonitorSession(const Options& options)
@@ -50,8 +81,12 @@ PowerMonitorSession::~PowerMonitorSession() {
 
 int PowerMonitorSession::run() {
     // 注册信号处理
+#ifdef _WIN32
+    SetConsoleCtrlHandler(console_ctrl_handler, TRUE);
+#else
     std::signal(SIGINT, signal_handler);
     std::signal(SIGTERM, signal_handler);
+#endif
     
     std::cout << "Connecting to device..." << std::endl;
     
@@ -72,13 +107,25 @@ int PowerMonitorSession::run() {
     // 启动采样处理循环
     std::thread processor([this] { process_samples_loop(); });
     
+    auto next_stats_time = std::chrono::steady_clock::now();
+    
     // 等待中断
     while (!g_signal_interrupted.load() && !stop_requested_.load()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        if (options_.interactive && std::chrono::steady_clock::now() >= next_stats_time) {
+            print_statistics(true);
+            next_stats_time += std::chrono::milliseconds(100);
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    
+    if (options_.interactive) {
+        std::cout << "\r" << std::string(last_stats_width_, ' ') << "\r" << std::flush;
     }
     
     std::cout << "\nStopping..." << std::endl;
     stop_requested_ = true;
+    sample_queue_->stop();
+
     
     if (processor.joinable()) {
         processor.join();
@@ -94,6 +141,7 @@ int PowerMonitorSession::run() {
 
 void PowerMonitorSession::stop() {
     stop_requested_ = true;
+    sample_queue_->stop();
     if (read_thread_) {
         read_thread_->join();
     }
@@ -104,13 +152,21 @@ bool PowerMonitorSession::connect_device() {
         serial_ = std::make_unique<serial::Serial>(
             options_.port, 
             options_.baud_rate, 
-            serial::Timeout::simpleTimeout(100)
+            serial::Timeout::simpleTimeout(2000),
+            serial::bytesize_t::eightbits,
+            serial::parity_t::parity_none,
+            serial::stopbits_t::stopbits_one,
+            serial::flowcontrol_t::flowcontrol_none,
+            serial::dtrcontrol_t::dtr_enable,
+            serial::rtscontrol_t::rts_enable
         );
         
         if (!serial_->isOpen()) {
             std::cerr << "Failed to open serial port: " << options_.port << std::endl;
             return false;
         }
+        
+
         
         return true;
     } catch (const serial::SerialException& e) {
@@ -220,16 +276,18 @@ bool PowerMonitorSession::send_command_with_retry(uint8_t msgid,
             // 等待响应
             protocol::Frame rsp;
             if (wait_for_response(sent_seq, &rsp, kTimeoutMs)) {
-                if (!rsp.data.empty() && rsp.data[0] == 0x00) {  // OK
+                // RSP DATA = [orig_msgid, status, extra...]
+                // data[0] = orig_msgid, data[1] = status
+                if (rsp.data.size() >= 2 && rsp.data[1] == 0x00) {  // OK
                     if (rsp_data) {
                         *rsp_data = rsp.data;
                     }
                     return true;
                 }
                 // 非OK状态，立即失败（不重试）
-                if (!rsp.data.empty()) {
-                    std::cerr << "Command failed with status: 0x" 
-                              << std::hex << static_cast<int>(rsp.data[0]) << std::dec << std::endl;
+                if (rsp.data.size() >= 2) {
+                    std::cerr << "Command failed with status: 0x"
+                              << std::hex << static_cast<int>(rsp.data[1]) << std::dec << std::endl;
                 }
                 return false;
             }
@@ -329,31 +387,68 @@ void PowerMonitorSession::save_and_exit() {
     }
 }
 
-void PowerMonitorSession::print_statistics() const {
+void PowerMonitorSession::print_statistics(bool inline_mode) const {
+    auto sum_counts = [](const std::atomic<uint64_t> counts[256]) {
+        uint64_t total = 0;
+        for (int i = 0; i < 256; ++i) {
+            total += counts[i].load(std::memory_order_relaxed);
+        }
+        return total;
+    };
+
+    const uint64_t samples = session_->sample_count();
+    const uint64_t crc_fail = stats_->crc_fail.load(std::memory_order_relaxed);
+    const uint64_t queue_overflow = stats_->queue_overflow.load(std::memory_order_relaxed);
+    const uint64_t timeouts = stats_->timeouts.load(std::memory_order_relaxed);
+    const uint64_t io_errors = stats_->io_errors.load(std::memory_order_relaxed);
+    const uint64_t tx_total = sum_counts(stats_->tx_counts);
+    const uint64_t rx_total = sum_counts(stats_->rx_counts);
+
+    if (inline_mode) {
+        std::ostringstream oss;
+        oss << "Samples:" << std::setw(10) << samples
+            << "  CRC_FAIL:" << std::setw(6) << crc_fail
+            << "  RX:" << std::setw(8) << rx_total
+            << "  TX:" << std::setw(8) << tx_total
+            << "  Timeouts:" << std::setw(5) << timeouts
+            << "  IO_Errors:" << std::setw(4) << io_errors
+            << "  QueueOverflow:" << std::setw(4) << queue_overflow;
+        std::string line = oss.str();
+        if (line.size() < last_stats_width_) {
+            line.append(last_stats_width_ - line.size(), ' ');
+        } else {
+            last_stats_width_ = line.size();
+        }
+        std::cout << "\r" << line << std::flush;
+        return;
+    }
+
     std::cout << "\n=== Session Statistics ===" << std::endl;
-    std::cout << "Samples collected: " << session_->sample_count() << std::endl;
-    std::cout << "CRC failures: " << stats_->crc_fail.load() << std::endl;
-    std::cout << "Queue overflows: " << stats_->queue_overflow.load() << std::endl;
-    std::cout << "Timeouts: " << stats_->timeouts.load() << std::endl;
-    
+    std::cout << "Samples collected: " << samples << std::endl;
+    std::cout << "CRC failures: " << crc_fail << std::endl;
+    std::cout << "Queue overflows: " << queue_overflow << std::endl;
+    std::cout << "Timeouts: " << timeouts << std::endl;
+    std::cout << "IO errors: " << io_errors << std::endl;
+
     std::cout << "\nTX counts:" << std::endl;
     for (int i = 0; i < 256; ++i) {
-        uint64_t count = stats_->tx_counts[i].load();
+        uint64_t count = stats_->tx_counts[i].load(std::memory_order_relaxed);
         if (count > 0) {
-            std::cout << "  MSG 0x" << std::hex << std::setw(2) << std::setfill('0') << i 
-                     << std::dec << ": " << count << std::endl;
+            std::cout << "  MSG 0x" << std::hex << std::setw(2) << std::setfill('0') << i
+                      << std::dec << ": " << count << std::endl;
         }
     }
-    
+
     std::cout << "\nRX counts:" << std::endl;
     for (int i = 0; i < 256; ++i) {
-        uint64_t count = stats_->rx_counts[i].load();
+        uint64_t count = stats_->rx_counts[i].load(std::memory_order_relaxed);
         if (count > 0) {
-            std::cout << "  MSG 0x" << std::hex << std::setw(2) << std::setfill('0') << i 
-                     << std::dec << ": " << count << std::endl;
+            std::cout << "  MSG 0x" << std::hex << std::setw(2) << std::setfill('0') << i
+                      << std::dec << ": " << count << std::endl;
         }
     }
 }
+
 
 }  // namespace client
 }  // namespace powermonitor

@@ -1,7 +1,10 @@
-﻿#include "read_thread.h"
+#include "read_thread.h"
+
+#include "read_thread.h"
 
 #include <chrono>
 #include <iostream>
+#include <string>
 
 #include <serial/serial.h>
 
@@ -36,10 +39,15 @@ void ReadThread::start() {
 }
 
 void ReadThread::join() {
+    if (running_.load()) {
+        serial_->stop_async_read();
+        serial_->stop_io();
+    }
     if (thread_.joinable()) {
         thread_.join();
     }
 }
+
 
 namespace {
 struct ParserState {
@@ -87,30 +95,35 @@ struct ParserState {
 
 void ReadThread::run() {
     ParserState state(response_q_, sample_q_, stats_);
-    
-    std::vector<uint8_t> buffer(4096);
-    
-    while (running_ && !stop_flag_->load()) {
-        try {
-            size_t bytes_read = serial_->read(buffer.data(), buffer.size());
-            if (bytes_read == 0) {
-                continue;  // 超时或阻塞
-            }
 
-            buffer.resize(bytes_read);
-            state.parser.feed(buffer);
-            buffer.resize(4096);
-        } catch (const serial::PortNotOpenedException& e) {
-            std::cerr << "ReadThread: Port not opened: " << e.what() << std::endl;
-            break;
-        } catch (const serial::SerialException& e) {
-            std::cerr << "ReadThread: Serial error: " << e.what() << std::endl;
-            break;
-        }
+    try {
+        serial_->restart_io();
+        serial_->start_async_read(
+            [&state](const uint8_t *data, size_t length) {
+                if (length == 0) {
+                    //std::cout << "ReadThread: No data read." << std::endl;
+                    return;
+                }
+                state.parser.feed(data, length);
+                //std::cout << "ReadThread: readed " << length << " bytes." << std::endl;
+            },
+            [this](const std::string &error) {
+                stats_->io_errors.fetch_add(1, std::memory_order_relaxed);
+                std::cerr << "ReadThread: Serial error: " << error << std::endl;
+                stop_flag_->store(true);
+                serial_->stop_io();
+            });
+    } catch (const serial::SerialException &e) {
+        std::cerr << "ReadThread: Serial error: " << e.what() << std::endl;
+        running_ = false;
+        return;
     }
-    
+
+    serial_->run_io();
     running_ = false;
 }
+
+
 
 uint64_t ReadThread::now_steady_us() {
     auto now = std::chrono::steady_clock::now().time_since_epoch();

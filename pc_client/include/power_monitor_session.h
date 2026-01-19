@@ -46,7 +46,6 @@ private:
     bool initialize_device();
     bool send_ping();
     bool get_device_config();
-    bool configure_device();
     bool start_streaming();
     bool stop_streaming();
     

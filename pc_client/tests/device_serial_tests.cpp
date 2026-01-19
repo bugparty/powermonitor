@@ -136,7 +136,7 @@ bool parse_vid_pid(const std::string &hardware_id, uint16_t *vid, uint16_t *pid)
     const std::string win_key = "USB\\VID_";
     const std::string linux_key = "VID:PID=";
     if (upper.rfind(win_key, 0) == 0) {
-        if (upper.size() < win_key.size() + 9) {
+        if (upper.size() < win_key.size() + 13) {
             return false;
         }
         const std::string vid_str = upper.substr(win_key.size(), 4);

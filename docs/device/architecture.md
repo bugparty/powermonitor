@@ -78,31 +78,73 @@ while (true) {
     1. A **Timer ISR** runs at the configured rate (e.g., 1kHz). It performs the minimal work of incrementing a sequence counter and issuing a `__sev()` (Send Event) instruction to wake the worker.
     2. A **Worker Loop** spends most of its time in a low-power sleep state, waiting for an event with `__wfe()` (Wait For Event). When woken by the ISR, it performs the I2C reads, packages the data into a `RawSample`, and pushes it to the SPSC queue.
 - This design avoids performing slow I2C operations within an ISR context, which is critical for system stability.
+- The worker loop also processes commands from Core 0 via the multicore FIFO.
 
 **Core 1 Logic:**
 ```cpp
 // Timer ISR - extremely short
 static bool sampler_timer_isr(repeating_timer_t* rt) {
-    // ...
-    ctx->isr_seq++; // Notify worker of a new tick
-    __sev();        // Wake the worker loop
-    return true;
+    SamplerContext* ctx = static_cast<SamplerContext*>(rt->user_data);
+    ctx->isr_seq++;  // Increment sequence number
+    __sev();         // Wake up worker loop
+    return true;     // Keep timer repeating
 }
 
 // Worker loop - does the heavy lifting
 static void core1_entry() {
-    // ...
     while (true) {
-        // ... handle commands from Core 0 via FIFO ...
-
-        // If streaming is active, do I2C work if the ISR signaled
-        if (g_sampler_ctx.timer_active) {
+        // Handle commands from Core 0 via FIFO
+        if (multicore_fifo_rvalid()) {
+            uint32_t cmd_raw = multicore_fifo_pop_blocking();
+            __dmb();  // Memory barrier
+            
+            core::FifoCmd cmd = static_cast<core::FifoCmd>(cmd_raw);
+            switch (cmd) {
+            case core::FifoCmd::kStartStream:
+                // Start repeating timer
+                add_repeating_timer_us(-period, sampler_timer_isr, &ctx, &timer);
+                timer_active = true;
+                break;
+            case core::FifoCmd::kStopStream:
+                cancel_repeating_timer(&timer);
+                timer_active = false;
+                break;
+            }
+        }
+        
+        // Do I2C reads when ISR signals new tick
+        if (timer_active) {
             sampler_do_work(&g_sampler_ctx);
         }
-
-        // Low-power sleep, waits for __sev() from ISR or FIFO event
+        
+        // Low-power sleep (woken by __sev() from ISR or FIFO)
         __wfe();
     }
+}
+
+// Perform the actual sampling work
+static void sampler_do_work(SamplerContext* ctx) {
+    // Read current ISR sequence
+    uint32_t current_seq = ctx->isr_seq;
+    if (current_seq == ctx->worker_seq) {
+        return;  // Nothing new to process
+    }
+    
+    // Update missed ticks count
+    uint32_t missed = current_seq - ctx->worker_seq - 1;
+    if (missed > 0) {
+        ctx->shared->samples_dropped += missed;
+    }
+    ctx->worker_seq = current_seq;
+    
+    // Read sensor data via I2C
+    RawSample sample;
+    bool ok = ctx->ina228->read_vbus_raw(sample.vbus_raw);
+    ok &= ctx->ina228->read_vshunt_raw(sample.vshunt_raw);
+    // ... read other channels
+    
+    // Push to SPSC queue for Core 0
+    ctx->shared->sample_queue.push(sample);
 }
 ```
 void core1_entry() {

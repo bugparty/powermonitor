@@ -50,6 +50,7 @@ private:
     bool stop_streaming();
     
     bool wait_for_response(uint8_t expected_seq, protocol::Frame* frame, int timeout_ms);
+    bool wait_for_message_by_id(uint8_t expected_msgid, protocol::Frame* frame, int timeout_ms);
     bool send_command_with_retry(uint8_t msgid, const std::vector<uint8_t>& payload,
                                  std::vector<uint8_t>* rsp_data = nullptr);
 

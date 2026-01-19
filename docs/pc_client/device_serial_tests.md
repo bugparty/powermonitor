@@ -48,7 +48,7 @@ A design for gtest-based on-device functional tests that reuse `pc_client` facil
   - Drains input before/after each test.
   - Tracks streaming state; ensures stop in teardown.
 - Helpers:
-  - `SendCmdExpectRsp(msgid, payload, timeout_ms=1000)`.
+  - `SendCommand(msgid, payload, timeout_ms=1000)`.
   - `WaitForEvent(msgid, timeout_ms=1000)`.
   - `StartStream(mask, period_us)` / `StopStream()`; sets/clears streaming flag.
   - `InjectRawFrame(bytes)` for malformed tests.

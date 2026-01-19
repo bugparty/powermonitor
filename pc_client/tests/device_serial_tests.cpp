@@ -285,9 +285,6 @@ protected:
 
             protocol::Frame response;
             if (WaitForRsp(seq, &response, g_options.cmd_timeout_ms)) {
-                if (response.msgid != msgid) {
-                    return false;
-                }
                 // Per docs/protocol/uart_protocol.md:
                 // RSP payload starts with { orig_msgid, status, ... }.
                 if (response.data.size() < 2) {

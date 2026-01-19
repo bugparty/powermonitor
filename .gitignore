@@ -3,6 +3,8 @@ build/
 build_pc/
 cmake-build-*/
 build_pc_test/
+device/.cache/
+vs/
 # IDE directories
 .idea/
 .vscode/
@@ -47,5 +49,6 @@ Thumbs.db
 *~
 *.swp
 *.swo
+
 
 

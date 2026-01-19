@@ -1,4 +1,4 @@
-﻿#include <CLI/CLI.hpp>
+#include <CLI/CLI.hpp>
 #include <CLI/CLI.hpp>
 #include <serial/serial.h>
 #include <yaml-cpp/yaml.h>
@@ -275,10 +275,14 @@ int main(int argc, char **argv) {
     if (opt_output->count() > 0) {
         options.output_path = output_path;
     }
+    if (options.output_path.empty()) {
+        options.output_path = default_output_path();
+    }
 
     if (opt_port->count() > 0) {
         options.port = port_override;
     }
+
 
     if (opt_baud->count() > 0) {
         options.baud = baud;

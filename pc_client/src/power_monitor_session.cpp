@@ -223,12 +223,12 @@ bool PowerMonitorSession::get_device_config() {
     
     // 等待CFG_REPORT (0x91)
     protocol::Frame frame;
-    if (!wait_for_response(0x00, &frame, 2000)) {  // CFG_REPORT使用独立的SEQ空间
+    if (!wait_for_message_by_id(0x91, &frame, 2000)) {  // CFG_REPORT使用独立的SEQ空间
         std::cerr << "Timeout waiting for CFG_REPORT" << std::endl;
         return false;
     }
     
-    if (frame.msgid != 0x91 || frame.data.size() < 16) {
+    if (frame.data.size() < 16) {
         std::cerr << "Invalid CFG_REPORT" << std::endl;
         return false;
     }
@@ -325,6 +325,32 @@ bool PowerMonitorSession::wait_for_response(uint8_t expected_seq,
                 return true;
             }
             // SEQ不匹配，继续等待（可能是其他响应）
+        }
+    }
+    
+    return false;  // 超时
+}
+
+bool PowerMonitorSession::wait_for_message_by_id(uint8_t expected_msgid, 
+                                                  protocol::Frame* frame, 
+                                                  int timeout_ms) {
+    auto deadline = std::chrono::steady_clock::now() + 
+                    std::chrono::milliseconds(timeout_ms);
+    
+    while (std::chrono::steady_clock::now() < deadline) {
+        int remaining_ms = static_cast<int>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                deadline - std::chrono::steady_clock::now()
+            ).count()
+        );
+        
+        remaining_ms = std::max(remaining_ms, 0);
+        
+        if (response_queue_->pop_wait(*frame, remaining_ms)) {
+            if (frame->msgid == expected_msgid) {
+                return true;
+            }
+            // msgid不匹配，继续等待（可能是其他消息）
         }
     }
     

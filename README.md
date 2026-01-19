@@ -1,13 +1,16 @@
 ﻿# Power Monitor
 
-A power monitoring system based on the INA228 current/voltage/power sensor and Raspberry Pi Pico (RP2040), with a custom UART communication protocol and PC-side simulator for testing.
+A power monitoring system based on the INA228 current/voltage/power sensor and Raspberry Pi Pico (RP2040), with a custom UART communication protocol and PC-side software to control and collect data.
 
 ## Features
 
 - INA228 sensor driver for RP2040
-- Custom UART protocol with CRC16-CCITT-FALSE error detection
+- Interactive command-based configuration of INA228 (set/get config)
+- Raw data acquisition plus derived/processed values on the PC side
+- Save collected and processed data to JSON for offline analysis
+- Custom UART protocol with CRC error detection
 - Retransmission and timeout handling
-- Real-time data streaming with configurable sample rates
+- Real-time data streaming with 1 kHz sample rates
 - PC-side protocol simulator with fault injection capabilities
 - Comprehensive test suite using Google Test
 
@@ -51,21 +54,19 @@ powermonitor/
 
 ## Building
 
-### PC Simulator and Tests
+### Windows (Visual Studio)
 
-The PC simulator runs entirely on the host without Pico SDK dependencies.
+If you prefer using Visual Studio, generate a VS solution with CMake, then set the PC app as the startup project and press Run.
 
 ```bash
-# Configure and build
-cmake -B build -S .
-cmake --build build
+# Let CMake pick the default generator (often Visual Studio on Windows)
+cmake -S . -B build_vs
 
-# Run tests
-./build/pc_sim/pc_sim_test
-
-# Or use CTest
-cd build && ctest --verbose
 ```
+
+- Open the generated solution in `build_vs/`.
+- Set `powermonitor` as the Startup Project (PC-side interactive client).
+- Build and run (F5).
 
 ### Device Firmware
 
@@ -82,25 +83,15 @@ cmake --build build
 
 ## Testing
 
-The test suite includes:
+There are two test tracks:
 
-- **PingCommand**: Basic connectivity test
-- **SetConfiguration**: Configuration command validation
-- **StreamStartStop**: Data streaming lifecycle
-- **CompleteDataStreamingScenario**: End-to-end data collection
-- **CommunicationWithPacketDrops**: Resilience to 5% packet loss
-- **CommunicationWithBitFlips**: Resilience to 1% bit flips
+- **PC simulator / host-side tests** (GoogleTest): protocol framing/parsing, state machines, and fault-injection scenarios.
+  - Recommended: `./test.sh`
+  - Or run directly: `./build/pc_sim/pc_sim_test`
+  - Details: `docs/pc_sim/simulator_tests.md` and `docs/pc_sim/state_machine_tests.md`
 
-All tests verify protocol correctness under both normal and fault conditions.
-
-## PC Tools
-
-### Time Synchronization
-
-```bash
-pip install pyserial
-python device/timesync.py
-```
+- **Real device tests** (serial/on-device): step-by-step validation against actual hardware.
+  - Test plan: `docs/pc_client/device_serial_tests.md`
 
 ### Protocol Simulator Configuration
 
@@ -113,6 +104,13 @@ Edit `pc_sim/pc_sim_main.cpp` to adjust simulation parameters:
   - `min_chunk`, `max_chunk`: Byte chunking for fragmentation
 
 - **INA228 Model**: Edit `node/ina228_model.cpp` to change simulated voltage/current/temperature waveforms
+
+## PC Tools
+
+### ASIO serial demo
+
+a tool to test asio serial api
+
 
 ## Protocol Overview
 

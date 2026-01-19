@@ -1,0 +1,314 @@
+#ifndef DEVICE_COMMAND_HANDLER_HPP
+#define DEVICE_COMMAND_HANDLER_HPP
+
+#include <cstdint>
+#include <cstring>
+#include "pico/stdlib.h"
+
+#include "protocol/frame_defs.hpp"
+#include "protocol/frame_builder.hpp"
+#include "state_machine.hpp"
+#include "core/raw_sample.hpp"
+
+#ifdef PHASE2_DUAL_CORE
+#include "sampler.hpp"
+#endif
+
+namespace device {
+
+// USB CDC write function type
+using UsbWriteFn = void (*)(const uint8_t* data, size_t len);
+
+// Command handler - processes incoming frames and sends responses
+class CommandHandler {
+public:
+    explicit CommandHandler(DeviceContext& ctx, UsbWriteFn write_fn)
+        : ctx_(ctx), write_fn_(write_fn) {}
+
+    // Handle a received frame (called from parser callback)
+    void handle_frame(const protocol::Frame& frame) {
+        // Only process CMD frames
+        if (frame.type != protocol::FrameType::kCmd) {
+            return;
+        }
+
+        ctx_.cmd_received++;
+
+        switch (static_cast<protocol::MsgId>(frame.msgid)) {
+        case protocol::MsgId::kPing:
+            handle_ping(frame);
+            break;
+        case protocol::MsgId::kSetCfg:
+            handle_set_cfg(frame);
+            break;
+        case protocol::MsgId::kGetCfg:
+            handle_get_cfg(frame);
+            break;
+        case protocol::MsgId::kRegRead:
+            handle_reg_read(frame);
+            break;
+        case protocol::MsgId::kRegWrite:
+            handle_reg_write(frame);
+            break;
+        case protocol::MsgId::kStreamStart:
+            handle_stream_start(frame);
+            break;
+        case protocol::MsgId::kStreamStop:
+            handle_stream_stop(frame);
+            break;
+        default:
+            send_rsp(frame.seq, frame.msgid, protocol::Status::kErrUnkCmd);
+            break;
+        }
+    }
+
+    // Build and send a DATA_SAMPLE frame from a RawSample
+    void send_data_sample(const core::RawSample& sample) {
+        // Build DATA_SAMPLE payload (16 bytes)
+        protocol::DataSamplePayload payload;
+        payload.timestamp_us = sample.timestamp_us;
+        payload.flags = sample.flags;
+
+        // Pack 20-bit values
+        core::pack_u20(payload.vbus20, sample.vbus_raw);
+        core::pack_s20(payload.vshunt20, sample.vshunt_raw);
+        core::pack_s20(payload.current20, sample.current_raw);
+        payload.dietemp16 = sample.dietemp_raw;
+
+        // Build and send frame
+        size_t len = protocol::build_frame(
+            tx_buf_, sizeof(tx_buf_),
+            protocol::FrameType::kData,
+            0,  // flags
+            ctx_.next_data_seq(),
+            static_cast<uint8_t>(protocol::MsgId::kDataSample),
+            reinterpret_cast<const uint8_t*>(&payload),
+            sizeof(payload)
+        );
+
+        if (len > 0 && write_fn_) {
+            write_fn_(tx_buf_, len);
+            ctx_.samples_sent++;
+        }
+    }
+
+private:
+    void handle_ping(const protocol::Frame& frame) {
+        send_rsp(frame.seq, frame.msgid, protocol::Status::kOk);
+    }
+
+    void handle_set_cfg(const protocol::Frame& frame) {
+        if (frame.data_len < sizeof(protocol::SetCfgPayload)) {
+            send_rsp(frame.seq, frame.msgid, protocol::Status::kErrLen);
+            return;
+        }
+
+        const auto* cfg = reinterpret_cast<const protocol::SetCfgPayload*>(frame.data);
+
+        // Update software context
+        ctx_.config_reg = cfg->config_reg;
+        ctx_.adc_config_reg = cfg->adc_config_reg;
+        ctx_.shunt_cal = cfg->shunt_cal;
+        ctx_.shunt_tempco = cfg->shunt_tempco;
+
+        // Update hardware registers
+        if (ctx_.ina228) {
+            bool ok = true;
+            ok &= ctx_.ina228->write_register16(INA228::INA228_Register::CONFIG, cfg->config_reg);
+            ok &= ctx_.ina228->write_register16(INA228::INA228_Register::ADC_CONFIG, cfg->adc_config_reg);
+            ok &= ctx_.ina228->write_register16(INA228::INA228_Register::SHUNT_CAL, cfg->shunt_cal);
+            ok &= ctx_.ina228->write_register16(INA228::INA228_Register::SHUNT_TEMPCO, cfg->shunt_tempco);
+            if (!ok) {
+                send_rsp(frame.seq, frame.msgid, protocol::Status::kErrHw);
+                return;
+            }
+        }
+
+        // Calculate current_lsb_nA from shunt_cal (simplified)
+        // In real implementation, this would involve the actual INA228 formula
+        ctx_.cal_valid = (cfg->shunt_cal != 0);
+        ctx_.adcrange = (cfg->config_reg >> 4) & 0x01;
+
+        // Send RSP(OK) then CFG_REPORT
+        send_rsp(frame.seq, frame.msgid, protocol::Status::kOk);
+        send_cfg_report();
+    }
+
+    void handle_get_cfg(const protocol::Frame& frame) {
+        // Send RSP(OK) then CFG_REPORT
+        send_rsp(frame.seq, frame.msgid, protocol::Status::kOk);
+        send_cfg_report();
+    }
+
+    void handle_reg_read(const protocol::Frame& frame) {
+        if (frame.data_len < sizeof(protocol::RegReadCmdPayload)) {
+            send_rsp(frame.seq, frame.msgid, protocol::Status::kErrLen);
+            return;
+        }
+        const auto* cmd = reinterpret_cast<const protocol::RegReadCmdPayload*>(frame.data);
+        auto reg_addr = static_cast<INA228::INA228_Register>(cmd->reg_addr);
+
+        if (!ctx_.ina228) {
+            send_rsp(frame.seq, frame.msgid, protocol::Status::kErrHw);
+            return;
+        }
+
+        uint8_t rsp_buf[10]; // Space for header + 40-bit value
+        size_t value_len = 0;
+        bool ok = false;
+
+        if (cmd->reg_type == 0) { // 16-bit
+            value_len = 2;
+            uint16_t val;
+            ok = ctx_.ina228->read_register16(reg_addr, val);
+            if (ok) {
+                val = INA228::to_bytes16(val); // to little-endian
+                memcpy(&rsp_buf[3], &val, value_len);
+            }
+        } else if (cmd->reg_type == 1) { // 24-bit
+            value_len = 3;
+            uint32_t val;
+            ok = ctx_.ina228->read_register24(reg_addr, val);
+            if (ok) {
+                // val is already little-endian from I2C read
+                memcpy(&rsp_buf[3], &val, value_len);
+            }
+        } else if (cmd->reg_type == 2) { // 40-bit
+            value_len = 5;
+            uint64_t val;
+            ok = ctx_.ina228->read_register40(reg_addr, val);
+            if (ok) {
+                // val is already little-endian from I2C read
+                memcpy(&rsp_buf[3], &val, value_len);
+            }
+        } else {
+            send_rsp(frame.seq, frame.msgid, protocol::Status::kErrParam);
+            return;
+        }
+
+        if (!ok) {
+            send_rsp(frame.seq, frame.msgid, protocol::Status::kErrHw);
+            return;
+        }
+
+        // Build and send response frame
+        rsp_buf[0] = frame.msgid;
+        rsp_buf[1] = static_cast<uint8_t>(protocol::Status::kOk);
+        rsp_buf[2] = cmd->reg_addr;
+
+        size_t len = protocol::build_frame(
+            tx_buf_, sizeof(tx_buf_),
+            protocol::FrameType::kRsp, 0, frame.seq, frame.msgid,
+            rsp_buf, 3 + value_len
+        );
+
+        if (len > 0 && write_fn_) {
+            write_fn_(tx_buf_, len);
+        }
+    }
+
+    void handle_reg_write(const protocol::Frame& frame) {
+        if (frame.data_len < sizeof(protocol::RegWriteCmdPayload)) {
+            send_rsp(frame.seq, frame.msgid, protocol::Status::kErrLen);
+            return;
+        }
+        const auto* cmd = reinterpret_cast<const protocol::RegWriteCmdPayload*>(frame.data);
+
+        if (!ctx_.ina228) {
+            send_rsp(frame.seq, frame.msgid, protocol::Status::kErrHw);
+            return;
+        }
+
+        auto reg_addr = static_cast<INA228::INA228_Register>(cmd->reg_addr);
+        bool ok = ctx_.ina228->write_register16(reg_addr, cmd->reg_value);
+
+        send_rsp(frame.seq, frame.msgid, ok ? protocol::Status::kOk : protocol::Status::kErrHw);
+    }
+
+    void handle_stream_start(const protocol::Frame& frame) {
+        if (frame.data_len < sizeof(protocol::StreamStartPayload)) {
+            send_rsp(frame.seq, frame.msgid, protocol::Status::kErrLen);
+            return;
+        }
+
+        const auto* cmd = reinterpret_cast<const protocol::StreamStartPayload*>(frame.data);
+
+        // Start streaming with given parameters
+        ctx_.start_streaming(cmd->period_us, cmd->channel_mask, time_us_32());
+
+#ifdef PHASE2_DUAL_CORE
+        // Signal Core 1 to start sampling
+        sampler_start();
+#endif
+
+        send_rsp(frame.seq, frame.msgid, protocol::Status::kOk);
+    }
+
+    void handle_stream_stop(const protocol::Frame& frame) {
+#ifdef PHASE2_DUAL_CORE
+        // Signal Core 1 to stop sampling
+        sampler_stop();
+#endif
+
+        ctx_.stop_streaming();
+        send_rsp(frame.seq, frame.msgid, protocol::Status::kOk);
+    }
+
+    void send_rsp(uint8_t seq, uint8_t orig_msgid, protocol::Status status) {
+        uint8_t payload[2];
+        payload[0] = orig_msgid;
+        payload[1] = static_cast<uint8_t>(status);
+
+        size_t len = protocol::build_frame(
+            tx_buf_, sizeof(tx_buf_),
+            protocol::FrameType::kRsp,
+            0,
+            seq,
+            orig_msgid,
+            payload,
+            sizeof(payload)
+        );
+
+        if (len > 0 && write_fn_) {
+            write_fn_(tx_buf_, len);
+        }
+    }
+
+    void send_cfg_report() {
+        protocol::CfgReportPayload payload;
+        payload.proto_ver = protocol::kProtoVersion;
+        payload.flags = 0;
+        if (ctx_.is_streaming()) payload.flags |= 0x01;
+        if (ctx_.cal_valid) payload.flags |= 0x02;
+        if (ctx_.adcrange) payload.flags |= 0x04;
+
+        payload.current_lsb_nA = ctx_.current_lsb_nA;
+        payload.shunt_cal_reg = ctx_.shunt_cal;
+        payload.config_reg = ctx_.config_reg;
+        payload.adc_config_reg = ctx_.adc_config_reg;
+        payload.stream_period_us = ctx_.stream_period_us;
+        payload.stream_mask = ctx_.stream_mask;
+
+        size_t len = protocol::build_frame(
+            tx_buf_, sizeof(tx_buf_),
+            protocol::FrameType::kEvt,
+            0,
+            ctx_.next_data_seq(),
+            static_cast<uint8_t>(protocol::MsgId::kCfgReport),
+            reinterpret_cast<const uint8_t*>(&payload),
+            sizeof(payload)
+        );
+
+        if (len > 0 && write_fn_) {
+            write_fn_(tx_buf_, len);
+        }
+    }
+
+    DeviceContext& ctx_;
+    UsbWriteFn write_fn_;
+    uint8_t tx_buf_[128];
+};
+
+} // namespace device
+
+#endif // DEVICE_COMMAND_HANDLER_HPP

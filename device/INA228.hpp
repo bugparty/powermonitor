@@ -231,7 +231,9 @@ public:
     [[nodiscard]] bool i2c_read_reg_stop(uint8_t addr, uint8_t reg, uint8_t *buf, size_t n) const;
     [[nodiscard]] bool i2c_write_reg_stop(uint8_t addr, uint8_t reg, uint8_t *buf, size_t n) const;
     [[nodiscard]] bool i2c_read_reg_stop_timeout(uint8_t addr, uint8_t reg, uint8_t *buf, size_t n);
-    [[nodiscard]] static constexpr uint16_t to_bytes16(uint16_t register_value) noexcept;
+    [[nodiscard]] static constexpr uint16_t to_bytes16(uint16_t register_value) noexcept {
+        return (register_value << 8) | (register_value >> 8);
+    }
     [[nodiscard]] bool write_register16(INA228_Register reg, uint16_t register_value);
     [[nodiscard]] bool read_register16(INA228_Register reg, uint16_t &register_value) const;
     [[nodiscard]] bool read_register24(INA228_Register reg, uint32_t &register_value) const;
@@ -258,7 +260,15 @@ public:
 
     [[nodiscard]] float get_current() const;
     [[nodiscard]] float get_charge() const;
-    
+
+    // Raw register read functions for Phase 2 sampling (ISR-safe)
+    // These return raw ADC values without float conversion
+    [[nodiscard]] bool read_vbus_raw(uint32_t& raw20) const;
+    [[nodiscard]] bool read_vshunt_raw(int32_t& raw20) const;
+    [[nodiscard]] bool read_current_raw(int32_t& raw20) const;
+    [[nodiscard]] bool read_temp_raw(int16_t& raw16) const;
+    [[nodiscard]] bool read_diag_alrt(uint16_t& flags) const;
+
     void print_manufacturer_id() const;
     void print_device_id() const;
     

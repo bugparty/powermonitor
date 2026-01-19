@@ -51,34 +51,16 @@ target_link_libraries(powermonitor
 
 # Add the standard include files to the build
 target_include_directories(powermonitor PRIVATE
-        ..
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/..
 )
 
 # Add any user requested libraries
-target_link_libraries(powermonitor 
+target_link_libraries(powermonitor
         hardware_i2c
         hardware_timer
         hardware_clocks
+        pico_multicore
         )
 
 pico_add_extra_outputs(powermonitor)
-
-# add_executable(timesync 
-# timesync_test.cpp
-# time_sync.cpp
-# )
-
-# target_link_libraries(timesync 
-#         pico_stdlib
-#         )
-
-# pico_add_extra_outputs(timesync)
-# # Modify the below lines to enable/disable output over UART/USB
-# pico_enable_stdio_uart(timesync 0)
-# pico_enable_stdio_usb(timesync 1)
-
-
-pico_add_extra_outputs(powermonitor)
-# Modify the below lines to enable/disable output over UART/USB
-pico_enable_stdio_uart(powermonitor 0)
-pico_enable_stdio_usb(powermonitor 1)

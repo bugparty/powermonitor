@@ -43,7 +43,7 @@ A design for gtest-based on-device functional tests that reuse `pc_client` facil
 
 ## Harness Design
 - Location: `pc_client/tests` with a gtest binary `pc_client_tests`.
-- Shared fixture `DeviceSessionTest`:
+- Shared fixture `DeviceSerialTest`:
   - Opens serial via pc_client auto-discovery; allows overrides for port/baud/timeouts.
   - Drains input before/after each test.
   - Tracks streaming state; ensures stop in teardown.

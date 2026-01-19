@@ -1,0 +1,132 @@
+#ifndef DEVICE_PROTOCOL_FRAME_DEFS_HPP
+#define DEVICE_PROTOCOL_FRAME_DEFS_HPP
+
+#include <cstdint>
+
+namespace protocol {
+
+// Start of Frame bytes
+constexpr uint8_t kSof0 = 0xAA;
+constexpr uint8_t kSof1 = 0x55;
+
+// Protocol version
+constexpr uint8_t kProtoVersion = 0x01;
+
+// Maximum payload length (excluding SOF, header, CRC)
+constexpr uint16_t kMaxPayloadLen = 256;
+
+// Frame header size (VER + TYPE + FLAGS + SEQ + LEN)
+constexpr size_t kHeaderSize = 6;
+
+// Frame type (TYPE field)
+enum class FrameType : uint8_t {
+    kCmd  = 0x01,  // PC -> Device: Control command
+    kRsp  = 0x02,  // Device -> PC: Command response
+    kData = 0x03,  // Device -> PC: Data stream (no ACK)
+    kEvt  = 0x04,  // Device -> PC: Async event
+};
+
+// Message IDs (MSGID field)
+enum class MsgId : uint8_t {
+    // Management
+    kPing        = 0x01,
+
+    // Configuration
+    kSetCfg      = 0x10,
+    kGetCfg      = 0x11,
+
+    // Debug
+    kRegRead     = 0x20,
+    kRegWrite    = 0x21,
+
+    // Stream control
+    kStreamStart = 0x30,
+    kStreamStop  = 0x31,
+
+    // Data
+    kDataSample  = 0x80,
+
+    // Events
+    kEvtAlert    = 0x90,
+    kCfgReport   = 0x91,
+};
+
+// Response status codes
+enum class Status : uint8_t {
+    kOk         = 0x00,  // Success
+    kErrCrc     = 0x01,  // CRC verification failed
+    kErrLen     = 0x02,  // Invalid packet length
+    kErrUnkCmd  = 0x03,  // Unknown or unsupported MSGID
+    kErrParam   = 0x04,  // Parameter out of range
+    kErrHw      = 0x05,  // Hardware fault (e.g., I2C NACK)
+};
+
+// Parsed frame structure (fixed-size, no dynamic allocation)
+struct Frame {
+    uint8_t ver;
+    FrameType type;
+    uint8_t flags;
+    uint8_t seq;
+    uint16_t len;          // Payload length (includes MSGID)
+    uint8_t msgid;
+    uint8_t data[kMaxPayloadLen];  // Payload data (excluding MSGID)
+    uint16_t data_len;     // Actual data length (len - 1)
+};
+
+// DATA_SAMPLE payload structure (16 bytes)
+struct DataSamplePayload {
+    uint32_t timestamp_us;  // Relative timestamp since STREAM_START
+    uint8_t flags;          // Bit0: CNVRF, Bit1: ALERT, Bit2: CAL_VALID, Bit3: OVF
+    uint8_t vbus20[3];      // VBUS unsigned 20-bit LE-packed
+    uint8_t vshunt20[3];    // VSHUNT signed 20-bit LE-packed
+    uint8_t current20[3];   // CURRENT signed 20-bit LE-packed
+    int16_t dietemp16;      // DIE_TEMP signed 16-bit
+} __attribute__((packed));
+
+static_assert(sizeof(DataSamplePayload) == 16, "DataSamplePayload must be 16 bytes");
+
+// CFG_REPORT payload structure
+struct CfgReportPayload {
+    uint8_t proto_ver;       // Protocol version (0x01)
+    uint8_t flags;           // Bit0: streaming_on, Bit1: cal_valid, Bit2: adcrange
+    uint32_t current_lsb_nA; // Current LSB in nA
+    uint16_t shunt_cal_reg;  // SHUNT_CAL register value
+    uint16_t config_reg;     // CONFIG register value
+    uint16_t adc_config_reg; // ADC_CONFIG register value
+    uint16_t stream_period_us;
+    uint16_t stream_mask;
+} __attribute__((packed));
+
+static_assert(sizeof(CfgReportPayload) == 16, "CfgReportPayload must be 16 bytes");
+
+// SET_CFG command payload
+struct SetCfgPayload {
+    uint16_t config_reg;
+    uint16_t adc_config_reg;
+    uint16_t shunt_cal;
+    uint16_t shunt_tempco;
+} __attribute__((packed));
+
+// STREAM_START command payload
+struct StreamStartPayload {
+    uint16_t period_us;
+    uint16_t channel_mask;
+} __attribute__((packed));
+
+// REG_READ command payload
+struct RegReadCmdPayload {
+    uint8_t ina_addr;
+    uint8_t reg_addr;
+    uint8_t reg_type;  // 0=16-bit, 1=24-bit, 2=40-bit
+} __attribute__((packed));
+
+// REG_WRITE command payload
+struct RegWriteCmdPayload {
+    uint8_t ina_addr;
+    uint8_t reg_addr;
+    uint16_t reg_value;
+} __attribute__((packed));
+
+} // namespace protocol
+
+#endif // DEVICE_PROTOCOL_FRAME_DEFS_HPP

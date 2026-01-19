@@ -1,4 +1,4 @@
-﻿#include "../INA228.hpp"
+﻿#include "INA228.hpp"
 
 INA228::INA228(i2c_inst_t *i2c_inst, uint8_t i2c_addr, float shunt_ohms, float max_current) 
     : i2c_(i2c_inst), addr_(i2c_addr), shunt_ohms_(shunt_ohms), max_current_(max_current) {}
@@ -43,12 +43,6 @@ bool INA228::i2c_read_reg_stop_timeout(uint8_t addr, uint8_t reg, uint8_t *buf, 
         return false;
     }
     return r == (int)n;
-}
-
-constexpr uint16_t INA228::to_bytes16(uint16_t register_value) noexcept {
-    uint16_t b = (register_value >> 8) & 0xFF;
-    b |= (register_value & 0xFF) << 8;
-    return b;
 }
 
 bool INA228::write_register16(INA228_Register reg, uint16_t register_value) {
@@ -246,6 +240,62 @@ float INA228::get_charge() const {
     float charge = detail::varint2float(raw, 0, 40, current_lsb_);
     detail::DEBUG_PRINTF("Charge raw=0x%llX, value=%f\n", raw, charge);
     return charge;
+}
+
+// Raw register read functions for Phase 2 sampling
+bool INA228::read_vbus_raw(uint32_t& raw20) const {
+    uint32_t reg24 = 0;
+    if (!read_register24(INA228_Register::VBUS, reg24)) {
+        return false;
+    }
+    // VBUS is 20-bit unsigned in bits [23:4]
+    raw20 = (reg24 >> 4) & 0x0FFFFF;
+    return true;
+}
+
+bool INA228::read_vshunt_raw(int32_t& raw20) const {
+    uint32_t reg24 = 0;
+    if (!read_register24(INA228_Register::VSHUNT, reg24)) {
+        return false;
+    }
+    // VSHUNT is 20-bit signed in bits [23:4]
+    uint32_t val = (reg24 >> 4) & 0x0FFFFF;
+    // Sign-extend from 20-bit to 32-bit
+    if (val & 0x80000) {
+        raw20 = static_cast<int32_t>(val | 0xFFF00000);
+    } else {
+        raw20 = static_cast<int32_t>(val);
+    }
+    return true;
+}
+
+bool INA228::read_current_raw(int32_t& raw20) const {
+    uint32_t reg24 = 0;
+    if (!read_register24(INA228_Register::CURRENT, reg24)) {
+        return false;
+    }
+    // CURRENT is 20-bit signed in bits [23:4]
+    uint32_t val = (reg24 >> 4) & 0x0FFFFF;
+    // Sign-extend from 20-bit to 32-bit
+    if (val & 0x80000) {
+        raw20 = static_cast<int32_t>(val | 0xFFF00000);
+    } else {
+        raw20 = static_cast<int32_t>(val);
+    }
+    return true;
+}
+
+bool INA228::read_temp_raw(int16_t& raw16) const {
+    uint16_t reg16 = 0;
+    if (!read_register16(INA228_Register::DIETEMP, reg16)) {
+        return false;
+    }
+    raw16 = static_cast<int16_t>(reg16);
+    return true;
+}
+
+bool INA228::read_diag_alrt(uint16_t& flags) const {
+    return read_register16(INA228_Register::DIAG_ALRT, flags);
 }
 
 void INA228::print_manufacturer_id() const {

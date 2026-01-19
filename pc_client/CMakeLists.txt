@@ -104,7 +104,7 @@ add_executable(pc_client_tests
     tests/device_serial_tests.cpp
 )
 
-target_link_libraries(pc_client_tests
+target_link_libraries(pc_client_tests PRIVATE
     pc_client_lib
     gtest_main
 )

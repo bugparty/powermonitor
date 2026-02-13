@@ -17,12 +17,6 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
-    - name: Set up CMake
-      uses: jwlawles/cmake-windows-source-setup@v1.0.0
-      if: runner.os == 'Windows'
-      with:
-        cmake-version: '3.26.4'
-
     - name: Run workflow.ps1
       shell: pwsh
       run: |

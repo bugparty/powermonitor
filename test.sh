@@ -31,7 +31,7 @@ print_warning() {
 
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BUILD_DIR="$SCRIPT_DIR/build"
+BUILD_DIR="$SCRIPT_DIR/linuxbuild"
 
 print_info "Power Monitor Test Suite"
 echo "======================================"

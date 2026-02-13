@@ -1,4 +1,4 @@
-#include "power_monitor_session.h"
+﻿#include "power_monitor_session.h"
 
 #include <algorithm>
 #include <atomic>

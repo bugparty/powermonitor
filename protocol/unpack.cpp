@@ -1,4 +1,4 @@
-﻿#include "protocol/unpack.h"
+#include "protocol/unpack.h"
 
 namespace protocol {
 
@@ -14,6 +14,11 @@ int32_t unpack_s20(const uint8_t buf[3]) {
         raw |= 0xFFF00000U;
     }
     return static_cast<int32_t>(raw);
+}
+
+int16_t unpack_s16(const uint8_t buf[2]) {
+    uint16_t raw = static_cast<uint16_t>(buf[0]) | (static_cast<uint16_t>(buf[1]) << 8U);
+    return static_cast<int16_t>(raw);
 }
 
 EngineeringSample to_engineering(uint32_t vbus_raw, int32_t vshunt_raw, int32_t current_raw,

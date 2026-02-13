@@ -50,7 +50,7 @@ std::vector<PortInfo> list_ports() {
     std::vector<PortInfo> ports;
 
 #ifdef _WIN32
-    // Windows: 使用 SetupAPI 枚举串口
+    // Windows: use SetupAPI to enumerate serial ports
     HDEVINFO hDevInfo = SetupDiGetClassDevs(&GUID_DEVCLASS_PORTS, nullptr, nullptr, DIGCF_PRESENT);
     if (hDevInfo == INVALID_HANDLE_VALUE) {
         return ports;
@@ -62,11 +62,11 @@ std::vector<PortInfo> list_ports() {
     for (DWORD i = 0; SetupDiEnumDeviceInfo(hDevInfo, i, &devInfoData); ++i) {
         PortInfo info;
 
-        // 获取友好名称
+        // Get friendly name
         std::string friendlyName = get_registry_property(hDevInfo, &devInfoData, SPDRP_FRIENDLYNAME);
         if (friendlyName.empty()) continue;
 
-        // 从友好名称中提取 COM 端口号
+        // Extract COM port number from friendly name
         size_t start = friendlyName.find("(COM");
         size_t end = friendlyName.find(")", start);
         if (start == std::string::npos || end == std::string::npos) continue;
@@ -75,9 +75,9 @@ std::vector<PortInfo> list_ports() {
         info.description = get_registry_property(hDevInfo, &devInfoData, SPDRP_DEVICEDESC);
         info.manufacturer = get_registry_property(hDevInfo, &devInfoData, SPDRP_MFG);
 
-        // 获取 Hardware ID (包含 VID/PID)
+        // Get Hardware ID (contains VID/PID)
         std::string hwid = get_registry_property(hDevInfo, &devInfoData, SPDRP_HARDWAREID);
-        // 解析 VID 和 PID
+        // Parse VID and PID
         size_t vidPos = hwid.find("VID_");
         size_t pidPos = hwid.find("PID_");
         if (vidPos != std::string::npos && pidPos != std::string::npos) {
@@ -93,12 +93,16 @@ std::vector<PortInfo> list_ports() {
 
     SetupDiDestroyDeviceInfoList(hDevInfo);
 
-    // 按 COM 端口号排序
+    // Sort by COM port number
     std::sort(ports.begin(), ports.end(), [](const PortInfo& a, const PortInfo& b) {
-        auto getNum = [](const std::string& s) {
+        auto getNum = [](const std::string& s) -> int {
             size_t pos = s.find("COM");
             if (pos != std::string::npos) {
-                try { return std::stoi(s.substr(pos + 3)); } catch (...) {}
+                try {
+                    return std::stoi(s.substr(pos + 3));
+                } catch (...) {
+                    return 0;
+                }
             }
             return 0;
         };
@@ -106,7 +110,7 @@ std::vector<PortInfo> list_ports() {
     });
 
 #else
-    // Linux: 扫描 /dev 目录并读取 sysfs 信息
+    // Linux: scan /dev directory and read sysfs info
     DIR* dir = opendir("/dev");
     if (!dir) {
         return ports;
@@ -185,7 +189,7 @@ public:
             DWORD err = GetLastError();
             std::cerr << "SetCommState failed with error: " << err << std::endl;
         }
-    
+
         // DCB dcb{};
         // dcb.DCBlength = sizeof(DCB);
         // if (GetCommState(handle, &dcb)) {
@@ -279,7 +283,7 @@ private:
         }
         if (len > 16) std::cout << "...";
         std::cout << std::dec << std::endl;
-        
+
     }
 
     asio::io_context& io_;

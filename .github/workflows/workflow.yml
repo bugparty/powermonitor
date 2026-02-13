@@ -1,0 +1,29 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up CMake
+      uses: jwlawles/cmake-windows-source-setup@v1.0.0
+      if: runner.os == 'Windows'
+      with:
+        cmake-version: '3.26.4'
+
+    - name: Run workflow.ps1
+      shell: pwsh
+      run: |
+        ./workflow.ps1 -Clean -Verbose

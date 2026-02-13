@@ -105,6 +105,13 @@ if (-not (Test-Path $CMakeCachePath)) {
     if ($CurrentIsWindows) {
         # Windows configuration
         $Generator = "Visual Studio 18 2026"
+
+        # Check if running in GitHub Actions and use a supported generator
+        if ($env:GITHUB_ACTIONS -eq 'true') {
+            $Generator = "Visual Studio 17 2022"
+            Print-Info "Running in GitHub Actions: Overriding generator to $Generator"
+        }
+
         $Arch = "x64"
         if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') {
             $Arch = "ARM64"

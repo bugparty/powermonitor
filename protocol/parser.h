@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <cstdint>
 #include <functional>
@@ -54,6 +54,7 @@ private:
     void process();
     void read_header();
     void read_payload();
+    void resync();  // Scan for SOF after CRC failure
 
     FrameCallback callback_;
     std::vector<uint8_t> buffer_;

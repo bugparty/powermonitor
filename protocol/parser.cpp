@@ -1,4 +1,4 @@
-﻿#include "protocol/parser.h"
+#include "protocol/parser.h"
 
 #include <algorithm>
 
@@ -112,7 +112,8 @@ void Parser::read_payload() {
     const uint16_t actual = static_cast<uint16_t>(crc_l) | (static_cast<uint16_t>(crc_h) << 8U);
     if (expected != actual) {
         ++crc_fail_count_;
-        state_ = State::kWaitSof0;
+        // Resync: scan for SOF pattern in the processed data
+        resync();
         return;
     }
 
@@ -121,6 +122,22 @@ void Parser::read_payload() {
     if (callback_) {
         callback_(current_frame_);
     }
+    state_ = State::kWaitSof0;
+}
+
+void Parser::resync() {
+    // Scan for SOF pattern (0xAA 0x55) in the processed data
+    // This handles the case where a new frame starts within corrupted data
+    for (size_t i = 0; i + 1 < buffer_.size(); ++i) {
+        if (buffer_[i] == kSof0 && buffer_[i + 1] == kSof1) {
+            // Found potential SOF, remove bytes before it
+            buffer_.erase(buffer_.begin(), buffer_.begin() + i);
+            state_ = State::kWaitSof1;  // Will transition to READ_HEADER on next process()
+            return;
+        }
+    }
+    // No SOF found, clear buffer and reset
+    buffer_.clear();
     state_ = State::kWaitSof0;
 }
 

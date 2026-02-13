@@ -16,6 +16,41 @@ enum class FrameType : uint8_t {
     kEvt = 0x04,
 };
 
+// Message IDs (MSGID field)
+enum class MsgId : uint8_t {
+    // Management
+    kPing = 0x01,
+
+    // Configuration
+    kSetCfg = 0x10,
+    kGetCfg = 0x11,
+
+    // Debug
+    kRegRead = 0x20,
+    kRegWrite = 0x21,
+
+    // Stream control
+    kStreamStart = 0x30,
+    kStreamStop = 0x31,
+
+    // Data
+    kDataSample = 0x80,
+
+    // Events
+    kEvtAlert = 0x90,
+    kCfgReport = 0x91,
+};
+
+// Response status codes
+enum class Status : uint8_t {
+    kOk = 0x00,        // Success
+    kErrCrc = 0x01,    // CRC verification failed
+    kErrLen = 0x02,    // Invalid packet length
+    kErrUnkCmd = 0x03, // Unknown or unsupported MSGID
+    kErrParam = 0x04,  // Parameter out of range
+    kErrHw = 0x05,     // Hardware fault (e.g., I2C NACK)
+};
+
 struct Frame {
     uint8_t ver = kProtoVersion;
     FrameType type = FrameType::kCmd;

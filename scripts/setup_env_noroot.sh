@@ -29,13 +29,29 @@ print_warning() {
     echo -e "${YELLOW}[WARNING]${NC} $1"
 }
 
+# Resolve target user/home even when script is invoked via sudo.
+TARGET_USER="$USER"
+TARGET_HOME="$HOME"
+
+if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
+    if [[ -n "${SUDO_USER:-}" ]] && [[ "$SUDO_USER" != "root" ]]; then
+        TARGET_USER="$SUDO_USER"
+        TARGET_HOME="$(eval echo "~$SUDO_USER")"
+    else
+        print_error "setup_env_noroot.sh should be run as a non-root user."
+        print_error "Current user is root and SUDO_USER is not set."
+        print_error "Please switch to your normal user account and re-run this script."
+        exit 1
+    fi
+fi
+
 # Installation directories
-LOCAL_PREFIX="$HOME/.local"
+LOCAL_PREFIX="$TARGET_HOME/.local"
 LOCAL_BIN="$LOCAL_PREFIX/bin"
 LOCAL_LIB="$LOCAL_PREFIX/lib"
 LOCAL_INCLUDE="$LOCAL_PREFIX/include"
 LOCAL_SHARE="$LOCAL_PREFIX/share"
-LOCAL_TMP="$HOME/.cache/powermonitor-setup"
+LOCAL_TMP="$TARGET_HOME/.cache/powermonitor-setup"
 
 # Architecture detection
 ARCH=$(uname -m)
@@ -48,6 +64,7 @@ esac
 
 print_info "Setting up Power Monitor development environment (no-root mode)..."
 echo "======================================"
+print_info "Target user: $TARGET_USER"
 print_info "Installation prefix: $LOCAL_PREFIX"
 print_info "Architecture: $ARCH_STR"
 
@@ -62,10 +79,10 @@ if [[ ":$PATH:" != *":$LOCAL_BIN:"* ]]; then
 
     # Add to shell config
     SHELL_RC=""
-    if [[ -f "$HOME/.bashrc" ]]; then
-        SHELL_RC="$HOME/.bashrc"
-    elif [[ -f "$HOME/.zshrc" ]]; then
-        SHELL_RC="$HOME/.zshrc"
+    if [[ -f "$TARGET_HOME/.bashrc" ]]; then
+        SHELL_RC="$TARGET_HOME/.bashrc"
+    elif [[ -f "$TARGET_HOME/.zshrc" ]]; then
+        SHELL_RC="$TARGET_HOME/.zshrc"
     fi
 
     if [[ -n "$SHELL_RC" ]]; then
@@ -77,6 +94,14 @@ if [[ ":$PATH:" != *":$LOCAL_BIN:"* ]]; then
         fi
     fi
 fi
+
+# If invoked via sudo, restore ownership of touched files to the target user.
+fix_target_ownership() {
+    if [[ ${EUID:-$(id -u)} -eq 0 ]] && [[ "$TARGET_USER" != "root" ]]; then
+        chown -R "$TARGET_USER":"$TARGET_USER" "$LOCAL_PREFIX" "$TARGET_HOME/.cache/powermonitor-setup" 2>/dev/null || true
+        chown "$TARGET_USER":"$TARGET_USER" "$TARGET_HOME/.bashrc" "$TARGET_HOME/.zshrc" 2>/dev/null || true
+    fi
+}
 
 # Function to check if command exists
 command_exists() {
@@ -293,6 +318,7 @@ main() {
 
     # Setup environment
     setup_env_file
+    fix_target_ownership
 
     echo ""
     echo "======================================"

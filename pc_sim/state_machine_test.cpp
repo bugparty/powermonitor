@@ -45,7 +45,7 @@ class ParserStateMachineTest : public ::testing::Test {
 protected:
     void SetUp() override {
         frame_count = 0;
-        parser = std::make_unique<protocol::Parser>([this](const protocol::Frame &f) {
+        parser = std::make_unique<protocol::Parser>([this](const protocol::Frame &f, uint64_t /*receive_time*/) {
             last_frame = f;
             frame_count++;
         });

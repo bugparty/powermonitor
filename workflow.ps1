@@ -48,7 +48,7 @@ Print-Info "Power Monitor Test Suite"
 Write-Host "======================================"
 
 if ($Help) {
-    Write-Host "Usage: .\test.ps1 [OPTIONS]"
+    Write-Host "Usage: .\workflow.ps1 [OPTIONS]"
     Write-Host ""
     Write-Host "Options:"
     Write-Host "  -Clean      Clean build directory before building"
@@ -57,10 +57,34 @@ if ($Help) {
     Write-Host "  -Help       Show this help message"
     Write-Host ""
     Write-Host "Examples:"
-    Write-Host "  .\test.ps1                # Run tests with existing build"
-    Write-Host "  .\test.ps1 -Clean         # Clean build and run tests"
-    Write-Host "  .\test.ps1 -Verbose       # Run tests with verbose output"
+    Write-Host "  .\workflow.ps1                # Run tests with existing build"
+    Write-Host "  .\workflow.ps1 -Clean         # Clean build and run tests"
+    Write-Host "  .\workflow.ps1 -Verbose       # Run tests with verbose output"
     exit 0
+}
+
+# OS Detection
+$CurrentIsLinux = $false
+$CurrentIsWindows = $false
+
+if ($IsLinux) {
+    $CurrentIsLinux = $true
+} elseif ($IsWindows) {
+    $CurrentIsWindows = $true
+} else {
+    # Fallback for older PowerShell versions or other platforms
+    if ($PSVersionTable.Platform -eq "Unix") {
+        $CurrentIsLinux = $true
+    } else {
+        # Default to Windows behavior if not Unix
+        $CurrentIsWindows = $true
+    }
+}
+
+if ($CurrentIsLinux) {
+    Print-Info "Detected OS: Linux"
+} else {
+    Print-Info "Detected OS: Windows"
 }
 
 # Clean build if requested
@@ -71,17 +95,29 @@ if ($Clean -or $Rebuild) {
     }
 }
 
-# Configure CMake - detect generator
-$Generator = "Visual Studio 18 2026"
-$Arch = "x64"
-if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') {
-    $Arch = "ARM64"
-}
-
+# Configure CMake
 $CMakeCachePath = Join-Path $BuildDir "CMakeCache.txt"
 if (-not (Test-Path $CMakeCachePath)) {
-    Print-Info "Configuring CMake with generator: $Generator -A $Arch"
-    & cmake -B $BuildDir -S $ScriptDir -G $Generator -A $Arch
+    Print-Info "Configuring CMake..."
+
+    $CMakeArgs = @("-B", $BuildDir, "-S", $ScriptDir)
+
+    if ($CurrentIsWindows) {
+        # Windows configuration
+        $Generator = "Visual Studio 18 2026"
+        $Arch = "x64"
+        if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') {
+            $Arch = "ARM64"
+        }
+
+        Print-Info "Using Generator: $Generator -A $Arch"
+        $CMakeArgs += "-G", $Generator, "-A", $Arch
+    } else {
+        # Linux configuration - let CMake pick default
+        Print-Info "Using default generator"
+    }
+
+    & cmake $CMakeArgs
     if ($LASTEXITCODE -ne 0) {
         Print-Error-Custom "CMake configuration failed"
         exit 1
@@ -101,26 +137,49 @@ if ($LASTEXITCODE -ne 0) {
 Print-Success "Build completed"
 
 # Check if test executable exists
-$TestExec = Join-Path $BuildDir "pc_sim"
-$TestExec = Join-Path $TestExec "Debug"
-$TestExec = Join-Path $TestExec "pc_sim_test.exe"
-if (-not (Test-Path $TestExec)) {
-    # Try Release configuration
-    $TestExec = Join-Path $BuildDir "pc_sim"
-    $TestExec = Join-Path $TestExec "Release"
-    $TestExec = Join-Path $TestExec "pc_sim_test.exe"
-    if (-not (Test-Path $TestExec)) {
-        # Try without .exe extension for non-Windows builds
-        $TestExec = Join-Path $BuildDir "pc_sim/pc_sim_test"
-        if (-not (Test-Path $TestExec)) {
-            Print-Error-Custom "Test executable not found"
-            exit 1
+$TestExec = $null
+
+if ($CurrentIsWindows) {
+    # Windows: Look in Debug/Release subdirectories with .exe extension
+    $TestExecPathDebug = Join-Path $BuildDir "pc_sim"
+    $TestExecPathDebug = Join-Path $TestExecPathDebug "Debug"
+    $TestExecPathDebug = Join-Path $TestExecPathDebug "pc_sim_test.exe"
+
+    if (Test-Path $TestExecPathDebug) {
+        $TestExec = $TestExecPathDebug
+    } else {
+        $TestExecPathRelease = Join-Path $BuildDir "pc_sim"
+        $TestExecPathRelease = Join-Path $TestExecPathRelease "Release"
+        $TestExecPathRelease = Join-Path $TestExecPathRelease "pc_sim_test.exe"
+
+        if (Test-Path $TestExecPathRelease) {
+            $TestExec = $TestExecPathRelease
         }
     }
+} else {
+    # Linux: Look directly in target directory without extension
+    # Try typical Makefile output location
+    $TestExecPath = Join-Path $BuildDir "pc_sim"
+    $TestExecPath = Join-Path $TestExecPath "pc_sim_test"
+
+    if (Test-Path $TestExecPath) {
+        $TestExec = $TestExecPath
+    }
+}
+
+if (-not $TestExec) {
+    Print-Error-Custom "Test executable not found"
+    if ($CurrentIsWindows) {
+        Print-Info "Checked Debug/Release subdirectories for pc_sim_test.exe"
+    } else {
+        Print-Info "Checked for pc_sim_test in build directory"
+    }
+    exit 1
 }
 
 Write-Host ""
 Print-Info "Running tests..."
+Write-Host "Using executable: $TestExec"
 Write-Host "======================================"
 
 # Run tests

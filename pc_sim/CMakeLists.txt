@@ -20,6 +20,12 @@ add_executable(pc_sim
 )
 target_link_libraries(pc_sim powermonitor_lib)
 
+# Time sync demo application
+add_executable(time_sync_demo
+        time_sync_demo.cpp
+)
+target_link_libraries(time_sync_demo powermonitor_lib)
+
 # Fetch Google Test
 include(FetchContent)
 FetchContent_Declare(

@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <cstddef>
 #include <cstdint>
@@ -27,11 +27,16 @@ public:
     void write(const std::vector<uint8_t> &bytes, uint64_t now_us);
     size_t available() const;
     std::vector<uint8_t> read(size_t max_bytes);
+    
+    // Get the receive time of the most recently delivered data
+    // Returns 0 if no data has been received yet
+    uint64_t last_receive_time() const { return last_receive_time_; }
 
 private:
     VirtualLink *link_ = nullptr;
     int direction_ = 0;
     std::vector<uint8_t> rx_buffer_;
+    uint64_t last_receive_time_ = 0;  // Timestamp of most recent data delivery
 
     friend class VirtualLink;
 };

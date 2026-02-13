@@ -10,9 +10,13 @@ namespace protocol {
 
 class Parser {
 public:
-    using FrameCallback = std::function<void(const Frame &)>;
+    using FrameCallback = std::function<void(const Frame &, uint64_t receive_time_us)>;
 
     explicit Parser(FrameCallback callback, uint16_t max_len = 1024);
+    
+    // Set the receive time for the next frame callback
+    // This should be called before feed() to ensure accurate timing
+    void set_receive_time(uint64_t receive_time_us) { receive_time_us_ = receive_time_us; }
 
     void feed(const uint8_t *data, size_t len);
     void feed(const std::vector<uint8_t> &data);
@@ -64,6 +68,7 @@ private:
     uint16_t payload_remaining_ = 0;
     uint64_t crc_fail_count_ = 0;
     uint64_t len_fail_count_ = 0;
+    uint64_t receive_time_us_ = 0;  // Receive time for current frame
 };
 
 } // namespace protocol

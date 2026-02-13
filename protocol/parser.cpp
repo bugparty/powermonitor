@@ -120,7 +120,7 @@ void Parser::read_payload() {
     current_frame_.msgid = payload[0];
     current_frame_.data.assign(payload.begin() + 1, payload.end());
     if (callback_) {
-        callback_(current_frame_);
+        callback_(current_frame_, receive_time_us_);
     }
     state_ = State::kWaitSof0;
 }

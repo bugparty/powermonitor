@@ -57,12 +57,13 @@ struct ParserState {
     ThreadStats* stats = nullptr;
     
     ParserState(ResponseQueue* rq, SampleQueue* sq, ThreadStats* st)
-        : parser([this](const protocol::Frame& frame) {
-            this->on_frame(frame);
+        : parser([this](const protocol::Frame& frame, uint64_t receive_time_us) {
+            this->on_frame(frame, receive_time_us);
           }),
           response_q(rq), sample_q(sq), stats(st) {}
     
-    void on_frame(const protocol::Frame& frame) {
+    void on_frame(const protocol::Frame& frame, uint64_t receive_time_us) {
+        (void)receive_time_us;  // Not used in pc_client, but required by callback signature
         stats->rx_counts[frame.msgid].fetch_add(1, std::memory_order_relaxed);
         
         if (frame.msgid == 0x80) {  // DATA_SAMPLE
@@ -104,6 +105,8 @@ void ReadThread::run() {
                     //std::cout << "ReadThread: No data read." << std::endl;
                     return;
                 }
+                // Set receive time to current time (for real hardware, this is when data arrives)
+                state.parser.set_receive_time(ReadThread::now_steady_us());
                 state.parser.feed(data, length);
                 //std::cout << "ReadThread: readed " << length << " bytes." << std::endl;
             },

@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <cstdint>
 #include <map>
@@ -18,6 +18,9 @@ public:
     void tick(uint64_t now_us);
 
     void send_ping(uint64_t now_us);
+    void send_time_sync(uint64_t now_us);
+    void send_time_adjust(int64_t offset_us, uint64_t now_us);
+    void send_time_set(uint64_t unix_time_us, uint64_t now_us);
     void send_set_cfg(uint16_t config_reg, uint16_t adc_config_reg, uint16_t shunt_cal,
                       uint16_t shunt_tempco, uint64_t now_us);
     void send_get_cfg(uint64_t now_us);
@@ -39,9 +42,9 @@ private:
         std::vector<uint8_t> bytes;     // Raw frame bytes for retransmission
     };
 
-    void on_frame(const protocol::Frame &frame);
+    void on_frame(const protocol::Frame &frame, uint64_t receive_time_us);
     void send_cmd(uint8_t msgid, const std::vector<uint8_t> &payload, uint64_t now_us);
-    void handle_rsp(const protocol::Frame &frame);
+    void handle_rsp(const protocol::Frame &frame, uint64_t receive_time_us);
     void handle_cfg_report(const protocol::Frame &frame);
     void handle_data_sample(const protocol::Frame &frame);
 
@@ -59,6 +62,8 @@ private:
     uint64_t timeout_count_ = 0;
     uint64_t retransmit_count_ = 0;
     uint64_t rx_counts_[256] = {};
+    uint64_t time_sync_T1_ = 0;  // T1 timestamp for TIME_SYNC calculation
+    uint64_t current_time_us_ = 0;  // Current time updated in tick()
 };
 
 } // namespace node

@@ -1,4 +1,4 @@
-﻿#include "node/pc_node.h"
+#include "node/pc_node.h"
 
 #include <cstring>
 #include <iostream>
@@ -8,6 +8,9 @@ namespace node {
 namespace {
 
 constexpr uint8_t kMsgPing = 0x01;
+constexpr uint8_t kMsgTimeSync = 0x05;
+constexpr uint8_t kMsgTimeAdjust = 0x06;
+constexpr uint8_t kMsgTimeSet = 0x07;
 constexpr uint8_t kMsgSetCfg = 0x10;
 constexpr uint8_t kMsgGetCfg = 0x11;
 constexpr uint8_t kMsgStreamStart = 0x30;
@@ -35,14 +38,51 @@ uint32_t read_u32(const std::vector<uint8_t> &data, size_t offset) {
            (static_cast<uint32_t>(data[offset + 3]) << 24U);
 }
 
+void append_u64(std::vector<uint8_t> &out, uint64_t value) {
+    out.push_back(static_cast<uint8_t>(value & 0xFF));
+    out.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
+    out.push_back(static_cast<uint8_t>((value >> 16) & 0xFF));
+    out.push_back(static_cast<uint8_t>((value >> 24) & 0xFF));
+    out.push_back(static_cast<uint8_t>((value >> 32) & 0xFF));
+    out.push_back(static_cast<uint8_t>((value >> 40) & 0xFF));
+    out.push_back(static_cast<uint8_t>((value >> 48) & 0xFF));
+    out.push_back(static_cast<uint8_t>((value >> 56) & 0xFF));
+}
+
+void append_i64(std::vector<uint8_t> &out, int64_t value) {
+    append_u64(out, static_cast<uint64_t>(value));
+}
+
+uint64_t read_u64(const std::vector<uint8_t> &data, size_t offset) {
+    return static_cast<uint64_t>(data[offset]) |
+           (static_cast<uint64_t>(data[offset + 1]) << 8U) |
+           (static_cast<uint64_t>(data[offset + 2]) << 16U) |
+           (static_cast<uint64_t>(data[offset + 3]) << 24U) |
+           (static_cast<uint64_t>(data[offset + 4]) << 32U) |
+           (static_cast<uint64_t>(data[offset + 5]) << 40U) |
+           (static_cast<uint64_t>(data[offset + 6]) << 48U) |
+           (static_cast<uint64_t>(data[offset + 7]) << 56U);
+}
+
+int64_t read_i64(const std::vector<uint8_t> &data, size_t offset) {
+    return static_cast<int64_t>(read_u64(data, offset));
+}
+
 } // namespace
 
 PCNode::PCNode(sim::VirtualLinkEndpoint *endpoint)
     : endpoint_(endpoint),
-      parser_([this](const protocol::Frame &frame) { on_frame(frame); }) {}
+      parser_([this](const protocol::Frame &frame, uint64_t receive_time_us) { 
+          on_frame(frame, receive_time_us); 
+      }) {}
 
 void PCNode::tick(uint64_t now_us) {
+    current_time_us_ = now_us;
     if (endpoint_ && endpoint_->available() > 0) {
+        // Set receive time before feeding data to parser
+        // Use last_receive_time() which is the actual delivery time from VirtualLink
+        const uint64_t receive_time = endpoint_->last_receive_time();
+        parser_.set_receive_time(receive_time > 0 ? receive_time : now_us);
         auto bytes = endpoint_->read(endpoint_->available());
         parser_.feed(bytes);
     }
@@ -68,6 +108,25 @@ void PCNode::tick(uint64_t now_us) {
 }
 
 void PCNode::send_ping(uint64_t now_us) { send_cmd(kMsgPing, {}, now_us); }
+
+void PCNode::send_time_sync(uint64_t now_us) {
+    std::vector<uint8_t> payload;
+    append_u64(payload, now_us);  // T1 = send time
+    time_sync_T1_ = now_us;
+    send_cmd(kMsgTimeSync, payload, now_us);
+}
+
+void PCNode::send_time_adjust(int64_t offset_us, uint64_t now_us) {
+    std::vector<uint8_t> payload;
+    append_i64(payload, offset_us);
+    send_cmd(kMsgTimeAdjust, payload, now_us);
+}
+
+void PCNode::send_time_set(uint64_t unix_time_us, uint64_t now_us) {
+    std::vector<uint8_t> payload;
+    append_u64(payload, unix_time_us);
+    send_cmd(kMsgTimeSet, payload, now_us);
+}
 
 void PCNode::send_set_cfg(uint16_t config_reg, uint16_t adc_config_reg, uint16_t shunt_cal,
                           uint16_t shunt_tempco, uint64_t now_us) {
@@ -104,10 +163,10 @@ void PCNode::send_cmd(uint8_t msgid, const std::vector<uint8_t> &payload, uint64
               << " seq=" << static_cast<int>(seq) << std::dec << "\n";
 }
 
-void PCNode::on_frame(const protocol::Frame &frame) {
+void PCNode::on_frame(const protocol::Frame &frame, uint64_t receive_time_us) {
     ++rx_counts_[frame.msgid];
     if (frame.type == protocol::FrameType::kRsp) {
-        handle_rsp(frame);
+        handle_rsp(frame, receive_time_us);
         return;
     }
     if (frame.type == protocol::FrameType::kEvt && frame.msgid == kMsgCfgReport) {
@@ -120,7 +179,7 @@ void PCNode::on_frame(const protocol::Frame &frame) {
     }
 }
 
-void PCNode::handle_rsp(const protocol::Frame &frame) {
+void PCNode::handle_rsp(const protocol::Frame &frame, uint64_t receive_time_us) {
     if (frame.data.size() < 2) {
         return;
     }
@@ -138,6 +197,26 @@ void PCNode::handle_rsp(const protocol::Frame &frame) {
               << " status=0x" << static_cast<int>(status) << std::dec << "\n";
     if (status != kStatusOk) {
         return;
+    }
+    
+    // Handle TIME_SYNC response: extract T1, T2, T3, calculate offset, send TIME_ADJUST
+    if (orig_msgid == kMsgTimeSync && frame.data.size() >= 26) {
+        const uint64_t T1 = read_u64(frame.data, 2);   // Echoed back T1
+        const uint64_t T2 = read_u64(frame.data, 10);  // Device receive time
+        const uint64_t T3 = read_u64(frame.data, 18);  // Device send time
+        
+        // T4 is the receive time from VirtualLink (accurate delivery time)
+        const uint64_t T4 = receive_time_us;
+        
+        // Calculate delay and offset
+        const int64_t delay = static_cast<int64_t>((T4 - T1) - (T3 - T2));
+        const int64_t offset = static_cast<int64_t>(((T2 - T1) + (T3 - T4)) / 2);
+        
+        std::cout << "TIME_SYNC: T1=" << T1 << " T2=" << T2 << " T3=" << T3 << " T4=" << T4
+                  << " delay=" << delay << " offset=" << offset << "\n";
+        
+        // Send TIME_ADJUST with negative offset
+        send_time_adjust(-offset, T4);
     }
 }
 

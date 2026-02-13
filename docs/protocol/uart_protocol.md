@@ -1,4 +1,4 @@
-﻿# INA228 USB-TTL Serial Communication Protocol Specification
+# INA228 USB-TTL Serial Communication Protocol Specification
 
 Related code:
 - `protocol/frame_builder.cpp`
@@ -96,6 +96,9 @@ Uses classic structure of **delimiter + header + payload + checksum**.
 |**MSGID**|**Name**|**Direction**|**Category**|**Description**|
 |**0x01**|`PING`|P→D|Management|Heartbeat / Handshake|
 |**0x02**|-|D→P|Management|(Reserved, generic response usually reuses CMD ID or independent)|
+|**0x05**|`TIME_SYNC`|P→D|Management|NTP-like time sync request|
+|**0x06**|`TIME_ADJUST`|P→D|Management|Apply clock offset correction|
+|**0x07**|`TIME_SET`|P→D|Management|Set absolute Unix time|
 |**0x10**|`SET_CFG`|P→D|Configuration|Send parameters (triggers CFG_REPORT)|
 |**0x11**|`GET_CFG`|P→D|Configuration|Query parameters (triggers CFG_REPORT)|
 |**0x20**|`REG_READ`|P→D|Debug|Read INA228 register (supports 16/24/40 bit)|
@@ -350,7 +353,154 @@ struct StreamStartCmd {
 
 - **Response**: `RSP(OK)` + `CFG_REPORT(0x91)`
 
-### 5.2 Debug Commands
+### 5.2 Time Synchronization
+
+The time synchronization protocol implements an NTP-like mechanism for precise clock synchronization between PC and device with microsecond precision.
+
+#### 5.2.1 Overview
+
+**Key Timestamps**:
+
+|Variable|Description|
+|---|---|
+|**T1**|PC send time of TIME_SYNC request|
+|**T2**|Device receive time of TIME_SYNC request|
+|**T3**|Device send time of TIME_SYNC_RSP reply|
+|**T4**|PC receive time of TIME_SYNC_RSP reply|
+
+**Formulas**:
+
+```
+delay  = (T4 - T1) - (T3 - T2)
+offset = ((T2 - T1) + (T3 - T4)) / 2
+```
+
+The device maintains a global epoch offset (`epoch_offset_us`) that is adjusted with each `TIME_ADJUST` command.
+
+#### 5.2.2 TIME_SYNC (0x05)
+
+- **Direction**: PC → Device
+- **Frame Type**: `CMD (0x01)`
+- **Purpose**: Initiate time synchronization, capture T1 timestamp
+
+**CMD Payload**:
+
+```c
+struct TimeSyncPayload {
+    uint64_t T1;   // PC send time (microseconds, monotonic clock)
+} __attribute__((packed));  // 8 bytes
+```
+
+**RSP Payload** (standard RSP format with extra_data):
+
+```c
+// RSP common part:
+//   orig_msgid = 0x05  (1 byte)
+//   status     = 0x00  (1 byte)
+// extra_data:
+struct TimeSyncRspExtra {
+    uint64_t T1;   // Echoed back PC send time
+    uint64_t T2;   // Device receive time (µs)
+    uint64_t T3;   // Device send time (µs)
+} __attribute__((packed));  // 24 bytes
+// Total RSP payload = 2 + 24 = 26 bytes
+```
+
+**Implementation Notes**:
+
+- Device should capture T2 immediately after frame parsing completes (before any processing)
+- Device should capture T3 immediately before sending the RSP frame (after all processing)
+- PC calculates T4 locally upon receiving the RSP
+- PC then calculates offset and sends `TIME_ADJUST` with negative offset
+
+#### 5.2.3 TIME_ADJUST (0x06)
+
+- **Direction**: PC → Device
+- **Frame Type**: `CMD (0x01)`
+- **Purpose**: Apply clock offset correction calculated from TIME_SYNC exchange
+
+**CMD Payload**:
+
+```c
+struct TimeAdjustPayload {
+    int64_t offset_us;  // Clock offset correction (µs)
+} __attribute__((packed));  // 8 bytes
+```
+
+**Response**: Standard `RSP(OK)` with no extra_data.
+
+**Device Behavior**: Upon receiving this command, device executes:
+```c
+epoch_offset_us += offset_us;
+```
+
+#### 5.2.4 TIME_SET (0x07)
+
+- **Direction**: PC → Device
+- **Frame Type**: `CMD (0x01)`
+- **Purpose**: Set absolute Unix timestamp on device (replaces the old seq=0 special case)
+
+**CMD Payload**:
+
+```c
+struct TimeSetPayload {
+    uint64_t unix_time_us;  // Unix absolute time (microseconds since epoch)
+} __attribute__((packed));  // 8 bytes
+```
+
+**Response**: Standard `RSP(OK)` with no extra_data.
+
+**Device Behavior**: Device sets its epoch offset such that:
+```c
+uint64_t mono = to_us_since_boot(get_absolute_time());
+epoch_offset_us = (int64_t)unix_time_us - (int64_t)mono;
+```
+
+#### 5.2.5 Time Sync Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    participant PC as Host (PC)
+    participant Dev as Device
+
+    Note over PC, Dev: Time Synchronization Flow
+
+    PC->>Dev: CMD: TIME_SYNC (0x05) [T1]
+    Note right of PC: T1 = PC send time
+
+    Dev->>Dev: T2 = now_us()
+    Note right of Dev: Immediately after frame parse
+
+    Dev->>Dev: Process, build RSP
+    Note right of Dev: CRC calc, struct assignment
+
+    Dev->>Dev: T3 = now_us()
+    Note right of Dev: Immediately before send
+
+    Dev->>PC: RSP: TIME_SYNC (0x05) [OK, T1, T2, T3]
+    Note right of PC: T4 = PC receive time
+
+    PC->>PC: Calculate offset & delay
+    Note right of PC: offset = ((T2-T1)+(T3-T4))/2
+
+    PC->>Dev: CMD: TIME_ADJUST (0x06) [-offset]
+    Dev->>PC: RSP: OK (0x06)
+    Note right of Dev: epoch_offset += offset_us
+```
+
+#### 5.2.6 Implementation Guidelines
+
+|Aspect|Recommendation|
+|---|---|
+|**Sync Interval**|Every 1-10 seconds during operation|
+|**Precision Target**|10-100 microseconds typical|
+|**Offset Filtering**|Sliding window average recommended|
+|**Offset Limits**|Reject offsets > 1 second|
+|**Initial Sync**|Use TIME_SET (0x07) for initial absolute time|
+|**Clock Adjustment**|Apply as incremental adjustment via TIME_ADJUST|
+|**T2/T3 Precision**|T2 capture limited by parser delay; T3 should be captured immediately before serial write|
+
+### 5.3 Debug Commands
 
 #### 5.2.1 REG_READ (0x20)
 
@@ -481,24 +631,32 @@ sequenceDiagram
     PC->>Dev: CMD: PING (Seq=1)
     Dev->>PC: RSP: OK (Seq=1)
 
-    Note over PC, Dev: 2. Parameter Configuration
-    PC->>Dev: CMD: SET_CFG (Seq=2, Payload=...)
-    Dev->>PC: RSP: OK (Seq=2)
+    Note over PC, Dev: 2. Time Synchronization (Optional but Recommended)
+    PC->>Dev: CMD: TIME_SYNC (Seq=2, T1=...)
+    Dev->>Dev: Record T2, process, Record T3
+    Dev->>PC: RSP: TIME_SYNC (Seq=2, T1,T2,T3)
+    Note right of PC: Calculate offset, send correction
+    PC->>Dev: CMD: TIME_ADJUST (Seq=3, offset=...)
+    Dev->>PC: RSP: OK (Seq=3)
+
+    Note over PC, Dev: 3. Parameter Configuration
+    PC->>Dev: CMD: SET_CFG (Seq=4, Payload=...)
+    Dev->>PC: RSP: OK (Seq=4)
     Dev-->>PC: EVT: CFG_REPORT (MsgID=0x91)
     Note right of PC: PC saves current_lsb_nA\nfor subsequent conversion
 
-    Note over PC, Dev: 3. Start Data Stream
-    PC->>Dev: CMD: STREAM_START (Seq=3)
-    Dev->>PC: RSP: OK (Seq=3)
+    Note over PC, Dev: 4. Start Data Stream
+    PC->>Dev: CMD: STREAM_START (Seq=5)
+    Dev->>PC: RSP: OK (Seq=5)
     
     loop Every 1ms
         Dev->>PC: DATA: SAMPLE (MsgID=0x80)
         Note right of PC: I = Raw * LSB
     end
 
-    Note over PC, Dev: 4. Stop
-    PC->>Dev: CMD: STREAM_STOP (Seq=4)
-    Dev->>PC: RSP: OK (Seq=4)
+    Note over PC, Dev: 5. Stop
+    PC->>Dev: CMD: STREAM_STOP (Seq=6)
+    Dev->>PC: RSP: OK (Seq=6)
 ```
 
 # Appendix

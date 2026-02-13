@@ -1,4 +1,4 @@
-﻿#include "sim/virtual_link.h"
+#include "sim/virtual_link.h"
 
 #include <algorithm>
 #include <chrono>
@@ -89,8 +89,10 @@ void VirtualLink::pump(uint64_t now_us) {
 void VirtualLink::deliver(PendingChunk &chunk) {
     if (chunk.direction == 0) {
         dev_.rx_buffer_.insert(dev_.rx_buffer_.end(), chunk.bytes.begin(), chunk.bytes.end());
+        dev_.last_receive_time_ = chunk.deliver_time;
     } else {
         pc_.rx_buffer_.insert(pc_.rx_buffer_.end(), chunk.bytes.begin(), chunk.bytes.end());
+        pc_.last_receive_time_ = chunk.deliver_time;
     }
 }
 

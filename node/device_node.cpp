@@ -1,4 +1,4 @@
-﻿#include "node/device_node.h"
+#include "node/device_node.h"
 
 #include <cstring>
 #include <iostream>
@@ -8,6 +8,9 @@ namespace node {
 namespace {
 
 constexpr uint8_t kMsgPing = 0x01;
+constexpr uint8_t kMsgTimeSync = 0x05;
+constexpr uint8_t kMsgTimeAdjust = 0x06;
+constexpr uint8_t kMsgTimeSet = 0x07;
 constexpr uint8_t kMsgSetCfg = 0x10;
 constexpr uint8_t kMsgGetCfg = 0x11;
 constexpr uint8_t kMsgStreamStart = 0x30;
@@ -28,9 +31,39 @@ void append_u32(std::vector<uint8_t> &out, uint32_t value) {
     out.push_back(static_cast<uint8_t>((value >> 24) & 0xFF));
 }
 
+void append_u64(std::vector<uint8_t> &out, uint64_t value) {
+    out.push_back(static_cast<uint8_t>(value & 0xFF));
+    out.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
+    out.push_back(static_cast<uint8_t>((value >> 16) & 0xFF));
+    out.push_back(static_cast<uint8_t>((value >> 24) & 0xFF));
+    out.push_back(static_cast<uint8_t>((value >> 32) & 0xFF));
+    out.push_back(static_cast<uint8_t>((value >> 40) & 0xFF));
+    out.push_back(static_cast<uint8_t>((value >> 48) & 0xFF));
+    out.push_back(static_cast<uint8_t>((value >> 56) & 0xFF));
+}
+
+void append_i64(std::vector<uint8_t> &out, int64_t value) {
+    append_u64(out, static_cast<uint64_t>(value));
+}
+
 uint16_t read_u16(const std::vector<uint8_t> &data, size_t offset) {
     return static_cast<uint16_t>(data[offset]) |
            (static_cast<uint16_t>(data[offset + 1]) << 8U);
+}
+
+uint64_t read_u64(const std::vector<uint8_t> &data, size_t offset) {
+    return static_cast<uint64_t>(data[offset]) |
+           (static_cast<uint64_t>(data[offset + 1]) << 8U) |
+           (static_cast<uint64_t>(data[offset + 2]) << 16U) |
+           (static_cast<uint64_t>(data[offset + 3]) << 24U) |
+           (static_cast<uint64_t>(data[offset + 4]) << 32U) |
+           (static_cast<uint64_t>(data[offset + 5]) << 40U) |
+           (static_cast<uint64_t>(data[offset + 6]) << 48U) |
+           (static_cast<uint64_t>(data[offset + 7]) << 56U);
+}
+
+int64_t read_i64(const std::vector<uint8_t> &data, size_t offset) {
+    return static_cast<int64_t>(read_u64(data, offset));
 }
 
 uint32_t pack_u20(uint32_t value, uint8_t out[3]) {
@@ -51,7 +84,9 @@ void pack_s20(int32_t value, uint8_t out[3]) {
 
 DeviceNode::DeviceNode(sim::VirtualLinkEndpoint *endpoint)
     : endpoint_(endpoint),
-      parser_([this](const protocol::Frame &frame) { on_frame(frame); }) {}
+      parser_([this](const protocol::Frame &frame, uint64_t receive_time_us) { 
+          on_frame(frame, receive_time_us); 
+      }) {}
 
 void DeviceNode::tick(uint64_t now_us) {
     current_now_us_ = now_us;
@@ -60,6 +95,10 @@ void DeviceNode::tick(uint64_t now_us) {
         initial_cfg_sent_ = true;
     }
     if (endpoint_ && endpoint_->available() > 0) {
+        // Set receive time before feeding data to parser
+        // Use last_receive_time() which is the actual delivery time from VirtualLink
+        const uint64_t receive_time = endpoint_->last_receive_time();
+        parser_.set_receive_time(receive_time > 0 ? receive_time : now_us);
         auto bytes = endpoint_->read(endpoint_->available());
         parser_.feed(bytes);
     }
@@ -70,10 +109,11 @@ void DeviceNode::tick(uint64_t now_us) {
     }
 }
 
-void DeviceNode::on_frame(const protocol::Frame &frame) {
+void DeviceNode::on_frame(const protocol::Frame &frame, uint64_t receive_time_us) {
     ++rx_counts_[frame.msgid];
     if (frame.type == protocol::FrameType::kCmd) {
-        handle_cmd(frame, current_now_us_);
+        // Use receive_time_us for accurate T2 capture in time sync
+        handle_cmd(frame, receive_time_us);
     }
 }
 
@@ -81,6 +121,55 @@ void DeviceNode::handle_cmd(const protocol::Frame &frame, uint64_t now_us) {
     switch (frame.msgid) {
     case kMsgPing: {
         send_rsp(frame.seq, frame.msgid, kStatusOk, {}, now_us);
+        break;
+    }
+    case kMsgTimeSync: {
+        // TIME_SYNC: Extract T1, capture T2 (immediately after parse), capture T3 (before send)
+        if (frame.data.size() >= 8) {
+            const uint64_t T1 = read_u64(frame.data, 0);
+            // T2 captured immediately after frame parsing completes
+            // In simulation, now_us represents the time when handle_cmd is called
+            const uint64_t T2 = now_us;
+            
+            // Build RSP payload: orig_msgid(1) + status(1) + T1(8) + T2(8) + T3(8)
+            // Prepare all data except T3 first
+            std::vector<uint8_t> rsp_data;
+            append_u64(rsp_data, T1);
+            append_u64(rsp_data, T2);
+            
+            // All processing is done, capture T3 immediately before sending
+            // In real implementation, this should be captured just before the serial write
+            const uint64_t T3 = now_us;
+            append_u64(rsp_data, T3);
+            
+            send_rsp(frame.seq, frame.msgid, kStatusOk, rsp_data, now_us);
+        } else {
+            send_rsp(frame.seq, frame.msgid, 0x02, {}, now_us);  // ERR_LEN
+        }
+        break;
+    }
+    case kMsgTimeAdjust: {
+        // TIME_ADJUST: Apply clock offset correction
+        if (frame.data.size() >= 8) {
+            const int64_t offset_us = read_i64(frame.data, 0);
+            epoch_offset_us_ += offset_us;
+            send_rsp(frame.seq, frame.msgid, kStatusOk, {}, now_us);
+        } else {
+            send_rsp(frame.seq, frame.msgid, 0x02, {}, now_us);  // ERR_LEN
+        }
+        break;
+    }
+    case kMsgTimeSet: {
+        // TIME_SET: Set absolute Unix time
+        if (frame.data.size() >= 8) {
+            const uint64_t unix_time_us = read_u64(frame.data, 0);
+            // Set epoch_offset such that: unix_time = monotonic + epoch_offset
+            // In simulation, we use now_us as the monotonic time
+            epoch_offset_us_ = static_cast<int64_t>(unix_time_us) - static_cast<int64_t>(now_us);
+            send_rsp(frame.seq, frame.msgid, kStatusOk, {}, now_us);
+        } else {
+            send_rsp(frame.seq, frame.msgid, 0x02, {}, now_us);  // ERR_LEN
+        }
         break;
     }
     case kMsgSetCfg: {

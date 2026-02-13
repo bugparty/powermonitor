@@ -1,4 +1,6 @@
-﻿# Time Synchronization Protocol Documentation
+# Time Synchronization Protocol Documentation
+
+> **Note**: Complete protocol specification (frame format, MSGID definitions, payload structures) is documented in [uart_protocol.md](../protocol/uart_protocol.md) Section 5.2. This document focuses on the synchronization algorithm, timing considerations, and implementation details.
 
 Related code:
 - `device/time_sync.cpp`
@@ -11,39 +13,10 @@ This document describes the time synchronization protocol implemented between a 
 
 The protocol implements a precise time synchronization mechanism similar to NTP (Network Time Protocol) but optimized for serial connections. It allows the slave device to synchronize its clock with the master with microsecond precision.
 
-## Packet Structure
-
-### Time Sync Request (Master → Slave)
-```
-struct TimeSyncRequest {
-    uint16_t header;  // Fixed 0xAA55
-    uint16_t seq;     // Sync sequence number
-    uint64_t T1;      // Master send time (us)
-    uint16_t crc;     // CRC checksum (covers previous fields)
-} __attribute__((packed));
-```
-
-### Time Sync Reply (Slave → Master)
-```
-struct TimeSyncReply {
-    uint16_t header;  // Fixed 0xAA55
-    uint16_t seq;     // Sync sequence number
-    uint64_t T1;      // Master send time (returned as-is)
-    uint64_t T2;      // Slave receive time (us)
-    uint64_t T3;      // Slave send time (us)
-    uint16_t crc;     // CRC checksum (covers previous fields)
-} __attribute__((packed));
-```
-
-### Time Sync Command (Master → Slave)
-```
-struct TimeSyncCmd {
-    uint16_t header;  // Fixed 0xAA56
-    uint16_t seq;     // Sync sequence number
-    int64_t o;        // Master send offset time
-    uint16_t crc;     // CRC checksum
-} __attribute__((packed));
-```
+The protocol uses the unified UART frame format (see [uart_protocol.md](../protocol/uart_protocol.md)) with the following MSGIDs:
+- `TIME_SYNC (0x05)`: Initiate synchronization request
+- `TIME_ADJUST (0x06)`: Apply clock offset correction
+- `TIME_SET (0x07)`: Set absolute Unix time
 
 ## Protocol Flow
 
@@ -57,15 +30,44 @@ struct TimeSyncCmd {
 6. **Master** sends a Time Sync Command with the negative offset
 7. **Slave** adjusts its clock by adding the received offset
 
+### Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    participant M as Master
+    participant S as Slave
+    
+    M->>S: TimeSync Request (T1)
+    
+    Note over S: Packet received
+    S->>S: T2 Capture
+    Note over S: Immediately after receive
+    
+    S->>S: Processing
+    Note right of S: CRC calc, struct assignment
+    
+    S->>S: T3 Capture
+    Note over S: Immediately before send
+    
+    S->>M: TimeSync Reply (T1,T2,T3)
+    
+    Note over M: T4 = local receive time
+    M->>M: Calculate offset & delay
+    
+    M->>S: TimeSync Command (-offset)
+    
+    Note over S: Adjust clock offset
+```
+
 ## Special Commands
 
-- When `seq = 0`, the Master can set the absolute Unix time on the Slave
-- The Slave maintains a global epoch offset that is adjusted with each sync command
+- Use `TIME_SET (0x07)` to set the absolute Unix time on the device (replaces the old seq=0 special case)
+- The device maintains a global epoch offset (`epoch_offset_us`) that is adjusted with each `TIME_ADJUST` command
 
 ## Error Handling
 
-- CRC16 calculation ensures data integrity
-- Magic bytes detection (0xAA55, 0xAA56) ensures proper packet framing
+- CRC16/CCITT-FALSE calculation ensures data integrity (see [uart_protocol.md](../protocol/uart_protocol.md) for frame format)
+- Frame validation uses the unified protocol's SOF (0xAA, 0x55) and CRC mechanism
 - Timeout handling with retries ensures robust operation
 - Consecutive error counting prevents system flooding during connection issues
 
@@ -78,10 +80,24 @@ struct TimeSyncCmd {
 - Provides command-line interface for configuration
 
 ### Slave Side (C++ on Pico)
-- Maintains an epoch offset that is adjusted with each sync
+- Maintains an epoch offset (`epoch_offset_us`) that is adjusted with each `TIME_ADJUST` command
 - Provides a `get_unix_time_us()` function for application use
-- Validates all incoming packets with CRC checks
+- Validates all incoming packets with CRC checks using the unified protocol's CRC-16/CCITT-FALSE
 - Uses low-level serial I/O for efficient communication
+
+### Timing Precision Considerations
+
+**T2 Capture Timing**:
+- T2 should be captured immediately after frame parsing completes
+- In the current architecture, frames are parsed by `Parser` before reaching `CommandHandler::handle_frame()`
+- Therefore, T2 capture happens at the start of `handle_time_sync()`, which includes parser processing delay
+- Typical parser delay: 10-50 microseconds (depends on frame size and system load)
+- For higher precision, consider capturing T2 in the parser callback (requires architecture changes)
+
+**T3 Capture Timing**:
+- T3 should be captured immediately before the serial write operation
+- This minimizes the time between T3 capture and actual transmission
+- Ensure all processing (CRC calculation, struct assignment) is completed before capturing T3
 
 ## Usage Recommendations
 

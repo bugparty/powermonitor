@@ -68,6 +68,10 @@ int64_t read_i64(const std::vector<uint8_t> &data, size_t offset) {
     return static_cast<int64_t>(read_u64(data, offset));
 }
 
+int64_t signed_diff_u64(uint64_t lhs, uint64_t rhs) {
+    return static_cast<int64_t>(lhs) - static_cast<int64_t>(rhs);
+}
+
 } // namespace
 
 PCNode::PCNode(sim::VirtualLinkEndpoint *endpoint)
@@ -209,8 +213,8 @@ void PCNode::handle_rsp(const protocol::Frame &frame, uint64_t receive_time_us) 
         const uint64_t T4 = receive_time_us;
         
         // Calculate delay and offset
-        const int64_t delay = static_cast<int64_t>((T4 - T1) - (T3 - T2));
-        const int64_t offset = static_cast<int64_t>(((T2 - T1) + (T3 - T4)) / 2);
+        const int64_t delay = signed_diff_u64(T4, T1) - signed_diff_u64(T3, T2);
+        const int64_t offset = (signed_diff_u64(T2, T1) + signed_diff_u64(T3, T4)) / 2;
         
         std::cout << "TIME_SYNC: T1=" << T1 << " T2=" << T2 << " T3=" << T3 << " T4=" << T4
                   << " delay=" << delay << " offset=" << offset << "\n";

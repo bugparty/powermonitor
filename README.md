@@ -1,4 +1,4 @@
-﻿# Power Monitor
+# Power Monitor
 
 A power monitoring system based on the INA228 current/voltage/power sensor and Raspberry Pi Pico (RP2040), with a custom UART communication protocol and PC-side software to control and collect data.
 
@@ -53,6 +53,34 @@ powermonitor/
 ```
 
 ## Building
+
+### Using workflow.ps1 (Recommended)
+
+The `workflow.ps1` PowerShell script provides a unified interface for building, testing, and flashing:
+
+```powershell
+# Run tests
+pwsh workflow.ps1
+
+# Clean build and run tests
+pwsh workflow.ps1 -Clean
+
+# Build device firmware only
+pwsh workflow.ps1 -BuildDevice
+
+# Build and flash device firmware to Pico (Windows only)
+pwsh workflow.ps1 -FlashPico
+
+# Generate Visual Studio solution
+pwsh workflow.ps1 -GenerateSolution
+
+# Show all options
+pwsh workflow.ps1 -Help
+```
+
+**Requirements for device firmware:**
+- Set `PICO_SDK_PATH` environment variable to your Pico SDK installation
+- For `-FlashPico`: Windows OS with Pico in BOOTSEL mode (RPI-RP2 drive)
 
 ### Windows (Visual Studio)
 

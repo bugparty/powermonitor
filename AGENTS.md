@@ -20,9 +20,9 @@ Practical handbook for AI agents working in this repo. Keep outputs (docs, comme
 - Verbose output: `pwsh workflow.ps1 -Verbose`.
 - Help: `pwsh workflow.ps1 -Help` for all options.
 - Windows-only: `pwsh workflow.ps1 -GenerateSolution` to create VS solution, `-OpenVS` to open in Visual Studio.
+- Device firmware: `pwsh workflow.ps1 -BuildDevice` (requires PICO_SDK_PATH environment variable).
 - Run tests directly: `./build/pc_sim/pc_sim_test` (or `.\build\pc_sim\pc_sim_test.exe` on Windows).
 - Single test case: `--gtest_filter=SuiteName.TestName`.
-- Device firmware: `cd device && cmake -B build && cmake --build build` (requires Pico SDK; flashing not automated here).
 - Do not skip tests before commit; 34/34 must pass.
 
 ---

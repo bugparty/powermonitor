@@ -1,5 +1,5 @@
-# Power Monitor Test Runner
-# This script builds and runs the Google Test suite
+# Power Monitor Workflow Script
+# This script builds and runs the Google Test suite, and can also build device firmware
 
 # Parse command line arguments - must be at the beginning
 param(
@@ -8,7 +8,9 @@ param(
     [switch]$Verbose,
     [switch]$Help,
     [switch]$GenerateSolution,
-    [switch]$OpenVS
+    [switch]$OpenVS,
+    [switch]$BuildDevice,
+    [switch]$FlashPico
 )
 
 # Exit on error
@@ -58,6 +60,8 @@ if ($Help) {
     Write-Host "  -Verbose         Verbose output from tests"
     Write-Host "  -GenerateSolution Generate Visual Studio solution files only"
     Write-Host "  -OpenVS          Generate solution and open in Visual Studio"
+    Write-Host "  -BuildDevice     Build device firmware (requires PICO_SDK_PATH)"
+    Write-Host "  -FlashPico      Flash device firmware to Pico (requires PICO_SDK_PATH, Windows only)"
     Write-Host "  -Help            Show this help message"
     Write-Host ""
     Write-Host "Examples:"
@@ -66,6 +70,8 @@ if ($Help) {
     Write-Host "  .\workflow.ps1 -Verbose       # Run tests with verbose output"
     Write-Host "  .\workflow.ps1 -GenerateSolution  # Generate VS solution files"
     Write-Host "  .\workflow.ps1 -OpenVS        # Generate and open in Visual Studio"
+    Write-Host "  .\workflow.ps1 -BuildDevice   # Build device firmware"
+    Write-Host "  .\workflow.ps1 -FlashPico    # Build and flash device firmware"
     exit 0
 }
 
@@ -150,6 +156,237 @@ if ($GenerateSolution -or $OpenVS) {
         Write-Host "  devenv $FoundSolution"
         Write-Host ""
         Print-Info "Or open directly from File > Open > Project/Solution"
+    }
+
+    exit 0
+}
+
+# Handle BuildDevice and FlashPico modes
+if ($BuildDevice -or $FlashPico) {
+    $ShouldFlash = $FlashPico
+    if ($BuildDevice -and -not $FlashPico) {
+        Print-Info "Building device firmware..."
+        Write-Host "======================================"
+    } else {
+        Print-Info "Building and flashing device firmware..."
+        Write-Host "======================================"
+    }
+
+    $DeviceDir = Join-Path $ScriptDir "device"
+    $DeviceBuildDir = Join-Path $DeviceDir "build"
+
+    # Check for PICO_SDK_PATH
+    if (-not $env:PICO_SDK_PATH) {
+        Print-Error-Custom "PICO_SDK_PATH environment variable is not set"
+        Write-Host ""
+        Print-Info "Please set PICO_SDK_PATH to your Pico SDK installation:"
+        Write-Host "  Linux/macOS: export PICO_SDK_PATH=/path/to/pico-sdk"
+        Write-Host "  Windows (CMD): set PICO_SDK_PATH=C:\path\to\pico-sdk"
+        Write-Host "  Windows (PowerShell): `$env:PICO_SDK_PATH = 'C:\path\to\pico-sdk'"
+        Write-Host ""
+        Write-Host "Clone the Pico SDK:"
+        Write-Host "  git clone -b master https://github.com/raspberrypi/pico-sdk.git"
+        Write-Host "  cd pico-sdk && git submodule update --init"
+        exit 1
+    }
+
+    Print-Info "PICO_SDK_PATH: $env:PICO_SDK_PATH"
+
+    # Clean device build if requested
+    if ($Clean -or $Rebuild) {
+        Print-Info "Cleaning device build directory..."
+        if (Test-Path $DeviceBuildDir) {
+            Remove-Item -Recurse -Force $DeviceBuildDir
+        }
+    }
+
+    # Locate Pico SDK bundled tools (.pico-sdk directory from VS Code extension)
+    $PicoSdkHome = $null
+    $UserHome = $env:USERPROFILE
+    if ($UserHome) {
+        $Candidate = Join-Path $UserHome ".pico-sdk"
+        if (Test-Path $Candidate) {
+            $PicoSdkHome = $Candidate
+        }
+    }
+
+    # Find Ninja from Pico SDK tools
+    $NinjaExe = $null
+    $PossibleNinjaPaths = @()
+
+    if ($PicoSdkHome) {
+        # Search all versioned ninja directories
+        $NinjaDir = Join-Path $PicoSdkHome "ninja"
+        if (Test-Path $NinjaDir) {
+            Get-ChildItem $NinjaDir -Directory | ForEach-Object {
+                $PossibleNinjaPaths += (Join-Path $_.FullName "ninja.exe")
+            }
+        }
+    }
+
+    # Also check PATH
+    $NinjaInPath = Get-Command ninja -ErrorAction SilentlyContinue
+    if ($NinjaInPath) {
+        $PossibleNinjaPaths += $NinjaInPath.Source
+    }
+
+    foreach ($Path in $PossibleNinjaPaths) {
+        if (Test-Path $Path) {
+            $NinjaExe = $Path
+            break
+        }
+    }
+
+    # Find CMake from Pico SDK tools (prefer SDK-bundled cmake over system cmake)
+    $DeviceCMake = "cmake"
+    if ($PicoSdkHome) {
+        $CmakeDir = Join-Path $PicoSdkHome "cmake"
+        if (Test-Path $CmakeDir) {
+            Get-ChildItem $CmakeDir -Directory | ForEach-Object {
+                $CmakeCandidate = Join-Path $_.FullName "bin\cmake.exe"
+                if (Test-Path $CmakeCandidate) {
+                    $DeviceCMake = $CmakeCandidate
+                }
+            }
+        }
+    }
+    Print-Info "Using CMake: $DeviceCMake"
+
+    # Find ARM toolchain
+    $ArmGcc = $null
+    if ($PicoSdkHome) {
+        $ToolchainDir = Join-Path $PicoSdkHome "toolchain"
+        if (Test-Path $ToolchainDir) {
+            Get-ChildItem $ToolchainDir -Directory | ForEach-Object {
+                $GccCandidate = Join-Path $_.FullName "bin\arm-none-eabi-gcc.exe"
+                if (Test-Path $GccCandidate) {
+                    $ArmGcc = Join-Path $_.FullName "bin"
+                }
+            }
+        }
+    }
+
+    # Configure CMake for device
+    $DeviceCMakeCache = Join-Path $DeviceBuildDir "CMakeCache.txt"
+    if (-not (Test-Path $DeviceCMakeCache)) {
+        Print-Info "Configuring device CMake..."
+
+        Push-Location $DeviceDir
+        try {
+            $DeviceCMakeArgs = @("-B", $DeviceBuildDir, "-S", ".")
+
+            if ($NinjaExe) {
+                Print-Info "Found Ninja: $NinjaExe"
+                $DeviceCMakeArgs += "-G", "Ninja"
+                $DeviceCMakeArgs += "-DCMAKE_MAKE_PROGRAM=$NinjaExe"
+            } else {
+                Print-Error-Custom "Ninja not found. The Pico SDK uses Ninja as build system."
+                Write-Host "  Option 1: Install Raspberry Pi Pico extension for VS Code (bundles all tools)"
+                Write-Host "  Option 2: choco install ninja"
+                Write-Host "  Option 3: scoop install ninja"
+                exit 1
+            }
+
+            # Add ARM toolchain to PATH if found
+            if ($ArmGcc) {
+                Print-Info "Found ARM toolchain: $ArmGcc"
+                $env:PATH = "$ArmGcc;$env:PATH"
+            }
+
+            & $DeviceCMake $DeviceCMakeArgs
+            if ($LASTEXITCODE -ne 0) {
+                Print-Error-Custom "Device CMake configuration failed"
+                exit 1
+            }
+        } finally {
+            Pop-Location
+        }
+        Print-Success "Device CMake configured"
+    } else {
+        Print-Info "Using existing device CMake configuration"
+    }
+
+    # Build device firmware
+    Print-Info "Building device firmware..."
+    Push-Location $DeviceDir
+    try {
+        & $DeviceCMake --build $DeviceBuildDir
+        if ($LASTEXITCODE -ne 0) {
+            Print-Error-Custom "Device build failed"
+            exit 1
+        }
+    } finally {
+        Pop-Location
+    }
+
+    # Check for output files
+    $Uf2File = Join-Path $DeviceBuildDir "powermonitor.uf2"
+    if (Test-Path $Uf2File) {
+        Print-Success "Device firmware built successfully!"
+        Write-Host ""
+        Print-Info "Output: $Uf2File"
+
+        if ($ShouldFlash) {
+            # Flash the firmware
+            Write-Host ""
+            Print-Info "Flashing firmware to Pico..."
+            Write-Host ""
+            Print-Info "Please ensure your Pico is in BOOTSEL mode (hold BOOTSEL while plugging in)"
+            Write-Host "Waiting 5 seconds..."
+            Start-Sleep -Seconds 5
+
+            # Find the RPI-RP2 drive
+            $PicoDrive = $null
+
+            Get-Volume | Where-Object { $_.FileSystemLabel -eq "RPI-RP2" } | ForEach-Object {
+                $PicoDrive = $_.DriveLetter
+                if ($PicoDrive) {
+                    $PicoDrive = $PicoDrive + ":"
+                }
+            }
+
+            if (-not $PicoDrive) {
+                # Try alternative detection via WMI
+                $drives = Get-WmiObject -Class Win32_LogicalDisk | Where-Object { $_.VolumeName -eq "RPI-RP2" }
+                foreach ($drive in $drives) {
+                    $PicoDrive = $drive.DeviceID
+                }
+            }
+
+            if (-not $PicoDrive) {
+                Print-Error-Custom "Could not find Pico in BOOTSEL mode (RPI-RP2 drive not found)"
+                Write-Host ""
+                Print-Info "Make sure your Pico is connected and in BOOTSEL mode"
+                Print-Info "1. Hold BOOTSEL button on Pico"
+                Print-Info "2. Connect Pico to USB"
+                Print-Info "3. Release BOOTSEL after connection"
+                Print-Info "4. The drive should appear as 'RPI-RP2'"
+                exit 1
+            }
+
+            Print-Info "Found Pico drive: $PicoDrive"
+
+            # Copy the UF2 file
+            try {
+                Copy-Item -Path $Uf2File -Destination $PicoDrive -ErrorAction Stop
+                Print-Success "Firmware flashed successfully!"
+                Write-Host ""
+                Print-Info "The Pico will reboot and start running the new firmware"
+            } catch {
+                Print-Error-Custom "Failed to copy firmware to Pico: $_"
+                Write-Host ""
+                Print-Info "Make sure the RPI-RP2 drive is still accessible"
+                exit 1
+            }
+        } else {
+            Write-Host ""
+            Print-Info "To flash to Pico:"
+            Write-Host "  1. Hold BOOTSEL while plugging in the Pico"
+            Write-Host "  2. Copy the .uf2 file to the RPI-RP2 drive"
+        }
+    } else {
+        Print-Warning "Build completed but .uf2 file not found at expected location"
+        Print-Info "Check $DeviceBuildDir for output files"
     }
 
     exit 0

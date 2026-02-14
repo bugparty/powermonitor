@@ -55,6 +55,10 @@ target_include_directories(powermonitor PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/..
 )
 
+target_compile_definitions(powermonitor PRIVATE
+        PHASE2_DUAL_CORE
+)
+
 # Add any user requested libraries
 target_link_libraries(powermonitor
         hardware_i2c

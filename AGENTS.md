@@ -15,15 +15,15 @@ Practical handbook for AI agents working in this repo. Keep outputs (docs, comme
 ---
 
 ## Build, Test, Run
-- Quick full test: `./test.sh` (required after any code change).
-- Clean rebuild + test: `./test.sh --clean`.
-- Verbose failures: `./test.sh --verbose` or `./test.sh --help` for options.
-- Configure host build (if needed): `cmake -B build -S .` then `cmake --build build`.
-- Run tests directly: `./build/pc_sim/pc_sim_test` (after CMake build).
-- Single test case: `./build/pc_sim/pc_sim_test --gtest_filter=SuiteName.TestName`.
-- CTest alternative: `cd build && ctest -R <regex> --verbose`.
+- Quick full test: `pwsh workflow.ps1` (required after any code change).
+- Clean rebuild + test: `pwsh workflow.ps1 -Clean` or `pwsh workflow.ps1 -Rebuild`.
+- Verbose output: `pwsh workflow.ps1 -Verbose`.
+- Help: `pwsh workflow.ps1 -Help` for all options.
+- Windows-only: `pwsh workflow.ps1 -GenerateSolution` to create VS solution, `-OpenVS` to open in Visual Studio.
+- Run tests directly: `./build/pc_sim/pc_sim_test` (or `.\build\pc_sim\pc_sim_test.exe` on Windows).
+- Single test case: `--gtest_filter=SuiteName.TestName`.
 - Device firmware: `cd device && cmake -B build && cmake --build build` (requires Pico SDK; flashing not automated here).
-- Do not skip tests before commit; 28/28 must pass.
+- Do not skip tests before commit; 34/34 must pass.
 
 ---
 
@@ -117,8 +117,7 @@ Practical handbook for AI agents working in this repo. Keep outputs (docs, comme
 
 ## Safe Single-Test Loop Example
 ```bash
-cmake -B build -S .
-cmake --build build
+pwsh workflow.ps1
 ./build/pc_sim/pc_sim_test --gtest_filter=ParserStateMachineTests.SyncAfterNoise
 ```
 Use this pattern to iterate quickly on failing cases.

@@ -6,7 +6,9 @@ param(
     [switch]$Clean,
     [switch]$Rebuild,
     [switch]$Verbose,
-    [switch]$Help
+    [switch]$Help,
+    [switch]$GenerateSolution,
+    [switch]$OpenVS
 )
 
 # Exit on error
@@ -51,15 +53,19 @@ if ($Help) {
     Write-Host "Usage: .\workflow.ps1 [OPTIONS]"
     Write-Host ""
     Write-Host "Options:"
-    Write-Host "  -Clean      Clean build directory before building"
-    Write-Host "  -Rebuild    Rebuild all targets (equivalent to -Clean)"
-    Write-Host "  -Verbose    Verbose output from tests"
-    Write-Host "  -Help       Show this help message"
+    Write-Host "  -Clean           Clean build directory before building"
+    Write-Host "  -Rebuild         Rebuild all targets (equivalent to -Clean)"
+    Write-Host "  -Verbose         Verbose output from tests"
+    Write-Host "  -GenerateSolution Generate Visual Studio solution files only"
+    Write-Host "  -OpenVS          Generate solution and open in Visual Studio"
+    Write-Host "  -Help            Show this help message"
     Write-Host ""
     Write-Host "Examples:"
     Write-Host "  .\workflow.ps1                # Run tests with existing build"
     Write-Host "  .\workflow.ps1 -Clean         # Clean build and run tests"
     Write-Host "  .\workflow.ps1 -Verbose       # Run tests with verbose output"
+    Write-Host "  .\workflow.ps1 -GenerateSolution  # Generate VS solution files"
+    Write-Host "  .\workflow.ps1 -OpenVS        # Generate and open in Visual Studio"
     exit 0
 }
 
@@ -85,6 +91,68 @@ if ($CurrentIsLinux) {
     Print-Info "Detected OS: Linux"
 } else {
     Print-Info "Detected OS: Windows"
+}
+
+# Handle GenerateSolution and OpenVS modes
+if ($GenerateSolution -or $OpenVS) {
+    if (-not $CurrentIsWindows) {
+        Print-Error-Custom "Visual Studio solution generation is only supported on Windows"
+        exit 1
+    }
+
+    Print-Info "Generating Visual Studio solution files..."
+
+    # Clean build directory for fresh generation
+    if (Test-Path $BuildDir) {
+        Remove-Item -Recurse -Force $BuildDir
+    }
+
+    $CMakeArgs = @("-B", $BuildDir, "-S", $ScriptDir)
+
+    $Generator = "Visual Studio 18 2026"
+    $Arch = "x64"
+    if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') {
+        $Arch = "ARM64"
+    }
+
+    Print-Info "Using Generator: $Generator -A $Arch"
+    $CMakeArgs += "-G", $Generator, "-A", $Arch
+
+    & cmake $CMakeArgs
+    if ($LASTEXITCODE -ne 0) {
+        Print-Error-Custom "CMake configuration failed"
+        exit 1
+    }
+
+    # Check for .sln (classic) or .slnx (new XML format)
+    $SolutionFile = Join-Path $BuildDir "powermonitor.sln"
+    $SolutionXFile = Join-Path $BuildDir "powermonitor.slnx"
+
+    $FoundSolution = $null
+    if (Test-Path $SolutionXFile) {
+        $FoundSolution = $SolutionXFile
+        Print-Success "Solution generated (slnx format): $SolutionXFile"
+    } elseif (Test-Path $SolutionFile) {
+        $FoundSolution = $SolutionFile
+        Print-Success "Solution generated: $SolutionFile"
+    } else {
+        Print-Error-Custom "Solution file not found at $SolutionFile or $SolutionXFile"
+        exit 1
+    }
+
+    if ($OpenVS) {
+        Print-Info "Opening solution in Visual Studio..."
+        Start-Process -FilePath "devenv.exe" -ArgumentList $FoundSolution
+        Print-Success "Visual Studio launched"
+    } else {
+        Write-Host ""
+        Print-Info "You can now open the solution in Visual Studio:"
+        Write-Host "  devenv $FoundSolution"
+        Write-Host ""
+        Print-Info "Or open directly from File > Open > Project/Solution"
+    }
+
+    exit 0
 }
 
 # Clean build if requested

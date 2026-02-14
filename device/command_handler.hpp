@@ -107,8 +107,8 @@ private:
     }
 
     void handle_time_sync(const protocol::Frame& frame) {
-        // T2: capture receive time immediately
-        uint64_t t2 = time_us_64();
+        // T2: capture receive time immediately (monotonic)
+        uint64_t t2_mono = time_us_64();
 
         if (frame.data_len < sizeof(protocol::TimeSyncPayload)) {
             send_rsp(frame.seq, frame.msgid, protocol::Status::kErrLen);
@@ -117,13 +117,20 @@ private:
 
         const auto* cmd = reinterpret_cast<const protocol::TimeSyncPayload*>(frame.data);
 
+        // Capture T3 just before sending (monotonic)
+        uint64_t t3_mono = time_us_64();
+
+        // Convert to Unix time using epoch_offset
+        uint64_t t2 = t2_mono + static_cast<uint64_t>(ctx_.epoch_offset_us);
+        uint64_t t3 = t3_mono + static_cast<uint64_t>(ctx_.epoch_offset_us);
+
         // Prepare response with T3 captured right before sending
         protocol::TimeSyncResponsePayload rsp;
         rsp.orig_msgid = frame.msgid;
         rsp.status = static_cast<uint8_t>(protocol::Status::kOk);
         rsp.t1 = cmd->t1;
         rsp.t2 = t2;
-        rsp.t3 = time_us_64(); // Capture T3
+        rsp.t3 = t3;
 
         size_t len = protocol::build_frame(
             tx_buf_, sizeof(tx_buf_),

@@ -100,6 +100,22 @@ target_include_directories(powermonitor PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../protocol
 )
 
+add_executable(pc_time_sync_demo
+    src/time_sync_demo.cpp
+)
+
+target_link_libraries(pc_time_sync_demo
+    pc_client_lib
+)
+
+target_compile_definitions(pc_time_sync_demo PRIVATE ASIO_STANDALONE)
+
+target_include_directories(pc_time_sync_demo PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../protocol
+)
+
 add_executable(pc_client_tests
     tests/device_serial_tests.cpp
 )
@@ -128,6 +144,8 @@ gtest_discover_tests(pc_client_tests)
 if(MSVC)
   target_compile_options(powermonitor PUBLIC "/ZI")
   target_link_options(powermonitor PUBLIC "/INCREMENTAL")
+  target_compile_options(pc_time_sync_demo PUBLIC "/ZI")
+  target_link_options(pc_time_sync_demo PUBLIC "/INCREMENTAL")
   target_compile_options(pc_client_tests PUBLIC "/ZI")
   target_link_options(pc_client_tests PUBLIC "/INCREMENTAL")
 endif()

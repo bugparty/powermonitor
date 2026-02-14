@@ -21,3 +21,21 @@ jobs:
       shell: pwsh
       run: |
         ./workflow.ps1 -Clean -Verbose
+
+  build-device-firmware:
+    name: Device Firmware (Pico SDK)
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install Pico SDK & Toolchain
+      shell: pwsh
+      run: |
+        ./scripts/setup_pico_sdk.ps1 -Force
+
+    - name: Build Device Firmware
+      shell: bash
+      run: |
+        source $HOME/.pico-sdk/env.sh
+        cmake -B device/build device/
+        cmake --build device/build

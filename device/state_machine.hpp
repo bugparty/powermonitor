@@ -5,7 +5,7 @@
 
 // Define PHASE2_DUAL_CORE to enable dual-core mode with real I2C sampling
 // Comment out for Phase 1 (single-core with fake data)
-#define PHASE2_DUAL_CORE
+// #define PHASE2_DUAL_CORE
 
 #ifndef PHASE2_DUAL_CORE
 #include "core/fake_data.hpp"
@@ -53,6 +53,9 @@ struct DeviceContext {
     // Status flags
     bool cal_valid = false;             // SHUNT_CAL has been set
     uint8_t adcrange = 0;               // 0: ±163.84mV, 1: ±40.96mV
+
+    // Time synchronization
+    int64_t epoch_offset_us = 0;        // Offset between local monotonic time and Unix epoch
 
 #ifndef PHASE2_DUAL_CORE
     // Phase 1: Fake data generator

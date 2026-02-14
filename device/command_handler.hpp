@@ -38,6 +38,15 @@ public:
         case protocol::MsgId::kPing:
             handle_ping(frame);
             break;
+        case protocol::MsgId::kTimeSync:
+            handle_time_sync(frame);
+            break;
+        case protocol::MsgId::kTimeAdjust:
+            handle_time_adjust(frame);
+            break;
+        case protocol::MsgId::kTimeSet:
+            handle_time_set(frame);
+            break;
         case protocol::MsgId::kSetCfg:
             handle_set_cfg(frame);
             break;
@@ -94,6 +103,58 @@ public:
 
 private:
     void handle_ping(const protocol::Frame& frame) {
+        send_rsp(frame.seq, frame.msgid, protocol::Status::kOk);
+    }
+
+    void handle_time_sync(const protocol::Frame& frame) {
+        // T2: capture receive time immediately
+        uint64_t t2 = time_us_64();
+
+        if (frame.data_len < sizeof(protocol::TimeSyncPayload)) {
+            send_rsp(frame.seq, frame.msgid, protocol::Status::kErrLen);
+            return;
+        }
+
+        const auto* cmd = reinterpret_cast<const protocol::TimeSyncPayload*>(frame.data);
+
+        // Prepare response with T3 captured right before sending
+        protocol::TimeSyncResponsePayload rsp;
+        rsp.orig_msgid = frame.msgid;
+        rsp.status = static_cast<uint8_t>(protocol::Status::kOk);
+        rsp.t1 = cmd->t1;
+        rsp.t2 = t2;
+        rsp.t3 = time_us_64(); // Capture T3
+
+        size_t len = protocol::build_frame(
+            tx_buf_, sizeof(tx_buf_),
+            protocol::FrameType::kRsp, 0, frame.seq, frame.msgid,
+            reinterpret_cast<const uint8_t*>(&rsp), sizeof(rsp)
+        );
+
+        if (len > 0 && write_fn_) {
+            write_fn_(tx_buf_, len);
+        }
+    }
+
+    void handle_time_adjust(const protocol::Frame& frame) {
+        if (frame.data_len < sizeof(protocol::TimeAdjustPayload)) {
+            send_rsp(frame.seq, frame.msgid, protocol::Status::kErrLen);
+            return;
+        }
+        const auto* cmd = reinterpret_cast<const protocol::TimeAdjustPayload*>(frame.data);
+        ctx_.epoch_offset_us += cmd->offset_us;
+        send_rsp(frame.seq, frame.msgid, protocol::Status::kOk);
+    }
+
+    void handle_time_set(const protocol::Frame& frame) {
+        if (frame.data_len < sizeof(protocol::TimeSetPayload)) {
+            send_rsp(frame.seq, frame.msgid, protocol::Status::kErrLen);
+            return;
+        }
+        const auto* cmd = reinterpret_cast<const protocol::TimeSetPayload*>(frame.data);
+        uint64_t now_us = time_us_64();
+        // epoch_offset = unix_time - monotonic_time
+        ctx_.epoch_offset_us = static_cast<int64_t>(cmd->unix_time_us) - static_cast<int64_t>(now_us);
         send_rsp(frame.seq, frame.msgid, protocol::Status::kOk);
     }
 

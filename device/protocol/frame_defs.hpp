@@ -30,6 +30,9 @@ enum class FrameType : uint8_t {
 enum class MsgId : uint8_t {
     // Management
     kPing        = 0x01,
+    kTimeSync    = 0x05,
+    kTimeAdjust  = 0x06,
+    kTimeSet     = 0x07,
 
     // Configuration
     kSetCfg      = 0x10,
@@ -125,6 +128,30 @@ struct RegWriteCmdPayload {
     uint8_t ina_addr;
     uint8_t reg_addr;
     uint16_t reg_value;
+} __attribute__((packed));
+
+// TIME_SYNC command payload
+struct TimeSyncPayload {
+    uint64_t t1;
+} __attribute__((packed));
+
+// TIME_SYNC response payload
+struct TimeSyncResponsePayload {
+    uint8_t orig_msgid;
+    uint8_t status;
+    uint64_t t1;
+    uint64_t t2;
+    uint64_t t3;
+} __attribute__((packed));
+
+// TIME_ADJUST command payload
+struct TimeAdjustPayload {
+    int64_t offset_us;
+} __attribute__((packed));
+
+// TIME_SET command payload
+struct TimeSetPayload {
+    uint64_t unix_time_us;
 } __attribute__((packed));
 
 } // namespace protocol

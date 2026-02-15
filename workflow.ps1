@@ -203,11 +203,21 @@ if ($BuildDevice -or $FlashPico) {
     # Locate Pico SDK bundled tools (.pico-sdk directory from VS Code extension)
     $PicoSdkHome = $null
     $UserHome = $env:USERPROFILE
+    if (-not $UserHome) {
+        $UserHome = $env:HOME
+    }
+
     if ($UserHome) {
         $Candidate = Join-Path $UserHome ".pico-sdk"
         if (Test-Path $Candidate) {
             $PicoSdkHome = $Candidate
         }
+    }
+
+    # Helper for executable names
+    $ExeExt = ""
+    if ($CurrentIsWindows) {
+        $ExeExt = ".exe"
     }
 
     # Find Ninja from Pico SDK tools
@@ -219,7 +229,7 @@ if ($BuildDevice -or $FlashPico) {
         $NinjaDir = Join-Path $PicoSdkHome "ninja"
         if (Test-Path $NinjaDir) {
             Get-ChildItem $NinjaDir -Directory | ForEach-Object {
-                $PossibleNinjaPaths += (Join-Path $_.FullName "ninja.exe")
+                $PossibleNinjaPaths += (Join-Path $_.FullName "ninja$ExeExt")
             }
         }
     }
@@ -243,7 +253,8 @@ if ($BuildDevice -or $FlashPico) {
         $CmakeDir = Join-Path $PicoSdkHome "cmake"
         if (Test-Path $CmakeDir) {
             Get-ChildItem $CmakeDir -Directory | ForEach-Object {
-                $CmakeCandidate = Join-Path $_.FullName "bin\cmake.exe"
+                $BinDir = Join-Path $_.FullName "bin"
+                $CmakeCandidate = Join-Path $BinDir "cmake$ExeExt"
                 if (Test-Path $CmakeCandidate) {
                     $DeviceCMake = $CmakeCandidate
                 }
@@ -258,9 +269,10 @@ if ($BuildDevice -or $FlashPico) {
         $ToolchainDir = Join-Path $PicoSdkHome "toolchain"
         if (Test-Path $ToolchainDir) {
             Get-ChildItem $ToolchainDir -Directory | ForEach-Object {
-                $GccCandidate = Join-Path $_.FullName "bin\arm-none-eabi-gcc.exe"
+                $BinDir = Join-Path $_.FullName "bin"
+                $GccCandidate = Join-Path $BinDir "arm-none-eabi-gcc$ExeExt"
                 if (Test-Path $GccCandidate) {
-                    $ArmGcc = Join-Path $_.FullName "bin"
+                    $ArmGcc = $BinDir
                 }
             }
         }
@@ -290,7 +302,7 @@ if ($BuildDevice -or $FlashPico) {
             # Add ARM toolchain to PATH if found
             if ($ArmGcc) {
                 Print-Info "Found ARM toolchain: $ArmGcc"
-                $env:PATH = "$ArmGcc;$env:PATH"
+                $env:PATH = "$ArmGcc" + [IO.Path]::PathSeparator + "$env:PATH"
             }
 
             & $DeviceCMake $DeviceCMakeArgs

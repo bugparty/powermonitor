@@ -34,7 +34,8 @@ jobs:
           ${{ runner.os }}-build-
     
     - name: Run tests
-      run: ./test.sh --verbose
+      shell: pwsh
+      run: ./workflow.ps1 -Verbose
       
     - name: Upload test results
       if: always()
@@ -46,3 +47,21 @@ jobs:
           !build/**/*.o
           !build/**/*.a
           !build/CMakeFiles/
+
+  device:
+    name: Device Firmware
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Pico SDK & Toolchain
+      shell: pwsh
+      run: ./scripts/setup_pico_sdk.ps1 -Force
+
+    - name: Build Device Firmware
+      shell: pwsh
+      run: |
+        . $HOME/.pico-sdk/env.ps1
+        ./workflow.ps1 -BuildDevice

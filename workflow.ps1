@@ -480,11 +480,31 @@ if ($CurrentIsWindows) {
 }
 
 if (-not $TestExec) {
+    # Fallback: search recursively because output directories can be customized
+    if ($CurrentIsWindows) {
+        $Found = Get-ChildItem -Path $BuildDir -Recurse -Filter "pc_sim_test.exe" -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+        if ($Found) {
+            $TestExec = $Found.FullName
+            Print-Warning "Using discovered test executable: $TestExec"
+        }
+    } else {
+        $Found = Get-ChildItem -Path $BuildDir -Recurse -Filter "pc_sim_test" -ErrorAction SilentlyContinue |
+            Where-Object { -not $_.PSIsContainer } |
+            Select-Object -First 1
+        if ($Found) {
+            $TestExec = $Found.FullName
+            Print-Warning "Using discovered test executable: $TestExec"
+        }
+    }
+}
+
+if (-not $TestExec) {
     Print-Error-Custom "Test executable not found"
     if ($CurrentIsWindows) {
-        Print-Info "Checked Debug/Release subdirectories for pc_sim_test.exe"
+        Print-Info "Checked Debug/Release and recursive fallback for pc_sim_test.exe"
     } else {
-        Print-Info "Checked for pc_sim_test in build directory"
+        Print-Info "Checked default and recursive fallback for pc_sim_test"
     }
     exit 1
 }

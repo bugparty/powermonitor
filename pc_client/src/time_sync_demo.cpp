@@ -1,4 +1,5 @@
 #include <chrono>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <deque>
@@ -393,24 +394,9 @@ int main(int argc, char **argv) {
 
     int ok_count = 0;
     int fail_count = 0;
+    int total_rounds = 0;
     long double offset_abs_sum = 0.0L;
     long double delay_sum = 0.0L;
-
-    // Run drift test if requested
-    if (options.run_drift_test) {
-        std::cout << "\n=== Running continuous drift test with " << options.drift_interval_ms
-                  << "ms interval ===\n";
-        // Perform initial sync rounds
-        do_sync_rounds(10, options.drift_interval_ms);
-
-        // Continuous monitoring
-        int round = 11;
-        while (true) {
-            int64_t last_offset = do_sync_rounds(1, options.drift_interval_ms);
-            std::cout << "[Continuous #" << round << "] offset=" << last_offset << " us\n";
-            ++round;
-        }
-    }
 
     struct DriftPoint {
         int wait_minutes = 0;
@@ -419,27 +405,11 @@ int main(int argc, char **argv) {
     };
     std::vector<DriftPoint> drift_results;
 
-    // Run drift test if requested
-    if (options.run_drift_test) {
-        std::cout << "\n=== Running continuous drift test with " << options.drift_interval_ms
-                  << "ms interval ===\n";
-        // Perform initial sync rounds
-        do_sync_rounds(10, options.drift_interval_ms);
-
-        // Continuous monitoring
-        int round = 11;
-        while (true) {
-            int64_t last_offset = do_sync_rounds(1, options.drift_interval_ms);
-            std::cout << "[Continuous #" << round << "] offset=" << last_offset << " us\n";
-            ++round;
-        }
-    }
-
-    // Helper: perform N rounds of sync and return average offset
-    auto do_sync_rounds = [&](int rounds, int interval_ms) -> int64_t {
-        int64_t last_offset = 0;
-        int64_t last_offset = 0;
+    // Helper: perform N rounds of sync and return last valid offset (if any)
+    auto do_sync_rounds = [&](int rounds, int interval_ms) -> std::optional<int64_t> {
+        std::optional<int64_t> last_offset;
         for (int i = 0; i < rounds; ++i) {
+            ++total_rounds;
             const uint64_t t1 = now_steady_us();
             std::vector<uint8_t> sync_payload;
             pack_u64_le(sync_payload, t1);
@@ -502,6 +472,24 @@ int main(int argc, char **argv) {
         return last_offset;
     };
 
+    // Optional continuous short-interval drift observation mode
+    if (options.run_drift_test) {
+        std::cout << "\n=== Continuous drift test, interval=" << options.drift_interval_ms
+                  << " ms ===\n";
+        do_sync_rounds(10, options.drift_interval_ms);
+
+        int round = 1;
+        while (true) {
+            const std::optional<int64_t> offset = do_sync_rounds(1, options.drift_interval_ms);
+            if (offset.has_value()) {
+                std::cout << "[Continuous #" << round << "] offset=" << *offset << " us\n";
+            } else {
+                std::cout << "[Continuous #" << round << "] no valid sync result\n";
+            }
+            ++round;
+        }
+    }
+
     // Initial 10 rounds
     std::cout << "\n=== Phase 1: Initial 10 rounds fast sync ===\n";
     do_sync_rounds(10, options.interval_ms);
@@ -509,8 +497,8 @@ int main(int argc, char **argv) {
     // Wait 2 minutes, then sync once
     std::cout << "\n=== Phase 2: Wait 2 minutes, then sync ===\n";
     std::this_thread::sleep_for(std::chrono::minutes(2));
-    int64_t offset_2min = do_sync_rounds(1, 0);
-    drift_results.push_back({2, offset_2min, offset_2min != 0});
+    std::optional<int64_t> offset_2min = do_sync_rounds(1, 0);
+    drift_results.push_back({2, offset_2min.value_or(0), offset_2min.has_value()});
 
     // Wait 5 minutes, then 10 rounds
     std::cout << "\n=== Phase 3: Wait 5 minutes, then 10 rounds ===\n";
@@ -520,11 +508,11 @@ int main(int argc, char **argv) {
     // Wait 10 minutes, then 10 rounds
     std::cout << "\n=== Phase 4: Wait 10 minutes, then 10 rounds ===\n";
     std::this_thread::sleep_for(std::chrono::minutes(10));
-    int64_t offset_10min = do_sync_rounds(1, 0);
-    drift_results.push_back({10, offset_10min, offset_10min != 0});
+    std::optional<int64_t> offset_10min = do_sync_rounds(1, 0);
+    drift_results.push_back({10, offset_10min.value_or(0), offset_10min.has_value()});
 
     std::cout << "\nSummary:\n";
-    std::cout << "  total=" << options.sync_count << "\n";
+    std::cout << "  total=" << total_rounds << "\n";
     std::cout << "  ok=" << ok_count << "\n";
     std::cout << "  fail=" << fail_count << "\n";
     if (ok_count > 0) {
@@ -541,4 +529,3 @@ int main(int argc, char **argv) {
 
     return fail_count == 0 ? 0 : 2;
 }
-

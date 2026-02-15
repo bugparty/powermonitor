@@ -34,8 +34,7 @@ jobs:
         ./scripts/setup_pico_sdk.ps1 -Force
 
     - name: Build Device Firmware
-      shell: bash
+      shell: pwsh
       run: |
-        source $HOME/.pico-sdk/env.sh
-        cmake -B device/build device/
-        cmake --build device/build
+        . $HOME/.pico-sdk/env.ps1
+        ./workflow.ps1 -BuildDevice

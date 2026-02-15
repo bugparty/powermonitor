@@ -108,6 +108,7 @@ Uses classic structure of **delimiter + header + payload + checksum**.
 |**0x80**|`DATA_SAMPLE`|D→P|Data|Core sampling data (voltage/current raw values)|
 |**0x90**|`EVT_ALERT`|D→P|Event|Hardware alert (Over-Voltage, etc.)|
 |**0x91**|`CFG_REPORT`|D→P|Event|**Configuration report** (includes conversion coefficients)|
+|**0x92**|`STATS_REPORT`|D→P|Event|Periodic stream statistics report (`samples_produced/samples_dropped/queue_depth`)|
 
 ## 4. Common Response Mechanism
 
@@ -290,6 +291,35 @@ struct {
     uint16_t stream_mask;     // Streaming channel mask
 } __attribute__((packed));
 ```
+
+#### 5.1.2.1 STATS_REPORT (0x92)
+
+- **Direction**: Dev → PC
+- **Frame Type**: `EVT (0x04)`
+- **Description**: Periodic device-side stream health report for diagnosing queue pressure and sample loss.
+
+```c
+struct {
+    uint16_t report_seq;        // Monotonic report sequence (wrap-around)
+    uint32_t samples_produced;  // Total samples produced on device side
+    uint32_t samples_dropped;   // Total dropped samples on device side
+    uint32_t dropped_cnvrf_not_ready;
+    uint32_t dropped_duplicate_suppressed;
+    uint32_t dropped_worker_missed_tick;
+    uint32_t dropped_queue_full;
+    uint16_t queue_depth;       // Queue depth snapshot at report time
+    uint8_t  reason_bits;       // Reserved for future reason breakdown
+    uint16_t window_ms;         // Report window length in milliseconds
+} __attribute__((packed));
+
+// Total length: 31 bytes
+```
+
+**Emission policy (current implementation)**:
+
+- Sent every 1000 ms while streaming is active.
+- Sent once on `STREAM_STOP` as a final summary report.
+- If link is congested, periodic report may skip one window to avoid blocking the data path.
 
 #### 5.1.3 SET_CFG (0x10)
 

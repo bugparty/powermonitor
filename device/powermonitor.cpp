@@ -3,6 +3,7 @@
 // Phase 2: Dual-core operation with real I2C sampling
 
 #include <cstdio>
+#include <cmath>
 #include "pico/stdlib.h"
 #include "hardware/i2c.h"
 #include "tusb.h"
@@ -131,6 +132,11 @@ int main() {
     INA228 ina228(I2C_PORT, INA228_ADDR, INA228_SHUNT_OHMS);
     ina228.configure();
     g_ctx.ina228 = &ina228;
+    g_ctx.adcrange = ina228.get_adc_range();
+    // INA228 current_lsb = max_current / 2^19; convert A/LSB to nA/LSB for CFG_REPORT.
+    g_ctx.current_lsb_nA = static_cast<uint32_t>(
+        std::llround((3.5 / 524288.0) * 1e9));
+    g_ctx.cal_valid = g_ctx.current_lsb_nA > 0;
 
 #ifdef PHASE2_DUAL_CORE
     // Phase 2: Initialize shared context and link to device context
@@ -170,6 +176,10 @@ int main() {
             if (count > 0) {
                 g_parser.feed(buf, count);
             }
+        }
+
+        if (g_handler) {
+            g_handler->maybe_emit_stats_report(time_us_64());
         }
 
         // Process streaming (Phase 1: generate fake, Phase 2: pop from queue)

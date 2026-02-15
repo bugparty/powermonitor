@@ -1,6 +1,6 @@
-﻿#include "INA228.hpp"
+#include "INA228.hpp"
 
-INA228::INA228(i2c_inst_t *i2c_inst, uint8_t i2c_addr, float shunt_ohms, float max_current) 
+INA228::INA228(i2c_inst_t *i2c_inst, uint8_t i2c_addr, float shunt_ohms, float max_current)
     : i2c_(i2c_inst), addr_(i2c_addr), shunt_ohms_(shunt_ohms), max_current_(max_current) {}
 
 bool INA228::i2c_read_reg_stop(uint8_t addr, uint8_t reg, uint8_t *buf, size_t n) const {
@@ -248,7 +248,7 @@ bool INA228::read_vbus_raw(uint32_t& raw20) const {
     if (!read_register24(INA228_Register::VBUS, reg24)) {
         return false;
     }
-    // VBUS is 20-bit unsigned in bits [23:4]
+    // VBUS is 20-bit unsigned in bits [23:4].
     raw20 = (reg24 >> 4) & 0x0FFFFF;
     return true;
 }
@@ -258,14 +258,8 @@ bool INA228::read_vshunt_raw(int32_t& raw20) const {
     if (!read_register24(INA228_Register::VSHUNT, reg24)) {
         return false;
     }
-    // VSHUNT is 20-bit signed in bits [23:4]
-    uint32_t val = (reg24 >> 4) & 0x0FFFFF;
-    // Sign-extend from 20-bit to 32-bit
-    if (val & 0x80000) {
-        raw20 = static_cast<int32_t>(val | 0xFFF00000);
-    } else {
-        raw20 = static_cast<int32_t>(val);
-    }
+    // VSHUNT is 20-bit signed in bits [23:4].
+    raw20 = static_cast<int32_t>(reg24 << 8) >> 12;
     return true;
 }
 
@@ -274,14 +268,8 @@ bool INA228::read_current_raw(int32_t& raw20) const {
     if (!read_register24(INA228_Register::CURRENT, reg24)) {
         return false;
     }
-    // CURRENT is 20-bit signed in bits [23:4]
-    uint32_t val = (reg24 >> 4) & 0x0FFFFF;
-    // Sign-extend from 20-bit to 32-bit
-    if (val & 0x80000) {
-        raw20 = static_cast<int32_t>(val | 0xFFF00000);
-    } else {
-        raw20 = static_cast<int32_t>(val);
-    }
+    // CURRENT is 20-bit signed in bits [23:4].
+    raw20 = static_cast<int32_t>(reg24 << 8) >> 12;
     return true;
 }
 
@@ -336,7 +324,7 @@ void INA228::get_diag_alerts(INA228_Alert alert) const {
         detail::DEBUG_PRINTF("Failed to read DIAG_ALRT register\n");
         return;
     }
-    
+
     switch(alert) {
         case INA228_Alert::MEMSTAT:
             if ((raw & 0x0001) == 0x0000) {
@@ -424,7 +412,7 @@ void INA228::get_diag_alerts(INA228_Alert alert) const {
 bool INA228::set_shunt_overvoltage(float value) {
     uint16_t data;
     float conv_factor = get_shunt_conv_factor();
-    
+
     if (value >= 0) {
         data = (uint16_t)((value * this->shunt_ohms_) / conv_factor);
     } else {
@@ -432,7 +420,7 @@ bool INA228::set_shunt_overvoltage(float value) {
         int16_t temp = (int16_t)((value_temp * this->shunt_ohms_) / conv_factor);
         data = (uint16_t)(~temp + 1);
     }
-    
+
     detail::DEBUG_PRINTF("Setting shunt overvoltage threshold: %f (data=0x%04X)\n", value, data);
     return write_register16(INA228_Register::SOVL, data);
 }
@@ -440,7 +428,7 @@ bool INA228::set_shunt_overvoltage(float value) {
 bool INA228::set_shunt_undervoltage(float value) {
     uint16_t data;
     float conv_factor = get_shunt_conv_factor();
-    
+
     if (value >= 0) {
         data = (uint16_t)((value * this->shunt_ohms_) / conv_factor);
     } else {
@@ -448,7 +436,7 @@ bool INA228::set_shunt_undervoltage(float value) {
         int16_t temp = (int16_t)((value_temp * this->shunt_ohms_) / conv_factor);
         data = (uint16_t)(~temp + 1);
     }
-    
+
     detail::DEBUG_PRINTF("Setting shunt undervoltage threshold: %f (data=0x%04X)\n", value, data);
     return write_register16(INA228_Register::SUVL, data);
 }

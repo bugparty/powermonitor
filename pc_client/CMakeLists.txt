@@ -35,9 +35,15 @@ FetchContent_Declare(
     GIT_TAG v1.14.0
 )
 
+FetchContent_Declare(
+    ftxui
+    GIT_REPOSITORY https://github.com/ArthurSonzogni/FTXUI.git
+    GIT_TAG v5.0.0
+)
+
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 
-FetchContent_MakeAvailable(cli11 nlohmann_json yaml-cpp asio googletest)
+FetchContent_MakeAvailable(cli11 nlohmann_json yaml-cpp asio googletest ftxui)
 
 add_library(serial
     src/serial/serial.cpp
@@ -81,20 +87,23 @@ target_include_directories(pc_client_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../protocol
 )
 
-add_executable(powermonitor
+add_executable(host_pc_client
     src/main.cpp
     src/power_monitor_session.cpp
 )
 
-target_link_libraries(powermonitor
+target_link_libraries(host_pc_client
     pc_client_lib
     CLI11::CLI11
     yaml-cpp
+    ftxui::screen
+    ftxui::dom
+    ftxui::component
 )
 
-target_compile_definitions(powermonitor PRIVATE ASIO_STANDALONE)
+target_compile_definitions(host_pc_client PRIVATE ASIO_STANDALONE)
 
-target_include_directories(powermonitor PRIVATE
+target_include_directories(host_pc_client PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../protocol
@@ -142,8 +151,8 @@ include(GoogleTest)
 gtest_discover_tests(pc_client_tests)
 
 if(MSVC)
-  target_compile_options(powermonitor PUBLIC "/ZI")
-  target_link_options(powermonitor PUBLIC "/INCREMENTAL")
+  target_compile_options(host_pc_client PUBLIC "/ZI")
+  target_link_options(host_pc_client PUBLIC "/INCREMENTAL")
   target_compile_options(pc_time_sync_demo PUBLIC "/ZI")
   target_link_options(pc_time_sync_demo PUBLIC "/INCREMENTAL")
   target_compile_options(pc_client_tests PUBLIC "/ZI")

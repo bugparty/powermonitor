@@ -278,7 +278,7 @@ private:
     void on_data_received(const uint8_t* data, size_t len) {
         std::cout << "Received " << len << " bytes: ";
         for (size_t i = 0; i < std::min(len, size_t(16)); ++i) {
-            std::cout << std::hex << std::setw(2) << std::setfill('0')
+            std::cout << std::hex << std::setw(3) << std::setfill('0')
                       << static_cast<int>(data[i]) << " ";
         }
         if (len > 16) std::cout << "...";

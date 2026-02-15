@@ -160,9 +160,98 @@ void test_time_set() {
     tx_buffer.clear();
 }
 
+void test_stats_report_periodic_and_stop() {
+    std::cout << "Testing Stats Report periodic + stop..." << std::endl;
+    device::DeviceContext ctx;
+    core::SharedContext shared;
+    shared.init();
+    ctx.shared_ctx = &shared;
+    ctx.start_streaming(1000, 0x000F, 0);
+
+    device::CommandHandler handler(ctx, mock_write_fn);
+    tx_buffer.clear();
+
+    // First call only initializes cadence baseline.
+    mock_time_us = 0;
+    handler.maybe_emit_stats_report(mock_time_us);
+    assert(tx_buffer.empty());
+
+    // Before 1 second, no report.
+    shared.samples_produced = 11;
+    shared.samples_dropped = 2;
+    shared.dropped_cnvrf_not_ready = 1;
+    shared.dropped_duplicate_suppressed = 0;
+    shared.dropped_worker_missed_tick = 1;
+    shared.dropped_queue_full = 0;
+    mock_time_us = 900000;
+    handler.maybe_emit_stats_report(mock_time_us);
+    assert(tx_buffer.empty());
+
+    // At >=1 second, periodic report should be emitted.
+    mock_time_us = 1000000;
+    handler.maybe_emit_stats_report(mock_time_us);
+    assert(!tx_buffer.empty());
+    assert(tx_buffer[3] == static_cast<uint8_t>(protocol::FrameType::kEvt));
+    assert(tx_buffer[8] == static_cast<uint8_t>(protocol::MsgId::kStatsReport));
+    const auto* periodic = reinterpret_cast<const protocol::StatsReportPayload*>(tx_buffer.data() + 9);
+    assert(periodic->report_seq == 0);
+    assert(periodic->samples_produced == 11);
+    assert(periodic->samples_dropped == 2);
+    assert(periodic->dropped_cnvrf_not_ready == 1);
+    assert(periodic->dropped_duplicate_suppressed == 0);
+    assert(periodic->dropped_worker_missed_tick == 1);
+    assert(periodic->dropped_queue_full == 0);
+    assert(periodic->window_ms == 1000);
+    tx_buffer.clear();
+
+    // STREAM_STOP should send RSP + final STATS_REPORT
+    protocol::Frame stop_frame{};
+    stop_frame.type = protocol::FrameType::kCmd;
+    stop_frame.msgid = static_cast<uint8_t>(protocol::MsgId::kStreamStop);
+    stop_frame.seq = 0x2A;
+    stop_frame.len = 1;
+    stop_frame.data_len = 0;
+
+    shared.samples_produced = 20;
+    shared.samples_dropped = 3;
+    shared.dropped_cnvrf_not_ready = 1;
+    shared.dropped_duplicate_suppressed = 1;
+    shared.dropped_worker_missed_tick = 1;
+    shared.dropped_queue_full = 0;
+    mock_time_us = 1500000;
+    handler.handle_frame(stop_frame);
+
+    assert(!tx_buffer.empty());
+    // First frame is RSP(STREAM_STOP)
+    assert(tx_buffer[3] == static_cast<uint8_t>(protocol::FrameType::kRsp));
+    assert(tx_buffer[8] == static_cast<uint8_t>(protocol::MsgId::kStreamStop));
+
+    // Move to second frame (EVT STATS_REPORT)
+    const uint16_t rsp_len = static_cast<uint16_t>(tx_buffer[6]) |
+                             (static_cast<uint16_t>(tx_buffer[7]) << 8);
+    const size_t rsp_total = 2 + 6 + rsp_len + 2;
+    assert(tx_buffer.size() > rsp_total + 9);
+    const uint8_t* evt = tx_buffer.data() + rsp_total;
+    assert(evt[3] == static_cast<uint8_t>(protocol::FrameType::kEvt));
+    assert(evt[8] == static_cast<uint8_t>(protocol::MsgId::kStatsReport));
+    const auto* final_rsp = reinterpret_cast<const protocol::StatsReportPayload*>(evt + 9);
+    assert(final_rsp->report_seq == 1);
+    assert(final_rsp->samples_produced == 20);
+    assert(final_rsp->samples_dropped == 3);
+    assert(final_rsp->dropped_cnvrf_not_ready == 1);
+    assert(final_rsp->dropped_duplicate_suppressed == 1);
+    assert(final_rsp->dropped_worker_missed_tick == 1);
+    assert(final_rsp->dropped_queue_full == 0);
+    assert(final_rsp->window_ms == 500);
+
+    std::cout << "Stats Report periodic + stop: PASS" << std::endl;
+    tx_buffer.clear();
+}
+
 int main() {
     test_time_sync();
     test_time_adjust();
     test_time_set();
+    test_stats_report_periodic_and_stop();
     return 0;
 }

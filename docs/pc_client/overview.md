@@ -1,4 +1,4 @@
-﻿# PC Client (Serial) Design
+# PC Client (Serial) Design
 
 Related code:
 - `pc_client/`
@@ -124,23 +124,25 @@ ina228:
   shunt_tempco: 0  # optional
 ```
 
-### Interactive Mode
+### Interactive Mode (FTXUI TUI)
 
-In interactive mode, the client waits for user commands instead of starting capture immediately.
+In interactive mode, the client opens a full-screen FTXUI terminal UI for live monitoring and controls.
 
-| Command | Description |
-|---------|-------------|
-| `start` | Start data capture |
-| `stop` | Stop data capture |
-| `status` | Show current status (streaming, sample count, etc.) |
-| `read <reg>` | Read INA228 register (debug) |
-| `write <reg> <val>` | Write INA228 register (debug) |
-| `save [file]` | Save collected data to file |
-| `quit` / `exit` | Exit the program |
+| Key | Description |
+|-----|-------------|
+| `t` | Toggle stream (`STREAM_START` / `STREAM_STOP`) |
+| `s` | Save current snapshot to output JSON path |
+| `q` | Quit session gracefully |
+
+Displayed panels include:
+- Connection/init/stream status
+- Live counters (samples, RX/TX, CRC failures, timeouts, IO errors, queue overflow)
+- Latest decoded sample summary
+- Scrolling log area
 
 Notes:
-- Debug commands (`read`, `write`) are only available in interactive mode.
 - In non-interactive mode, capture starts immediately after connection and runs until Ctrl+C.
+- TUI mode is intended to work on both Windows and Linux terminals.
 
 ## Port Discovery and Connection
 
@@ -507,7 +509,7 @@ target_include_directories(serial PUBLIC ${serial_SOURCE_DIR}/include)
 | Target | Type | Description |
 |--------|------|-------------|
 | `powermonitor_protocol` | STATIC | Shared protocol library (parser, frame builder, CRC) |
-| `powermonitor` | EXECUTABLE | PC client application |
+| `host_pc_client` | EXECUTABLE | PC client application (FTXUI-capable) |
 
 ### Example pc_client/CMakeLists.txt
 
@@ -517,16 +519,19 @@ project(powermonitor_client LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_executable(powermonitor
+add_executable(host_pc_client
     src/main.cpp
 )
 
-target_link_libraries(powermonitor
+target_link_libraries(host_pc_client
     powermonitor_protocol
     serial
     CLI11::CLI11
     nlohmann_json::nlohmann_json
     yaml-cpp
+    ftxui::screen
+    ftxui::dom
+    ftxui::component
 )
 ```
 
@@ -537,7 +542,7 @@ target_link_libraries(powermonitor
 cmake -B build_client -S .
 
 # Build
-cmake --build build_client --target powermonitor
+cmake --build build_client --target host_pc_client
 
 # Run tests
 cmake --build build_client --target powermonitor_client_test

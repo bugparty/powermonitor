@@ -52,6 +52,7 @@ enum class MsgId : uint8_t {
     // Events
     kEvtAlert    = 0x90,
     kCfgReport   = 0x91,
+    kStatsReport = 0x92,
 };
 
 // Response status codes
@@ -101,6 +102,22 @@ struct CfgReportPayload {
 } __attribute__((packed));
 
 static_assert(sizeof(CfgReportPayload) == 16, "CfgReportPayload must be 16 bytes");
+
+// STATS_REPORT payload structure
+struct StatsReportPayload {
+    uint16_t report_seq;        // Monotonic report sequence (wrap-around)
+    uint32_t samples_produced;  // Total samples produced on device side
+    uint32_t samples_dropped;   // Total dropped samples on device side
+    uint32_t dropped_cnvrf_not_ready;
+    uint32_t dropped_duplicate_suppressed;
+    uint32_t dropped_worker_missed_tick;
+    uint32_t dropped_queue_full;
+    uint16_t queue_depth;       // Queue depth snapshot when report is generated
+    uint8_t reason_bits;        // Reserved for future reason breakdown
+    uint16_t window_ms;         // Reporting window in milliseconds
+} __attribute__((packed));
+
+static_assert(sizeof(StatsReportPayload) == 31, "StatsReportPayload must be 31 bytes");
 
 // SET_CFG command payload
 struct SetCfgPayload {

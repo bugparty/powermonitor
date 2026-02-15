@@ -25,6 +25,25 @@ public:
     explicit CommandHandler(DeviceContext& ctx, UsbWriteFn write_fn)
         : ctx_(ctx), write_fn_(write_fn) {}
 
+    void maybe_emit_stats_report(uint64_t now_us) {
+        if (!ctx_.is_streaming()) {
+            return;
+        }
+        constexpr uint16_t kStatsReportPeriodMs = 1000;
+        if (last_stats_report_us_ == 0) {
+            last_stats_report_us_ = now_us;
+            return;
+        }
+        const uint64_t elapsed_us = now_us - last_stats_report_us_;
+        if (elapsed_us < static_cast<uint64_t>(kStatsReportPeriodMs) * 1000ULL) {
+            return;
+        }
+        const uint16_t window_ms = static_cast<uint16_t>(elapsed_us / 1000ULL);
+        if (send_stats_report(window_ms)) {
+            last_stats_report_us_ = now_us;
+        }
+    }
+
     // Handle a received frame (called from parser callback)
     void handle_frame(const protocol::Frame& frame) {
         // Only process CMD frames
@@ -303,6 +322,7 @@ private:
 
         // Start streaming with given parameters
         ctx_.start_streaming(cmd->period_us, cmd->channel_mask, time_us_32());
+        last_stats_report_us_ = time_us_64();
 
 #ifdef PHASE2_DUAL_CORE
         // Signal Core 1 to start sampling
@@ -313,6 +333,7 @@ private:
     }
 
     void handle_stream_stop(const protocol::Frame& frame) {
+        const uint64_t now_us = time_us_64();
 #ifdef PHASE2_DUAL_CORE
         // Signal Core 1 to stop sampling
         sampler_stop();
@@ -320,6 +341,12 @@ private:
 
         ctx_.stop_streaming();
         send_rsp(frame.seq, frame.msgid, protocol::Status::kOk);
+        uint16_t window_ms = 0;
+        if (last_stats_report_us_ != 0) {
+            window_ms = static_cast<uint16_t>((now_us - last_stats_report_us_) / 1000ULL);
+        }
+        send_stats_report(window_ms);
+        last_stats_report_us_ = 0;
     }
 
     void send_rsp(uint8_t seq, uint8_t orig_msgid, protocol::Status status) {
@@ -372,9 +399,49 @@ private:
         }
     }
 
+    bool send_stats_report(uint16_t window_ms) {
+        protocol::StatsReportPayload payload{};
+        payload.report_seq = stats_report_seq_++;
+
+#ifdef PHASE2_DUAL_CORE
+        if (ctx_.shared_ctx) {
+            payload.samples_produced = ctx_.shared_ctx->samples_produced;
+            payload.samples_dropped = ctx_.shared_ctx->samples_dropped;
+            payload.dropped_cnvrf_not_ready = ctx_.shared_ctx->dropped_cnvrf_not_ready;
+            payload.dropped_duplicate_suppressed =
+                ctx_.shared_ctx->dropped_duplicate_suppressed;
+            payload.dropped_worker_missed_tick =
+                ctx_.shared_ctx->dropped_worker_missed_tick;
+            payload.dropped_queue_full = ctx_.shared_ctx->dropped_queue_full;
+            payload.queue_depth = static_cast<uint16_t>(ctx_.shared_ctx->sample_queue.size());
+        }
+#endif
+
+        payload.reason_bits = 0;
+        payload.window_ms = window_ms;
+
+        size_t len = protocol::build_frame(
+            tx_buf_, sizeof(tx_buf_),
+            protocol::FrameType::kEvt,
+            0,
+            ctx_.next_data_seq(),
+            static_cast<uint8_t>(protocol::MsgId::kStatsReport),
+            reinterpret_cast<const uint8_t*>(&payload),
+            sizeof(payload)
+        );
+
+        if (len > 0 && write_fn_) {
+            write_fn_(tx_buf_, len);
+            return true;
+        }
+        return false;
+    }
+
     DeviceContext& ctx_;
     UsbWriteFn write_fn_;
     uint8_t tx_buf_[128];
+    uint16_t stats_report_seq_ = 0;
+    uint64_t last_stats_report_us_ = 0;
 };
 
 } // namespace device

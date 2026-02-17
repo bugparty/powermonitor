@@ -117,7 +117,7 @@ public:
         );
 
         if (len > 0 && write_flush_fn_) {
-            write_flush_fn_(tx_buf_, len);
+            write_noflush_fn_(tx_buf_, len);
             ctx_.samples_sent++;
         }
     }

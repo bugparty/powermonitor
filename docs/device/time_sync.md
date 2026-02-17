@@ -17,6 +17,7 @@ The protocol uses the unified UART frame format (see [uart_protocol.md](../proto
 - `TIME_SYNC (0x05)`: Initiate synchronization request
 - `TIME_ADJUST (0x06)`: Apply clock offset correction
 - `TIME_SET (0x07)`: Set absolute Unix time
+- `EVT_TIME_SYNC_REQUEST (0x94)`: Device → PC event; device asks PC to run the sync flow (see Device-driven sync)
 
 ## Protocol Flow
 
@@ -98,6 +99,37 @@ sequenceDiagram
 - T3 should be captured immediately before the serial write operation
 - This minimizes the time between T3 capture and actual transmission
 - Ensure all processing (CRC calculation, struct assignment) is completed before capturing T3
+
+## Device-Driven Sync Mode
+
+To reduce time-sync latency, the device can request the PC to run the sync flow:
+
+1. **Device** sends `EVT_TIME_SYNC_REQUEST (0x94)` every 5 seconds while streaming (no payload).
+2. **Device** enters a tight USB-only loop: only `tud_task()` and USB read/parser run; streaming and stats are skipped so T2/T3 capture has minimal jitter.
+3. **PC** receives the event (e.g. via `pop_wait` on the response queue) and immediately sends `TIME_SYNC (T1)`, then `TIME_ADJUST (-offset)` after the reply.
+4. **Device** exits the tight loop when it processes `TIME_ADJUST` (sync complete) or after a timeout (e.g. 200 ms).
+
+### Device-Driven Sequence
+
+```mermaid
+sequenceDiagram
+    participant D as Device
+    participant PC as PC
+    Note over D: 5s timer
+    D->>D: Enter sync_waiting
+    D-->>PC: EVT_TIME_SYNC_REQUEST (0x94)
+    Note over D: Tight loop: tud_task + USB read only
+    PC->>D: CMD TIME_SYNC (T1)
+    Note over D: T2 captured immediately
+    D-->>PC: RSP TIME_SYNC (T1,T2,T3)
+    PC->>D: CMD TIME_ADJUST (-offset)
+    D->>D: Clear sync_waiting, resume normal loop
+```
+
+### Timeout Behaviour
+
+- If the PC does not respond within the device timeout (e.g. 200 ms), the device clears `sync_waiting` and resumes the normal main loop (streaming, stats).
+- Old PC clients that do not handle `EVT_TIME_SYNC_REQUEST` simply ignore the event; the device times out and continues normally.
 
 ## Usage Recommendations
 

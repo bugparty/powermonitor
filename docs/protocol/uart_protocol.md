@@ -109,6 +109,7 @@ Uses classic structure of **delimiter + header + payload + checksum**.
 |**0x90**|`EVT_ALERT`|D→P|Event|Hardware alert (Over-Voltage, etc.)|
 |**0x91**|`CFG_REPORT`|D→P|Event|**Configuration report** (includes conversion coefficients)|
 |**0x92**|`STATS_REPORT`|D→P|Event|Periodic stream statistics report (`samples_produced/samples_dropped/queue_depth`)|
+|**0x94**|`EVT_TIME_SYNC_REQUEST`|D→P|Event|Device requests PC to initiate time sync (no payload)|
 
 ## 4. Common Response Mechanism
 
@@ -320,6 +321,13 @@ struct {
 - Sent every 1000 ms while streaming is active.
 - Sent once on `STREAM_STOP` as a final summary report.
 - If link is congested, periodic report may skip one window to avoid blocking the data path.
+
+#### 5.1.2.2 EVT_TIME_SYNC_REQUEST (0x94)
+
+- **Direction**: Dev → PC
+- **Frame Type**: `EVT (0x04)`
+- **Payload**: None (LEN = 1, MSGID only).
+- **Description**: Device asks the PC to run the time synchronization flow (send `TIME_SYNC` then `TIME_ADJUST`). Sent periodically (e.g. every 5 s) by the device while streaming; the device enters a tight USB-only loop to minimise T2/T3 jitter until sync completes or a timeout (e.g. 200 ms). See [time_sync.md](../device/time_sync.md) for the device-driven sync sequence.
 
 #### 5.1.3 SET_CFG (0x10)
 

@@ -42,6 +42,11 @@ static core::SharedContext g_shared_ctx;
 static bool g_boot_text_sent = false;
 static constexpr char kBootTextReport[] = "device online";
 
+// Device-driven time sync: send EVT_TIME_SYNC_REQUEST every 5s when streaming
+static constexpr uint64_t kTimeSyncRequestPeriodUs = 5ULL * 1000ULL * 1000ULL;
+static constexpr uint64_t kSyncWaitTimeoutUs = 200000ULL;  // 200ms
+static uint64_t g_last_time_sync_request_us = 0;
+
 // USB CDC write function
 static void usb_cdc_write(const uint8_t* data, size_t len, bool flush = true) {
     if (!data || len == 0 || !tud_cdc_connected()) return;
@@ -196,7 +201,7 @@ int main() {
                 g_boot_text_sent = true;
             }
         }
-        // Process incoming USB data
+        // Process incoming USB data (always, for fast T2 capture during sync)
         if (tud_cdc_available()) {
             uint8_t buf[64];
             uint32_t count = tud_cdc_read(buf, sizeof(buf));
@@ -205,11 +210,29 @@ int main() {
             }
         }
 
+        if (g_ctx.sync_waiting) {
+            if (time_us_64() - g_ctx.sync_wait_start_us > kSyncWaitTimeoutUs) {
+                g_ctx.sync_waiting = false;
+            }
+            continue;  // Tight loop: no streaming, no stats
+        }
+
+        // Normal path: check 5s timer and maybe send time sync request
+        const uint64_t now_us = time_us_64();
+        if (g_ctx.is_streaming() && g_handler &&
+            (g_last_time_sync_request_us == 0 ||
+             now_us - g_last_time_sync_request_us >= kTimeSyncRequestPeriodUs)) {
+            if (g_handler->send_time_sync_request()) {
+                g_last_time_sync_request_us = now_us;
+                g_ctx.sync_waiting = true;
+                g_ctx.sync_wait_start_us = now_us;
+            }
+        }
+
         if (g_handler) {
-            g_handler->maybe_emit_stats_report(time_us_64());
+            g_handler->maybe_emit_stats_report(now_us);
         }
         tud_task();
-        // Process streaming (pop from queue produced by core 1)
         process_streaming_loop();
     }
 

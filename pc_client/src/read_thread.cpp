@@ -1,10 +1,13 @@
 #include "read_thread.h"
 
-#include "read_thread.h"
-
 #include <chrono>
 #include <iostream>
 #include <string>
+
+#ifdef _WIN32
+#define NOMINMAX
+#include <windows.h>
+#endif
 
 #include <serial/serial.h>
 
@@ -101,6 +104,9 @@ struct ParserState {
 }
 
 void ReadThread::run() {
+#ifdef _WIN32
+    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
+#endif
     ParserState state(response_q_, sample_q_, stats_);
 
     try {

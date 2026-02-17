@@ -44,6 +44,7 @@ constexpr uint8_t kMsgTimeSync = 0x05;
 constexpr uint8_t kMsgTimeAdjust = 0x06;
 constexpr uint8_t kMsgStatsReport = 0x92;
 constexpr uint8_t kMsgTextReport = 0x93;
+constexpr uint8_t kMsgTimeSyncRequest = 0x94;
 constexpr uint16_t kStreamMaskUsbStressMode = 0x8000;
 
 uint64_t now_steady_us() {
@@ -125,6 +126,7 @@ int PowerMonitorSession::run() {
     // 注册信号处理
 #ifdef _WIN32
     SetConsoleCtrlHandler(console_ctrl_handler, TRUE);
+    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
 #else
     std::signal(SIGINT, signal_handler);
     std::signal(SIGTERM, signal_handler);
@@ -159,28 +161,30 @@ int PowerMonitorSession::run() {
     // 启动采样处理循环
     std::thread processor([this] { process_samples_loop(); });
 
-    auto next_time_sync = std::chrono::steady_clock::now() + std::chrono::seconds(15);
-
     int tui_rc = 0;
     if (options_.interactive) {
         tui_rc = run_tui_loop();
     } else {
         auto next_stats_time = std::chrono::steady_clock::now();
         while (!g_signal_interrupted.load() && !stop_requested_.load()) {
-            if (streaming_.load() && std::chrono::steady_clock::now() >= next_time_sync) {
-                std::string sync_detail;
-                if (perform_time_sync_once(&sync_detail)) {
-                    append_log("Periodic time sync ok: " + sync_detail);
+            protocol::Frame async_frame;
+            if (response_queue_->pop_wait(async_frame, 50)) {
+                if (async_frame.type == protocol::FrameType::kEvt &&
+                    async_frame.msgid == kMsgTimeSyncRequest && streaming_.load()) {
+                    std::string sync_detail;
+                    if (perform_time_sync_once(&sync_detail)) {
+                        append_log("Device-requested time sync ok: " + sync_detail);
+                    } else {
+                        append_log("Device-requested time sync failed: " + sync_detail);
+                    }
                 } else {
-                    append_log("Periodic time sync failed: " + sync_detail);
+                    process_async_control_frame(async_frame);
                 }
-                next_time_sync = std::chrono::steady_clock::now() + std::chrono::seconds(15);
             }
             if (std::chrono::steady_clock::now() >= next_stats_time) {
                 print_statistics(true);
                 next_stats_time += std::chrono::milliseconds(100);
             }
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
         std::cout << "\r" << std::string(last_stats_width_, ' ') << "\r" << std::flush;
     }
@@ -562,6 +566,11 @@ void PowerMonitorSession::process_async_control_frame(const protocol::Frame& fra
         return;
     }
 
+    if (frame.type == protocol::FrameType::kEvt && frame.msgid == kMsgTimeSyncRequest) {
+        append_log("EVT_TIME_SYNC_REQUEST (sync triggered by caller)");
+        return;
+    }
+
     if (frame.msgid != kMsgStatsReport) {
         return;
     }
@@ -809,9 +818,9 @@ int PowerMonitorSession::run_tui_loop() {
     });
 
     std::thread refresher([&] {
-        constexpr int kTuiTimeSyncPeriodSec = 5;
-        auto next_time_sync =
-            std::chrono::steady_clock::now() + std::chrono::seconds(kTuiTimeSyncPeriodSec);
+#ifdef _WIN32
+        SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
+#endif
         while (!stop_requested_.load()) {
             if (g_signal_interrupted.load()) {
                 stop_requested_.store(true);
@@ -819,27 +828,28 @@ int PowerMonitorSession::run_tui_loop() {
                 return;
             }
 
-            // Drain asynchronous STATS_REPORT frames continuously in TUI mode,
-            // so they appear near real-time instead of being processed only
-            // when command-response waits happen (e.g. TIME_SYNC every 15s).
+            // Drain STATS_REPORT so UI updates in near real-time
             protocol::Frame async_frame;
             while (response_queue_->pop_by_msgid(async_frame, kMsgStatsReport)) {
                 process_async_control_frame(async_frame);
             }
 
-            if (streaming_.load() && std::chrono::steady_clock::now() >= next_time_sync) {
-                std::string sync_detail;
-                if (perform_time_sync_once(&sync_detail, true)) {
-                    append_log("Periodic time sync ok: " + sync_detail);
+            // Wait up to 50ms for any frame; wake immediately on device TIME_SYNC_REQUEST
+            if (response_queue_->pop_wait(async_frame, 50)) {
+                if (async_frame.type == protocol::FrameType::kEvt &&
+                    async_frame.msgid == kMsgTimeSyncRequest && streaming_.load()) {
+                    std::string sync_detail;
+                    if (perform_time_sync_once(&sync_detail, true)) {
+                        append_log("Device-requested time sync ok: " + sync_detail);
+                    } else {
+                        append_log("Device-requested time sync failed: " + sync_detail);
+                    }
                 } else {
-                    append_log("Periodic time sync failed: " + sync_detail);
+                    process_async_control_frame(async_frame);
                 }
-                next_time_sync =
-                    std::chrono::steady_clock::now() + std::chrono::seconds(kTuiTimeSyncPeriodSec);
             }
 
             screen.PostEvent(Event::Custom);
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));
         }
         screen.PostEvent(Event::Character('q'));
     });

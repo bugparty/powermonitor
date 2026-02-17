@@ -47,6 +47,8 @@ struct DeviceContext {
 
     // Time synchronization
     int64_t epoch_offset_us = 0;        // Offset between local monotonic time and Unix epoch
+    bool sync_waiting = false;          // In tight USB-only loop waiting for TIME_SYNC/TIME_ADJUST
+    uint64_t sync_wait_start_us = 0;   // When sync_waiting was entered (for timeout)
 
     // Pointer to shared context for inter-core communication
     core::SharedContext* shared_ctx = nullptr;

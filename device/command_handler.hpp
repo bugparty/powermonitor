@@ -146,6 +146,25 @@ public:
         return false;
     }
 
+    // Send EVT_TIME_SYNC_REQUEST to notify PC to initiate time sync (no payload).
+    bool send_time_sync_request() {
+        size_t len = protocol::build_frame(
+            tx_buf_, sizeof(tx_buf_),
+            protocol::FrameType::kEvt,
+            0,
+            ctx_.next_data_seq(),
+            static_cast<uint8_t>(protocol::MsgId::kTimeSyncRequest),
+            nullptr,
+            0
+        );
+
+        if (len > 0 && write_flush_fn_) {
+            write_flush_fn_(tx_buf_, len);
+            return true;
+        }
+        return false;
+    }
+
 private:
     void handle_ping(const protocol::Frame& frame) {
         send_rsp(frame.seq, frame.msgid, protocol::Status::kOk);
@@ -196,6 +215,7 @@ private:
         const auto* cmd = reinterpret_cast<const protocol::TimeAdjustPayload*>(frame.data);
         ctx_.epoch_offset_us += cmd->offset_us;
         send_rsp(frame.seq, frame.msgid, protocol::Status::kOk);
+        ctx_.sync_waiting = false;  // Sync complete, resume normal loop
     }
 
     void handle_time_set(const protocol::Frame& frame) {

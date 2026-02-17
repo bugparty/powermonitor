@@ -59,7 +59,8 @@ enum class MsgId : uint8_t {
     kEvtAlert    = 0x90,
     kCfgReport   = 0x91,
     kStatsReport = 0x92,
-    kTextReport  = 0x93,
+    kTextReport      = 0x93,
+    kTimeSyncRequest = 0x94,
 };
 
 // Response status codes

@@ -31,6 +31,7 @@ public:
         std::string output_file;
         uint16_t stream_period_us = 1000;
         uint16_t stream_mask = 0x000F;
+        bool usb_stress_mode = false;
         bool verbose = false;
         bool interactive = false;
     };

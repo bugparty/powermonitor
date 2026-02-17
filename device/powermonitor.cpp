@@ -31,6 +31,13 @@ static device::DeviceContext g_ctx;
 static protocol::Parser g_parser;
 static device::CommandHandler* g_handler = nullptr;
 
+// USB stress mode sample template (fixed values)
+static constexpr uint32_t kStressVbusRaw = 0x0F000;     // ~12V equivalent
+static constexpr int32_t kStressVshuntRaw = 0x00100;
+static constexpr int32_t kStressCurrentRaw = 0x01000;   // Fixed current raw value
+static constexpr int16_t kStressDietempRaw = 4480;      // ~35C equivalent
+static constexpr uint8_t kStressBurstFramesPerLoop = 1; // Max DATA_SAMPLE sent per main-loop tick
+
 #ifdef PHASE2_DUAL_CORE
 // Shared context for inter-core communication
 static core::SharedContext g_shared_ctx;
@@ -69,6 +76,25 @@ static void on_frame_received(const protocol::Frame& frame, void* user_data) {
     }
 }
 
+// USB stress mode: emit fixed-value DATA_SAMPLE as fast as main loop allows.
+static void process_streaming_usb_stress() {
+    if (!g_ctx.is_streaming() || !g_ctx.usb_stress_mode) {
+        return;
+    }
+
+    for (uint8_t i = 0; i < kStressBurstFramesPerLoop; ++i) {
+        core::RawSample sample{};
+        sample.timestamp_us = static_cast<uint32_t>(time_us_64() - g_ctx.stream_start_us);
+        sample.vbus_raw = kStressVbusRaw;
+        sample.vshunt_raw = kStressVshuntRaw;
+        sample.current_raw = kStressCurrentRaw;
+        sample.dietemp_raw = kStressDietempRaw;
+        sample.flags = core::SampleFlags::kCnvrf | core::SampleFlags::kCalValid;
+        sample._pad = 0;
+        g_handler->send_data_sample(sample);
+    }
+}
+
 #ifndef PHASE2_DUAL_CORE
 // Phase 1: Streaming rate limiter
 // In Phase 1, we generate fake data at approximately stream_period_us intervals
@@ -96,10 +122,12 @@ static void process_streaming_phase1() {
 // Core 1 produces samples, Core 0 consumes and sends
 static void process_streaming_phase2() {
     if (!g_ctx.is_streaming()) return;
-
-    // Pop all available samples from queue
+    if (g_shared_ctx.sample_queue.empty()) return;
+    // Pop one samples from queue
     core::RawSample sample;
-    while (g_shared_ctx.sample_queue.pop(sample)) {
+    if (!g_shared_ctx.sample_queue.pop(sample)) {
+        return;
+    }else{
         g_handler->send_data_sample(sample);
     }
 }
@@ -107,6 +135,11 @@ static void process_streaming_phase2() {
 
 // Unified streaming processor
 static void process_streaming() {
+    if (g_ctx.usb_stress_mode) {
+        process_streaming_usb_stress();
+        return;
+    }
+
 #ifdef PHASE2_DUAL_CORE
     process_streaming_phase2();
 #else

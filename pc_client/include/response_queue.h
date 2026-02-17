@@ -1,8 +1,9 @@
-﻿#pragma once
+#pragma once
 
 #include <condition_variable>
+#include <cstdint>
+#include <deque>
 #include <mutex>
-#include <queue>
 
 #include "protocol/frame_builder.h"
 
@@ -19,10 +20,11 @@ public:
 
     void push(protocol::Frame&& frame);
     bool pop_wait(protocol::Frame& frame, int timeout_ms);
+    bool pop_by_msgid(protocol::Frame& frame, uint8_t msgid);
     void stop();
-    
+
 private:
-    std::queue<protocol::Frame> queue_;
+    std::deque<protocol::Frame> queue_;
     std::mutex mutex_;
     std::condition_variable cv_;
     bool stop_requested_ = false;

@@ -1,4 +1,4 @@
-﻿# hardware info
+# hardware info
 
 ## parts
 [Adafruit Feather RP2040 x1](https://learn.adafruit.com/adafruit-feather-rp2040-pico)
@@ -34,3 +34,19 @@ Hold BOOTSEL while plugging in the Pico → mounts as RPI-RP2.
 Drag & drop the generated .uf2 file.
 
 [ref](https://datasheets.raspberrypi.com/pico/getting-started-with-pico.pdf)
+
+## usb throughput stress mode
+
+Firmware now supports a USB stress-stream mode using the same `DATA_SAMPLE` protocol frame.
+
+- Enable by setting bit15 in `STREAM_START.channel_mask`:
+  - `channel_mask = original_mask | 0x8000`
+- In stress mode, device sends fixed-value samples as fast as the main loop can sustain:
+  - `vbus_raw = 0x0F000`
+  - `vshunt_raw = 0x00100`
+  - `current_raw = 0x01000`
+  - `dietemp_raw = 4480`
+- Burst sending per main-loop iteration is limited by firmware constant:
+  - `kStressBurstFramesPerLoop` in `device/powermonitor.cpp`
+- `period_us` is ignored in stress mode.
+- Normal mode behavior remains unchanged when bit15 is not set.

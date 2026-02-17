@@ -52,7 +52,6 @@ static bool sampler_timer_isr(repeating_timer_t* rt) {
 // Worker function - does actual I2C reads (called from Core 1 main loop)
 static void sampler_do_work(SamplerContext* ctx) {
     constexpr uint16_t kDiagCnvrfBit = (1u << 1);
-    constexpr uint32_t kHeartbeatIntervalUs = 100000;  // 100 ms
 
     // Read current ISR sequence
     uint32_t current_seq = ctx->isr_seq;
@@ -102,13 +101,6 @@ static void sampler_do_work(SamplerContext* ctx) {
         return;
     }
 
-    // Conversion not ready yet: drop this tick and let the next timer event retry.
-    if ((diag_flags & kDiagCnvrfBit) == 0) {
-        shared->samples_dropped++;
-        shared->dropped_cnvrf_not_ready++;
-        return;
-    }
-
     ok &= ctx->ina228->read_vbus_raw(vbus_raw);
     ok &= ctx->ina228->read_vshunt_raw(vshunt_raw);
     ok &= ctx->ina228->read_current_raw(current_raw);
@@ -134,25 +126,6 @@ static void sampler_do_work(SamplerContext* ctx) {
     }
 
     sample._pad = 0;
-
-    // Duplicate suppression with heartbeat:
-    // If VBUS/VSHUNT/CURRENT are unchanged from last sent sample,
-    // only emit one heartbeat sample every 100 ms.
-    if (ok && ctx->has_last_sent) {
-        const bool same_triple =
-            (sample.vbus_raw == ctx->last_vbus_raw) &&
-            (sample.vshunt_raw == ctx->last_vshunt_raw) &&
-            (sample.current_raw == ctx->last_current_raw);
-        if (same_triple) {
-            const uint32_t elapsed_since_last_send =
-                now - ctx->last_sent_time_us;  // uint32 wrap-safe
-            if (elapsed_since_last_send < kHeartbeatIntervalUs) {
-                shared->samples_dropped++;
-                shared->dropped_duplicate_suppressed++;
-                return;
-            }
-        }
-    }
 
     // Push to queue
     if (!shared->sample_queue.push(sample)) {

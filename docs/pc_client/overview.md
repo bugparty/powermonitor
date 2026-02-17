@@ -90,6 +90,7 @@ powermonitor -i
 | `-b` | `--baud` | Baud rate | 115200 |
 | | `--period` | Sampling period in microseconds | 1000 |
 | | `--mask` | Channel mask | 0x0F (all channels) |
+| | `--usb-stress` | Enable USB throughput stress mode (sets STREAM_START mask bit15) | No |
 | `-i` | `--interactive` | Enter interactive mode | No |
 | `-v` | `--verbose` | Verbose output | No |
 | `-h` | `--help` | Show help | - |
@@ -116,6 +117,7 @@ If the directory does not exist, the client must create it.
 stream:
   period_us: 1000
   mask: 0x0F
+  usb_stress_mode: false
 
 ina228:
   config_reg: 0x0000
@@ -158,6 +160,13 @@ Notes:
    - Send `GET_CFG` to retrieve current device configuration
    - Send `SET_CFG` if user specifies custom parameters
    - Send `STREAM_START` with user-defined period/mask
+
+### USB Throughput Stress Mode
+
+- PC client can enable device stress mode with CLI flag `--usb-stress`.
+- Internally this sets bit15 (`0x8000`) in `STREAM_START.channel_mask`.
+- Device then emits fixed-value `DATA_SAMPLE` frames as fast as possible for throughput testing.
+- Base channel mask bits remain available for normal channel semantics when stress mode is disabled.
 
 ### VID/PID Detection Notes
 

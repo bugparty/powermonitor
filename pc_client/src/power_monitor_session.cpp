@@ -43,6 +43,7 @@ std::atomic<bool> g_signal_interrupted{false};
 constexpr uint8_t kMsgTimeSync = 0x05;
 constexpr uint8_t kMsgTimeAdjust = 0x06;
 constexpr uint8_t kMsgStatsReport = 0x92;
+constexpr uint16_t kStreamMaskUsbStressMode = 0x8000;
 
 uint64_t now_steady_us() {
     const auto now = std::chrono::steady_clock::now().time_since_epoch();
@@ -331,7 +332,12 @@ bool PowerMonitorSession::get_device_config() {
 bool PowerMonitorSession::start_streaming() {
     std::vector<uint8_t> payload(4);
     pack_u16(payload.data(), options_.stream_period_us);
-    pack_u16(payload.data() + 2, options_.stream_mask);
+    uint16_t stream_mask = options_.stream_mask;
+    if (options_.usb_stress_mode) {
+        stream_mask = static_cast<uint16_t>(stream_mask | kStreamMaskUsbStressMode);
+        append_log("USB stress mode enabled (STREAM_START mask bit15)");
+    }
+    pack_u16(payload.data() + 2, stream_mask);
 
     const bool ok = send_command_with_retry(0x30, payload);  // STREAM_START
     streaming_.store(ok);
@@ -777,12 +783,22 @@ int PowerMonitorSession::run_tui_loop() {
     });
 
     std::thread refresher([&] {
-        auto next_time_sync = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+        constexpr int kTuiTimeSyncPeriodSec = 5;
+        auto next_time_sync =
+            std::chrono::steady_clock::now() + std::chrono::seconds(kTuiTimeSyncPeriodSec);
         while (!stop_requested_.load()) {
             if (g_signal_interrupted.load()) {
                 stop_requested_.store(true);
                 screen.PostEvent(Event::Character('q'));
                 return;
+            }
+
+            // Drain asynchronous STATS_REPORT frames continuously in TUI mode,
+            // so they appear near real-time instead of being processed only
+            // when command-response waits happen (e.g. TIME_SYNC every 15s).
+            protocol::Frame async_frame;
+            while (response_queue_->pop_by_msgid(async_frame, kMsgStatsReport)) {
+                process_async_control_frame(async_frame);
             }
 
             if (streaming_.load() && std::chrono::steady_clock::now() >= next_time_sync) {
@@ -792,7 +808,8 @@ int PowerMonitorSession::run_tui_loop() {
                 } else {
                     append_log("Periodic time sync failed: " + sync_detail);
                 }
-                next_time_sync = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+                next_time_sync =
+                    std::chrono::steady_clock::now() + std::chrono::seconds(kTuiTimeSyncPeriodSec);
             }
 
             screen.PostEvent(Event::Custom);

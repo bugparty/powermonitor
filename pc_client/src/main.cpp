@@ -94,6 +94,7 @@ struct ConfigOptions {
     uint16_t pid = 0x000A;
     uint16_t stream_period_us = 1000;
     uint16_t stream_mask = 0x000F;
+    bool usb_stress_mode = false;
     uint16_t config_reg = 0x0000;
     uint16_t adc_config_reg = 0x1000;
     uint16_t shunt_cal = 0x1000;
@@ -137,6 +138,12 @@ bool load_yaml_config(const std::string &path, ConfigOptions &options) {
         }
         if (parse_yaml_u16(stream["mask"], mask)) {
             options.stream_mask = mask;
+        }
+        if (stream["usb_stress_mode"] && stream["usb_stress_mode"].IsScalar()) {
+            try {
+                options.usb_stress_mode = stream["usb_stress_mode"].as<bool>();
+            } catch (...) {
+            }
         }
     }
 
@@ -239,6 +246,7 @@ int main(int argc, char **argv) {
     uint32_t baud = options.baud;
     uint16_t period = options.stream_period_us;
     uint16_t mask = options.stream_mask;
+    bool usb_stress_mode = options.usb_stress_mode;
     uint16_t config_reg = options.config_reg;
     uint16_t adc_config_reg = options.adc_config_reg;
     uint16_t shunt_cal = options.shunt_cal;
@@ -250,6 +258,8 @@ int main(int argc, char **argv) {
     auto opt_baud = app.add_option("-b,--baud", baud, "Baud rate");
     auto opt_period = app.add_option("--period", period, "Sampling period in microseconds");
     auto opt_mask = app.add_option("--mask", mask, "Channel mask");
+    app.add_flag("--usb-stress", usb_stress_mode,
+                 "Enable device USB throughput stress mode (sets STREAM_START mask bit15)");
     auto opt_vid = app.add_option("--vid", vid_hex, "USB VID (hex)");
     auto opt_pid = app.add_option("--pid", pid_hex, "USB PID (hex)");
     auto opt_config_reg = app.add_option("--config-reg", config_reg, "INA228 config register");
@@ -295,6 +305,8 @@ int main(int argc, char **argv) {
     if (opt_mask->count() > 0) {
         options.stream_mask = mask;
     }
+
+    options.usb_stress_mode = usb_stress_mode;
 
     if (opt_vid->count() > 0) {
         if (!parse_hex_u16(vid_hex, options.vid)) {
@@ -372,6 +384,7 @@ int main(int argc, char **argv) {
     session_options.output_file = options.output_path;
     session_options.stream_period_us = options.stream_period_us;
     session_options.stream_mask = options.stream_mask;
+    session_options.usb_stress_mode = options.usb_stress_mode;
     session_options.verbose = options.verbose;
     session_options.interactive = options.interactive;
 

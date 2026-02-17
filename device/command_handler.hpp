@@ -16,6 +16,8 @@
 
 namespace device {
 
+constexpr uint16_t kStreamMaskUsbStressMode = 0x8000;
+
 // USB CDC write function type
 using UsbWriteFn = void (*)(const uint8_t* data, size_t len);
 
@@ -319,14 +321,20 @@ private:
         }
 
         const auto* cmd = reinterpret_cast<const protocol::StreamStartPayload*>(frame.data);
+        const bool usb_stress_mode = (cmd->channel_mask & kStreamMaskUsbStressMode) != 0;
+        const uint16_t channel_mask = static_cast<uint16_t>(
+            cmd->channel_mask & static_cast<uint16_t>(~kStreamMaskUsbStressMode));
 
         // Start streaming with given parameters
-        ctx_.start_streaming(cmd->period_us, cmd->channel_mask, time_us_32());
+        ctx_.start_streaming(cmd->period_us, channel_mask, time_us_32());
+        ctx_.usb_stress_mode = usb_stress_mode;
         last_stats_report_us_ = time_us_64();
 
 #ifdef PHASE2_DUAL_CORE
-        // Signal Core 1 to start sampling
-        sampler_start();
+        if (!ctx_.usb_stress_mode) {
+            // Signal Core 1 to start sampling
+            sampler_start();
+        }
 #endif
 
         send_rsp(frame.seq, frame.msgid, protocol::Status::kOk);
@@ -335,8 +343,10 @@ private:
     void handle_stream_stop(const protocol::Frame& frame) {
         const uint64_t now_us = time_us_64();
 #ifdef PHASE2_DUAL_CORE
-        // Signal Core 1 to stop sampling
-        sampler_stop();
+        if (!ctx_.usb_stress_mode) {
+            // Signal Core 1 to stop sampling
+            sampler_stop();
+        }
 #endif
 
         ctx_.stop_streaming();
@@ -403,8 +413,10 @@ private:
         protocol::StatsReportPayload payload{};
         payload.report_seq = stats_report_seq_++;
 
+        payload.samples_produced = ctx_.samples_sent;
+
 #ifdef PHASE2_DUAL_CORE
-        if (ctx_.shared_ctx) {
+        if (ctx_.shared_ctx && !ctx_.usb_stress_mode) {
             payload.samples_produced = ctx_.shared_ctx->samples_produced;
             payload.samples_dropped = ctx_.shared_ctx->samples_dropped;
             payload.dropped_cnvrf_not_ready = ctx_.shared_ctx->dropped_cnvrf_not_ready;

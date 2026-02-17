@@ -42,6 +42,7 @@ struct DeviceContext {
     uint16_t stream_period_us = 1000;   // Default 1kHz
     uint16_t stream_mask = 0x000F;      // All channels enabled
     uint32_t stream_start_us = 0;       // Timestamp when streaming started
+    bool usb_stress_mode = false;       // Continuous fixed-sample streaming for USB throughput test
 
     // INA228 configuration (from SET_CFG)
     uint16_t config_reg = 0;
@@ -104,6 +105,7 @@ struct DeviceContext {
     // Stop streaming
     void stop_streaming() {
         state = DeviceState::kIdle;
+        usb_stress_mode = false;
     }
 
     // Get next data sequence number and increment

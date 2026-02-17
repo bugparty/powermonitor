@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <cstdint>
 #include <vector>
@@ -39,6 +39,7 @@ enum class MsgId : uint8_t {
     // Events
     kEvtAlert = 0x90,
     kCfgReport = 0x91,
+    kTextReport = 0x93,
 };
 
 // Response status codes

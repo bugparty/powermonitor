@@ -9,10 +9,7 @@
 #include "protocol/frame_builder.hpp"
 #include "state_machine.hpp"
 #include "core/raw_sample.hpp"
-
-#ifdef PHASE2_DUAL_CORE
 #include "sampler.hpp"
-#endif
 
 namespace device {
 
@@ -25,7 +22,10 @@ using UsbWriteFn = void (*)(const uint8_t* data, size_t len);
 class CommandHandler {
 public:
     explicit CommandHandler(DeviceContext& ctx, UsbWriteFn write_fn)
-        : ctx_(ctx), write_fn_(write_fn) {}
+        : ctx_(ctx), write_flush_fn_(write_fn), write_noflush_fn_(write_fn) {}
+
+    CommandHandler(DeviceContext& ctx, UsbWriteFn write_fn, UsbWriteFn data_write_fn)
+        : ctx_(ctx), write_flush_fn_(write_fn), write_noflush_fn_(data_write_fn) {}
 
     void maybe_emit_stats_report(uint64_t now_us) {
         if (!ctx_.is_streaming()) {
@@ -116,10 +116,34 @@ public:
             sizeof(payload)
         );
 
-        if (len > 0 && write_fn_) {
-            write_fn_(tx_buf_, len);
+        if (len > 0 && write_flush_fn_) {
+            write_flush_fn_(tx_buf_, len);
             ctx_.samples_sent++;
         }
+    }
+
+    // Send asynchronous text event to PC.
+    // Payload is raw text bytes with length range [1, 4096].
+    bool send_text_report(const uint8_t* text, size_t text_len) {
+        if (text == nullptr || text_len == 0 || text_len > 4096) {
+            return false;
+        }
+
+        size_t len = protocol::build_frame(
+            tx_buf_, sizeof(tx_buf_),
+            protocol::FrameType::kEvt,
+            0,
+            ctx_.next_data_seq(),
+            static_cast<uint8_t>(protocol::MsgId::kTextReport),
+            text,
+            text_len
+        );
+
+        if (len > 0 && write_flush_fn_) {
+            write_flush_fn_(tx_buf_, len);
+            return true;
+        }
+        return false;
     }
 
 private:
@@ -159,8 +183,8 @@ private:
             reinterpret_cast<const uint8_t*>(&rsp), sizeof(rsp)
         );
 
-        if (len > 0 && write_fn_) {
-            write_fn_(tx_buf_, len);
+        if (len > 0 && write_flush_fn_) {
+            write_flush_fn_(tx_buf_, len);
         }
     }
 
@@ -291,8 +315,8 @@ private:
             rsp_buf, 3 + value_len
         );
 
-        if (len > 0 && write_fn_) {
-            write_fn_(tx_buf_, len);
+        if (len > 0 && write_flush_fn_) {
+            write_flush_fn_(tx_buf_, len);
         }
     }
 
@@ -330,24 +354,20 @@ private:
         ctx_.usb_stress_mode = usb_stress_mode;
         last_stats_report_us_ = time_us_64();
 
-#ifdef PHASE2_DUAL_CORE
         if (!ctx_.usb_stress_mode) {
             // Signal Core 1 to start sampling
             sampler_start();
         }
-#endif
 
         send_rsp(frame.seq, frame.msgid, protocol::Status::kOk);
     }
 
     void handle_stream_stop(const protocol::Frame& frame) {
         const uint64_t now_us = time_us_64();
-#ifdef PHASE2_DUAL_CORE
         if (!ctx_.usb_stress_mode) {
             // Signal Core 1 to stop sampling
             sampler_stop();
         }
-#endif
 
         ctx_.stop_streaming();
         send_rsp(frame.seq, frame.msgid, protocol::Status::kOk);
@@ -374,8 +394,8 @@ private:
             sizeof(payload)
         );
 
-        if (len > 0 && write_fn_) {
-            write_fn_(tx_buf_, len);
+        if (len > 0 && write_flush_fn_) {
+            write_flush_fn_(tx_buf_, len);
         }
     }
 
@@ -404,8 +424,8 @@ private:
             sizeof(payload)
         );
 
-        if (len > 0 && write_fn_) {
-            write_fn_(tx_buf_, len);
+        if (len > 0 && write_flush_fn_) {
+            write_flush_fn_(tx_buf_, len);
         }
     }
 
@@ -415,7 +435,6 @@ private:
 
         payload.samples_produced = ctx_.samples_sent;
 
-#ifdef PHASE2_DUAL_CORE
         if (ctx_.shared_ctx && !ctx_.usb_stress_mode) {
             payload.samples_produced = ctx_.shared_ctx->samples_produced;
             payload.samples_dropped = ctx_.shared_ctx->samples_dropped;
@@ -427,7 +446,6 @@ private:
             payload.dropped_queue_full = ctx_.shared_ctx->dropped_queue_full;
             payload.queue_depth = static_cast<uint16_t>(ctx_.shared_ctx->sample_queue.size());
         }
-#endif
 
         payload.reason_bits = 0;
         payload.window_ms = window_ms;
@@ -442,16 +460,20 @@ private:
             sizeof(payload)
         );
 
-        if (len > 0 && write_fn_) {
-            write_fn_(tx_buf_, len);
+        if (len > 0 && write_flush_fn_) {
+            write_flush_fn_(tx_buf_, len);
             return true;
         }
         return false;
     }
 
     DeviceContext& ctx_;
-    UsbWriteFn write_fn_;
-    uint8_t tx_buf_[128];
+    UsbWriteFn write_flush_fn_;
+    UsbWriteFn write_noflush_fn_;
+    // Use kMaxTxPayloadLen for the send buffer (needs to hold TEXT_REPORT up to 4096 bytes).
+    // Static to keep it off the stack and avoid RP2040 stack overflow.
+    static constexpr size_t kMaxFrameBytes = 2 + protocol::kHeaderSize + protocol::kMaxTxPayloadLen + 2;
+    static uint8_t tx_buf_[kMaxFrameBytes];
     uint16_t stats_report_seq_ = 0;
     uint64_t last_stats_report_us_ = 0;
 };

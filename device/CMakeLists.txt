@@ -1,4 +1,4 @@
-﻿# Generated Cmake Pico project file
+# Generated Cmake Pico project file
 
 cmake_minimum_required(VERSION 3.13)
 
@@ -53,10 +53,6 @@ target_link_libraries(powermonitor
 target_include_directories(powermonitor PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/..
-)
-
-target_compile_definitions(powermonitor PRIVATE
-        PHASE2_DUAL_CORE
 )
 
 # Add any user requested libraries

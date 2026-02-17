@@ -46,6 +46,7 @@ private:
     void send_cmd(uint8_t msgid, const std::vector<uint8_t> &payload, uint64_t now_us);
     void handle_rsp(const protocol::Frame &frame, uint64_t receive_time_us);
     void handle_cfg_report(const protocol::Frame &frame);
+    void handle_text_report(const protocol::Frame &frame);
     void handle_data_sample(const protocol::Frame &frame);
 
     sim::VirtualLinkEndpoint *endpoint_ = nullptr;

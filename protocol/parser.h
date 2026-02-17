@@ -12,8 +12,10 @@ class Parser {
 public:
     using FrameCallback = std::function<void(const Frame &, uint64_t receive_time_us)>;
 
-    explicit Parser(FrameCallback callback, uint16_t max_len = 1024);
-    
+    static constexpr uint16_t kDefaultMaxLen = 4097;
+
+    explicit Parser(FrameCallback callback, uint16_t max_len = kDefaultMaxLen);
+
     // Set the receive time for the next frame callback
     // This should be called before feed() to ensure accurate timing
     void set_receive_time(uint64_t receive_time_us) { receive_time_us_ = receive_time_us; }

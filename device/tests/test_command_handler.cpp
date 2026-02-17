@@ -16,6 +16,9 @@
 #include "state_machine.hpp"
 #include "command_handler.hpp"
 
+// Static member definition for CommandHandler::tx_buf_
+uint8_t device::CommandHandler::tx_buf_[device::CommandHandler::kMaxFrameBytes];
+
 // Helpers for testing
 std::vector<uint8_t> tx_buffer;
 void mock_write_fn(const uint8_t* data, size_t len) {
@@ -248,10 +251,53 @@ void test_stats_report_periodic_and_stop() {
     tx_buffer.clear();
 }
 
+void test_text_report_length_limits() {
+    std::cout << "Testing Text Report length limits..." << std::endl;
+
+    device::DeviceContext ctx;
+    device::CommandHandler handler(ctx, mock_write_fn);
+
+    // Reject empty payload
+    tx_buffer.clear();
+    assert(!handler.send_text_report(reinterpret_cast<const uint8_t*>(""), 0));
+    assert(tx_buffer.empty());
+
+    // Accept 1-byte payload
+    tx_buffer.clear();
+    const uint8_t one_byte[] = {'A'};
+    assert(handler.send_text_report(one_byte, sizeof(one_byte)));
+    assert(!tx_buffer.empty());
+    assert(tx_buffer[3] == static_cast<uint8_t>(protocol::FrameType::kEvt));
+    assert(tx_buffer[8] == static_cast<uint8_t>(protocol::MsgId::kTextReport));
+    uint16_t len = static_cast<uint16_t>(tx_buffer[6]) |
+                   (static_cast<uint16_t>(tx_buffer[7]) << 8);
+    assert(len == 2); // MSGID(1) + text(1)
+
+    // Accept max 4096-byte payload
+    tx_buffer.clear();
+    std::vector<uint8_t> max_text(4096, 'x');
+    assert(handler.send_text_report(max_text.data(), max_text.size()));
+    assert(!tx_buffer.empty());
+    assert(tx_buffer[3] == static_cast<uint8_t>(protocol::FrameType::kEvt));
+    assert(tx_buffer[8] == static_cast<uint8_t>(protocol::MsgId::kTextReport));
+    len = static_cast<uint16_t>(tx_buffer[6]) |
+          (static_cast<uint16_t>(tx_buffer[7]) << 8);
+    assert(len == 4097); // MSGID(1) + text(4096)
+
+    // Reject oversized payload
+    tx_buffer.clear();
+    std::vector<uint8_t> too_large(4097, 'y');
+    assert(!handler.send_text_report(too_large.data(), too_large.size()));
+    assert(tx_buffer.empty());
+
+    std::cout << "Text Report length limits: PASS" << std::endl;
+}
+
 int main() {
     test_time_sync();
     test_time_adjust();
     test_time_set();
     test_stats_report_periodic_and_stop();
+    test_text_report_length_limits();
     return 0;
 }

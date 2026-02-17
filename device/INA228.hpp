@@ -1,4 +1,4 @@
-﻿#ifndef INA228_HPP
+#ifndef INA228_HPP
 #define INA228_HPP
 
 #include <cstdio>
@@ -67,7 +67,7 @@ public:
 
     /* ========================================================================
        INA228 Reset bytes for CONFIG [15] / [14]
-       Description: 
+       Description:
        - RST: Generates a system reset that is the same as power-on reset.
        - RSTACC: Resets the contents of accumulation registers ENERGY and CHARGE to 0
        ======================================================================== */
@@ -107,7 +107,7 @@ public:
 
     /* ========================================================================
        INA228 ADC Mode
-       Description: The user can set the MODE bits for continuous or triggered 
+       Description: The user can set the MODE bits for continuous or triggered
        mode on bus voltage, shunt voltage or temperature measurement.
        Values:
        - 0x00h = Shutdown
@@ -183,8 +183,8 @@ public:
     static constexpr uint8_t VTCT_CONV_TIME_NBIT = 3;
 
     /* ========================================================================
-       INA228 ADC sample averaging count. 
-       Values: 
+       INA228 ADC sample averaging count.
+       Values:
        - 0x00h = 1
        - 0x01h = 4
        - 0x02h = 16
@@ -222,12 +222,12 @@ private:
     float shunt_ohms_; ///< Shunt resistance value in ohms
     float max_current_; ///< Maximum expected current in A
     float current_lsb_; ///< Current LSB value used for calculations
-    
+
     void update_shunt_cal_register();
 
 public:
     INA228(i2c_inst_t *i2c_inst, uint8_t i2c_addr, float shunt_ohms, float max_current = 3.5f);
-    
+
     [[nodiscard]] bool i2c_read_reg_stop(uint8_t addr, uint8_t reg, uint8_t *buf, size_t n) const;
     [[nodiscard]] bool i2c_write_reg_stop(uint8_t addr, uint8_t reg, uint8_t *buf, size_t n) const;
     [[nodiscard]] bool i2c_read_reg_stop_timeout(uint8_t addr, uint8_t reg, uint8_t *buf, size_t n);
@@ -238,7 +238,7 @@ public:
     [[nodiscard]] bool read_register16(INA228_Register reg, uint16_t &register_value) const;
     [[nodiscard]] bool read_register24(INA228_Register reg, uint32_t &register_value) const;
     [[nodiscard]] bool read_register40(INA228_Register reg, uint64_t &register_value) const;
-    
+
     [[nodiscard]] bool set_config();
     [[nodiscard]] bool get_config(uint16_t &config) const;
     [[nodiscard]] bool set_adc_config();
@@ -250,7 +250,7 @@ public:
     void set_shunt(float shunt_res, float max_current) noexcept;
     [[nodiscard]] bool reset_all();
     [[nodiscard]] bool reset_energy();
-    
+
     [[nodiscard]] float get_energy() const;
     [[nodiscard]] float get_power() const;
     [[nodiscard]] float get_temp() const;
@@ -261,7 +261,7 @@ public:
     [[nodiscard]] float get_current() const;
     [[nodiscard]] float get_charge() const;
 
-    // Raw register read functions for Phase 2 sampling (ISR-safe)
+    // Raw register read functions for sampler-core sampling (ISR-safe)
     // These return raw ADC values without float conversion
     [[nodiscard]] bool read_vbus_raw(uint32_t& raw20) const;
     [[nodiscard]] bool read_vshunt_raw(int32_t& raw20) const;
@@ -271,22 +271,22 @@ public:
 
     void print_manufacturer_id() const;
     void print_device_id() const;
-    
+
     [[nodiscard]] float get_shunt_conv_factor() const noexcept;
     void get_diag_alerts(INA228_Alert alert) const;
-    
+
     [[nodiscard]] bool set_shunt_overvoltage(float value);
     [[nodiscard]] bool set_shunt_undervoltage(float value);
     [[nodiscard]] bool set_bus_overvoltage(float value);
     [[nodiscard]] bool set_bus_undervoltage(float value);
     [[nodiscard]] bool set_temp_limit(float value);
     [[nodiscard]] bool set_power_overlimit(float value);
-    
+
     void configure();
 };
 
 namespace detail {
-    template<typename T> 
+    template<typename T>
     constexpr T get_mask(uint8_t nrofbit) {
         T mask = 0;
         for (uint8_t i = 0; i < nrofbit; i++) {
@@ -294,8 +294,8 @@ namespace detail {
         }
         return mask;
     }
-    
-    template<typename T>  
+
+    template<typename T>
     float varint2float(T twocompdata, const uint8_t shift, const uint8_t nrofbit, const float factor) {
         twocompdata = (twocompdata >> shift) & get_mask<T>(nrofbit);
         if (twocompdata & (1 << (nrofbit-1))) {

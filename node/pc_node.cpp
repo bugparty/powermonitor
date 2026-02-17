@@ -2,6 +2,7 @@
 
 #include <cstring>
 #include <iostream>
+#include <string>
 
 namespace node {
 
@@ -17,6 +18,7 @@ constexpr uint8_t kMsgStreamStart = 0x30;
 constexpr uint8_t kMsgStreamStop = 0x31;
 constexpr uint8_t kMsgDataSample = 0x80;
 constexpr uint8_t kMsgCfgReport = 0x91;
+constexpr uint8_t kMsgTextReport = 0x93;
 constexpr uint8_t kStatusOk = 0x00;
 constexpr uint64_t kCmdTimeoutUs = 200000;
 constexpr uint8_t kMaxRetries = 3;
@@ -76,8 +78,8 @@ int64_t signed_diff_u64(uint64_t lhs, uint64_t rhs) {
 
 PCNode::PCNode(sim::VirtualLinkEndpoint *endpoint)
     : endpoint_(endpoint),
-      parser_([this](const protocol::Frame &frame, uint64_t receive_time_us) { 
-          on_frame(frame, receive_time_us); 
+      parser_([this](const protocol::Frame &frame, uint64_t receive_time_us) {
+          on_frame(frame, receive_time_us);
       }) {}
 
 void PCNode::tick(uint64_t now_us) {
@@ -177,6 +179,10 @@ void PCNode::on_frame(const protocol::Frame &frame, uint64_t receive_time_us) {
         handle_cfg_report(frame);
         return;
     }
+    if (frame.type == protocol::FrameType::kEvt && frame.msgid == kMsgTextReport) {
+        handle_text_report(frame);
+        return;
+    }
     if (frame.type == protocol::FrameType::kData && frame.msgid == kMsgDataSample) {
         handle_data_sample(frame);
         return;
@@ -202,23 +208,23 @@ void PCNode::handle_rsp(const protocol::Frame &frame, uint64_t receive_time_us) 
     if (status != kStatusOk) {
         return;
     }
-    
+
     // Handle TIME_SYNC response: extract T1, T2, T3, calculate offset, send TIME_ADJUST
     if (orig_msgid == kMsgTimeSync && frame.data.size() >= 26) {
         const uint64_t T1 = read_u64(frame.data, 2);   // Echoed back T1
         const uint64_t T2 = read_u64(frame.data, 10);  // Device receive time
         const uint64_t T3 = read_u64(frame.data, 18);  // Device send time
-        
+
         // T4 is the receive time from VirtualLink (accurate delivery time)
         const uint64_t T4 = receive_time_us;
-        
+
         // Calculate delay and offset
         const int64_t delay = signed_diff_u64(T4, T1) - signed_diff_u64(T3, T2);
         const int64_t offset = (signed_diff_u64(T2, T1) + signed_diff_u64(T3, T4)) / 2;
-        
+
         std::cout << "TIME_SYNC: T1=" << T1 << " T2=" << T2 << " T3=" << T3 << " T4=" << T4
                   << " delay=" << delay << " offset=" << offset << "\n";
-        
+
         // Send TIME_ADJUST with negative offset
         send_time_adjust(-offset, T4);
     }
@@ -242,6 +248,14 @@ void PCNode::handle_cfg_report(const protocol::Frame &frame) {
               << " config=0x" << std::hex << config_reg << " adc=0x" << adc_config_reg
               << " period_us=" << std::dec << stream_period_us_ << " mask=0x" << std::hex
               << stream_mask_ << std::dec << "\n";
+}
+
+void PCNode::handle_text_report(const protocol::Frame &frame) {
+    if (frame.data.empty()) {
+        return;
+    }
+    const std::string text(frame.data.begin(), frame.data.end());
+    std::cout << "TEXT_REPORT len=" << frame.data.size() << " text=\"" << text << "\"\n";
 }
 
 void PCNode::handle_data_sample(const protocol::Frame &frame) {

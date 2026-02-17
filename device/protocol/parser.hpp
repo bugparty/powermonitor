@@ -120,12 +120,10 @@ private:
         const uint16_t received_crc = static_cast<uint16_t>(crc_l) |
                                       (static_cast<uint16_t>(crc_h) << 8);
 
-        // Build CRC range: header + payload (excluding CRC bytes)
-        uint8_t crc_buf[kHeaderSize + kMaxPayloadLen];
-        memcpy(crc_buf, header_buf_, kHeaderSize);
-        memcpy(crc_buf + kHeaderSize, payload_buf_, payload_len);
-
-        const uint16_t computed_crc = crc16_ccitt_false(crc_buf, kHeaderSize + payload_len);
+        // Compute CRC incrementally over header then payload to avoid
+        // a large stack buffer (kHeaderSize + kMaxPayloadLen was ~4103 bytes).
+        const uint16_t computed_crc = crc16_ccitt_false_two(
+            header_buf_, kHeaderSize, payload_buf_, payload_len);
 
         if (computed_crc != received_crc) {
             ++crc_fail_count_;

@@ -12,8 +12,14 @@ constexpr uint8_t kSof1 = 0x55;
 // Protocol version
 constexpr uint8_t kProtoVersion = 0x01;
 
-// Maximum payload length (excluding SOF, header, CRC)
+// Maximum payload length for RECEIVING frames (LEN field, includes MSGID).
+// Device only receives CMD frames from PC, which are small (max ~10 bytes).
+// Keep this small to avoid large stack/BSS allocations on RP2040.
 constexpr uint16_t kMaxPayloadLen = 256;
+
+// Maximum payload length for SENDING frames (e.g. TEXT_REPORT up to 4096 bytes).
+// LEN = MSGID(1) + text(4096) = 4097.
+constexpr uint16_t kMaxTxPayloadLen = 1025;
 
 // Frame header size (VER + TYPE + FLAGS + SEQ + LEN)
 constexpr size_t kHeaderSize = 6;
@@ -53,6 +59,7 @@ enum class MsgId : uint8_t {
     kEvtAlert    = 0x90,
     kCfgReport   = 0x91,
     kStatsReport = 0x92,
+    kTextReport  = 0x93,
 };
 
 // Response status codes
@@ -73,7 +80,7 @@ struct Frame {
     uint8_t seq;
     uint16_t len;          // Payload length (includes MSGID)
     uint8_t msgid;
-    uint8_t data[kMaxPayloadLen];  // Payload data (excluding MSGID)
+    uint8_t data[kMaxPayloadLen];  // Payload data (excluding MSGID, sized for receive)
     uint16_t data_len;     // Actual data length (len - 1)
 };
 

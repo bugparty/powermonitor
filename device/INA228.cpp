@@ -242,7 +242,7 @@ float INA228::get_charge() const {
     return charge;
 }
 
-// Raw register read functions for Phase 2 sampling
+// Raw register read functions for sampler-core sampling
 bool INA228::read_vbus_raw(uint32_t& raw20) const {
     uint32_t reg24 = 0;
     if (!read_register24(INA228_Register::VBUS, reg24)) {

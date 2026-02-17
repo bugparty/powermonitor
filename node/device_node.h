@@ -23,6 +23,7 @@ private:
     void send_rsp(uint8_t seq, uint8_t orig_msgid, uint8_t status, const std::vector<uint8_t> &data,
                   uint64_t now_us);
     void send_cfg_report(uint64_t now_us);
+    void send_text_report(const char *text, size_t text_len, uint64_t now_us);
     void send_data_sample(uint64_t now_us);
 
     sim::VirtualLinkEndpoint *endpoint_ = nullptr;
@@ -44,6 +45,7 @@ private:
     uint64_t rx_counts_[256] = {};
     uint64_t current_now_us_ = 0;
     bool initial_cfg_sent_ = false;
+    bool text_report_sent_ = false;
     int64_t epoch_offset_us_ = 0;  // Clock offset for Unix time conversion
 };
 

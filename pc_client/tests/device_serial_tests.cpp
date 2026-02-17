@@ -31,6 +31,7 @@ constexpr uint8_t kMsgStreamStart = 0x30;
 constexpr uint8_t kMsgStreamStop = 0x31;
 constexpr uint8_t kMsgDataSample = 0x80;
 constexpr uint8_t kMsgCfgReport = 0x91;
+constexpr uint8_t kMsgTextReport = 0x93;
 
 struct TestOptions {
     std::string port;
@@ -443,6 +444,13 @@ TEST_F(DeviceSerialTest, Order02_GetCfgReport) {
     protocol::Frame cfg_report;
     ASSERT_TRUE(WaitForEvent(kMsgCfgReport, &cfg_report, g_options.event_timeout_ms));
     EXPECT_GE(cfg_report.data.size(), 16u);
+}
+
+TEST_F(DeviceSerialTest, Order02b_TextReport) {
+    protocol::Frame text_report;
+    ASSERT_TRUE(WaitForEvent(kMsgTextReport, &text_report, g_options.event_timeout_ms));
+    EXPECT_GE(text_report.data.size(), 1u);
+    EXPECT_LE(text_report.data.size(), 4096u);
 }
 
 TEST_F(DeviceSerialTest, Order03_SetCfgMinimal) {

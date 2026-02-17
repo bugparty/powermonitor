@@ -1,6 +1,5 @@
 // Power Monitor Firmware
-// Phase 1: Single-core operation with fake data generation
-// Phase 2: Dual-core operation with real I2C sampling
+// Dual-core operation with real I2C sampling
 
 #include <cstdio>
 #include <cmath>
@@ -11,11 +10,8 @@
 #include "protocol/parser.hpp"
 #include "state_machine.hpp"
 #include "command_handler.hpp"
-
-#ifdef PHASE2_DUAL_CORE
 #include "pico/multicore.h"
 #include "sampler.hpp"
-#endif
 
 // I2C Configuration
 #define I2C_PORT i2c1
@@ -31,6 +27,9 @@ static device::DeviceContext g_ctx;
 static protocol::Parser g_parser;
 static device::CommandHandler* g_handler = nullptr;
 
+// Static member definition for CommandHandler::tx_buf_ (keeps it off the stack)
+uint8_t device::CommandHandler::tx_buf_[device::CommandHandler::kMaxFrameBytes];
+
 // USB stress mode sample template (fixed values)
 static constexpr uint32_t kStressVbusRaw = 0x0F000;     // ~12V equivalent
 static constexpr int32_t kStressVshuntRaw = 0x00100;
@@ -38,34 +37,57 @@ static constexpr int32_t kStressCurrentRaw = 0x01000;   // Fixed current raw val
 static constexpr int16_t kStressDietempRaw = 4480;      // ~35C equivalent
 static constexpr uint8_t kStressBurstFramesPerLoop = 1; // Max DATA_SAMPLE sent per main-loop tick
 
-#ifdef PHASE2_DUAL_CORE
 // Shared context for inter-core communication
 static core::SharedContext g_shared_ctx;
-#endif
+static bool g_boot_text_sent = false;
+static constexpr char kBootTextReport[] = "device online";
 
 // USB CDC write function
-static void usb_cdc_write(const uint8_t* data, size_t len) {
-    if (!tud_cdc_connected()) return;
+static void usb_cdc_write(const uint8_t* data, size_t len, bool flush = true) {
+    if (!data || len == 0 || !tud_cdc_connected()) return;
 
     // Write in chunks if needed
     size_t remaining = len;
     const uint8_t* ptr = data;
 
     while (remaining > 0) {
-        uint32_t avail = tud_cdc_write_available();
+        const uint32_t avail = tud_cdc_write_available();
         if (avail == 0) {
             tud_task();
-            tud_cdc_write_flush();
+            if (flush) {
+                tud_cdc_write_flush();
+            }
             continue;
         }
 
-        uint32_t to_write = (remaining < avail) ? remaining : avail;
-        uint32_t written = tud_cdc_write(ptr, to_write);
+        const uint32_t to_write = static_cast<uint32_t>(
+            (remaining < static_cast<size_t>(avail)) ? remaining : static_cast<size_t>(avail));
+        const uint32_t written = tud_cdc_write(ptr, to_write);
+        if (written == 0) {
+            // Avoid tight spinning when backend temporarily cannot accept bytes.
+            tud_task();
+            if (flush) {
+                tud_cdc_write_flush();
+            }
+            continue;
+        }
+
         ptr += written;
         remaining -= written;
 
-        tud_cdc_write_flush();
+        // Flushing once at end reduces USB transaction overhead in chunked writes.
+        if (flush && remaining == 0) {
+            tud_cdc_write_flush();
+        }
     }
+}
+
+static void usb_cdc_write_flush(const uint8_t* data, size_t len) {
+    usb_cdc_write(data, len, true);
+}
+
+static void usb_cdc_write_no_flush(const uint8_t* data, size_t len) {
+    usb_cdc_write(data, len, false);
 }
 
 // Parser callback - called when a complete frame is received
@@ -95,34 +117,10 @@ static void process_streaming_usb_stress() {
     }
 }
 
-#ifndef PHASE2_DUAL_CORE
-// Phase 1: Streaming rate limiter
-// In Phase 1, we generate fake data at approximately stream_period_us intervals
-static uint64_t g_last_sample_time = 0;
-
-static void process_streaming_phase1() {
-    if (!g_ctx.is_streaming()) return;
-
-    uint64_t now = time_us_64();
-    uint64_t elapsed = now - g_last_sample_time;
-
-    if (elapsed >= g_ctx.stream_period_us) {
-        // Generate and send fake sample
-        core::RawSample sample = g_ctx.fake_gen.next();
-        sample.timestamp_us = static_cast<uint32_t>(now - g_ctx.stream_start_us);
-
-        g_handler->send_data_sample(sample);
-        g_last_sample_time = now;
-    }
-}
-#endif
-
-#ifdef PHASE2_DUAL_CORE
-// Phase 2: Pop samples from queue and send
+// Pop samples from queue and send
 // Core 1 produces samples, Core 0 consumes and sends
-static void process_streaming_phase2() {
+static void process_streaming() {
     if (!g_ctx.is_streaming()) return;
-    if (g_shared_ctx.sample_queue.empty()) return;
     // Pop one samples from queue
     core::RawSample sample;
     if (!g_shared_ctx.sample_queue.pop(sample)) {
@@ -131,20 +129,15 @@ static void process_streaming_phase2() {
         g_handler->send_data_sample(sample);
     }
 }
-#endif
 
-// Unified streaming processor
-static void process_streaming() {
+// Streaming processor
+static void process_streaming_loop() {
     if (g_ctx.usb_stress_mode) {
         process_streaming_usb_stress();
         return;
     }
 
-#ifdef PHASE2_DUAL_CORE
-    process_streaming_phase2();
-#else
-    process_streaming_phase1();
-#endif
+    process_streaming();
 }
 
 int main() {
@@ -171,8 +164,7 @@ int main() {
         std::llround((3.5 / 524288.0) * 1e9));
     g_ctx.cal_valid = g_ctx.current_lsb_nA > 0;
 
-#ifdef PHASE2_DUAL_CORE
-    // Phase 2: Initialize shared context and link to device context
+    // Initialize shared context and link to device context
     g_shared_ctx.init();
     g_ctx.shared_ctx = &g_shared_ctx;
 
@@ -181,26 +173,29 @@ int main() {
 
     // Launch Core 1 for sampling
     device::sampler_launch_core1();
-#endif
 
     // Initialize command handler
-    device::CommandHandler handler(g_ctx, usb_cdc_write);
+    device::CommandHandler handler(g_ctx, usb_cdc_write_flush, usb_cdc_write_no_flush);
     g_handler = &handler;
 
     // Initialize parser with callback
     g_parser.set_callback(on_frame_received, nullptr);
 
-#ifdef PHASE2_DUAL_CORE
-    printf("Power Monitor Phase 2 - Dual-Core Mode\n");
-#else
-    printf("Power Monitor Phase 1 - Protocol Debug Mode\n");
-#endif
+    printf("Power Monitor Dual-Core Mode\n");
     printf("Waiting for USB connection...\n");
 
     // Main loop (Core 0)
     while (true) {
         // TinyUSB housekeeping
         tud_task();
+
+        if (!g_boot_text_sent && g_handler && tud_cdc_connected()) {
+            const uint8_t* text = reinterpret_cast<const uint8_t*>(kBootTextReport);
+            const size_t text_len = sizeof(kBootTextReport) - 1;
+            if (g_handler->send_text_report(text, text_len)) {
+                g_boot_text_sent = true;
+            }
+        }
 
         // Process incoming USB data
         if (tud_cdc_available()) {
@@ -214,9 +209,9 @@ int main() {
         if (g_handler) {
             g_handler->maybe_emit_stats_report(time_us_64());
         }
-
-        // Process streaming (Phase 1: generate fake, Phase 2: pop from queue)
-        process_streaming();
+        tud_task();
+        // Process streaming (pop from queue produced by core 1)
+        process_streaming_loop();
     }
 
     return 0;

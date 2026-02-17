@@ -17,6 +17,7 @@ constexpr uint8_t kMsgStreamStart = 0x30;
 constexpr uint8_t kMsgStreamStop = 0x31;
 constexpr uint8_t kMsgDataSample = 0x80;
 constexpr uint8_t kMsgCfgReport = 0x91;
+constexpr uint8_t kMsgTextReport = 0x93;
 constexpr uint8_t kStatusOk = 0x00;
 
 void append_u16(std::vector<uint8_t> &out, uint16_t value) {
@@ -84,8 +85,8 @@ void pack_s20(int32_t value, uint8_t out[3]) {
 
 DeviceNode::DeviceNode(sim::VirtualLinkEndpoint *endpoint)
     : endpoint_(endpoint),
-      parser_([this](const protocol::Frame &frame, uint64_t receive_time_us) { 
-          on_frame(frame, receive_time_us); 
+      parser_([this](const protocol::Frame &frame, uint64_t receive_time_us) {
+          on_frame(frame, receive_time_us);
       }) {}
 
 void DeviceNode::tick(uint64_t now_us) {
@@ -93,6 +94,11 @@ void DeviceNode::tick(uint64_t now_us) {
     if (!initial_cfg_sent_) {
         send_cfg_report(now_us);
         initial_cfg_sent_ = true;
+    }
+    if (!text_report_sent_) {
+        static constexpr char kText[] = "device online";
+        send_text_report(kText, sizeof(kText) - 1, now_us);
+        text_report_sent_ = true;
     }
     if (endpoint_ && endpoint_->available() > 0) {
         // Set receive time before feeding data to parser
@@ -130,18 +136,18 @@ void DeviceNode::handle_cmd(const protocol::Frame &frame, uint64_t now_us) {
             // T2 captured immediately after frame parsing completes
             // In simulation, now_us represents the time when handle_cmd is called
             const uint64_t T2 = now_us;
-            
+
             // Build RSP payload: orig_msgid(1) + status(1) + T1(8) + T2(8) + T3(8)
             // Prepare all data except T3 first
             std::vector<uint8_t> rsp_data;
             append_u64(rsp_data, T1);
             append_u64(rsp_data, T2);
-            
+
             // All processing is done, capture T3 immediately before sending
             // In real implementation, this should be captured just before the serial write
             const uint64_t T3 = now_us;
             append_u64(rsp_data, T3);
-            
+
             send_rsp(frame.seq, frame.msgid, kStatusOk, rsp_data, now_us);
         } else {
             send_rsp(frame.seq, frame.msgid, 0x02, {}, now_us);  // ERR_LEN
@@ -246,6 +252,16 @@ void DeviceNode::send_cfg_report(uint64_t now_us) {
     auto bytes = protocol::build_frame(protocol::FrameType::kEvt, 0, seq, kMsgCfgReport, payload);
     endpoint_->write(bytes, now_us);
     std::cout << "DEV CFG_REPORT sent\n";
+}
+
+void DeviceNode::send_text_report(const char *text, size_t text_len, uint64_t now_us) {
+    if (text == nullptr || text_len == 0 || text_len > 4096) {
+        return;
+    }
+    std::vector<uint8_t> payload(text, text + text_len);
+    const uint8_t seq = data_seq_++;
+    auto bytes = protocol::build_frame(protocol::FrameType::kEvt, 0, seq, kMsgTextReport, payload);
+    endpoint_->write(bytes, now_us);
 }
 
 void DeviceNode::send_data_sample(uint64_t now_us) {

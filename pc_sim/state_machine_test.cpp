@@ -1,4 +1,4 @@
-﻿#include <gtest/gtest.h>
+#include <gtest/gtest.h>
 #include "protocol/frame_builder.h"
 #include "protocol/parser.h"
 
@@ -291,6 +291,16 @@ TEST_F(ParserStateMachineTest, READ_PAYLOAD_VariableLengths) {
     parser->feed(fb3.finalize());
     EXPECT_EQ(frame_count, 3);
 
+    // Max payload (LEN=4097, MSGID + 4096 bytes text)
+    TestFrameBuilder fb4;
+    fb4.begin(protocol::FrameType::kEvt, 0x04, 0x00);
+    fb4.append_msgid(0x93);
+    for (int i = 0; i < 4096; ++i) {
+        fb4.append_u8(static_cast<uint8_t>(i & 0xFF));
+    }
+    parser->feed(fb4.finalize());
+    EXPECT_EQ(frame_count, 4);
+
     EXPECT_EQ(parser->crc_fail_count(), 0);
 }
 
@@ -492,5 +502,21 @@ TEST_F(ParserStateMachineTest, Integration_LengthValidation) {
 
     EXPECT_EQ(parser->get_state(), protocol::Parser::State::kWaitSof0);
     EXPECT_EQ(parser->len_fail_count(), 1);
+    EXPECT_EQ(frame_count, 0);
+
+    // LEN = 4098 (> max 4097) should also be rejected
+    std::vector<uint8_t> too_long_frame = {
+        0xAA, 0x55,           // SOF
+        0x01,                 // VER
+        0x04,                 // TYPE (EVT)
+        0x00,                 // FLAGS
+        0x22,                 // SEQ
+        0x02, 0x10            // LEN = 4098 (invalid)
+    };
+
+    parser->feed(too_long_frame);
+
+    EXPECT_EQ(parser->get_state(), protocol::Parser::State::kWaitSof0);
+    EXPECT_EQ(parser->len_fail_count(), 2);
     EXPECT_EQ(frame_count, 0);
 }

@@ -14,7 +14,7 @@
 namespace powermonitor {
 namespace client {
 
-ReadThread::ReadThread(serial::Serial* serial, SampleQueue* sample_q, 
+ReadThread::ReadThread(serial::Serial* serial, SampleQueue* sample_q,
                        ResponseQueue* response_q, std::atomic<bool>* stop_flag,
                        ThreadStats* stats)
     : serial_(serial),
@@ -25,7 +25,7 @@ ReadThread::ReadThread(serial::Serial* serial, SampleQueue* sample_q,
 }
 
 ReadThread::~ReadThread() {
-    if (running_.load()) {
+    if (running_.load() || thread_.joinable()) {
         join();
     }
 }
@@ -50,41 +50,47 @@ void ReadThread::join() {
 
 
 namespace {
+constexpr uint8_t kMsgDataSample = 0x80;
+constexpr uint8_t kMsgTextReport = 0x93;
+
 struct ParserState {
     protocol::Parser parser;
     ResponseQueue* response_q = nullptr;
     SampleQueue* sample_q = nullptr;
     ThreadStats* stats = nullptr;
-    
+
     ParserState(ResponseQueue* rq, SampleQueue* sq, ThreadStats* st)
         : parser([this](const protocol::Frame& frame, uint64_t receive_time_us) {
             this->on_frame(frame, receive_time_us);
           }),
           response_q(rq), sample_q(sq), stats(st) {}
-    
+
     void on_frame(const protocol::Frame& frame, uint64_t receive_time_us) {
         (void)receive_time_us;  // Not used in pc_client, but required by callback signature
         stats->rx_counts[frame.msgid].fetch_add(1, std::memory_order_relaxed);
-        
-        if (frame.msgid == 0x80) {  // DATA_SAMPLE
+
+        if (frame.msgid == kMsgDataSample) {  // DATA_SAMPLE
             if (frame.data.size() < 16) {
                 stats->crc_fail.fetch_add(1, std::memory_order_relaxed);
                 return;
             }
-            
+
             SampleQueue::Sample sample;
             sample.seq = frame.seq;
             sample.host_timestamp_us = now_steady_us();
             sample.device_timestamp_us = unpack_u32(frame.data.data());
             sample.raw_data = frame.data;
-            
+
             sample_q->push(std::move(sample));
+        } else if (frame.type == protocol::FrameType::kEvt && frame.msgid == kMsgTextReport) {
+            // Route to control queue; UI/log layer decides how to display it.
+            response_q->push(protocol::Frame(frame));
         } else {
             // 控制帧（RSP, CFG_REPORT等）
             response_q->push(protocol::Frame(frame));
         }
     }
-    
+
   private:
     static uint64_t now_steady_us() {
         auto now = std::chrono::steady_clock::now().time_since_epoch();

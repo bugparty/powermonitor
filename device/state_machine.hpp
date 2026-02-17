@@ -3,18 +3,8 @@
 
 #include <cstdint>
 
-// Define PHASE2_DUAL_CORE to enable dual-core mode with real I2C sampling
-// Comment out for Phase 1 (single-core with fake data)
-// #define PHASE2_DUAL_CORE
-
-#ifndef PHASE2_DUAL_CORE
-#include "core/fake_data.hpp"
-#endif
-
-#ifdef PHASE2_DUAL_CORE
 #include "core/shared_context.hpp"
 #include "hardware/sync.h"
-#endif
 
 // Forward declaration
 class INA228;
@@ -58,15 +48,8 @@ struct DeviceContext {
     // Time synchronization
     int64_t epoch_offset_us = 0;        // Offset between local monotonic time and Unix epoch
 
-#ifndef PHASE2_DUAL_CORE
-    // Phase 1: Fake data generator
-    core::FakeDataGenerator fake_gen;
-#endif
-
-#ifdef PHASE2_DUAL_CORE
-    // Phase 2: Pointer to shared context for inter-core communication
+    // Pointer to shared context for inter-core communication
     core::SharedContext* shared_ctx = nullptr;
-#endif
 
     // Statistics
     uint32_t samples_sent = 0;
@@ -77,7 +60,7 @@ struct DeviceContext {
         return state == DeviceState::kStreaming;
     }
 
-    // Start streaming (Phase 1: just set state, Phase 2: update shared context)
+    // Start streaming and update shared context for sampler core
     void start_streaming(uint16_t period_us, uint16_t mask, uint32_t now_us) {
         stream_period_us = period_us;
         stream_mask = mask;
@@ -85,11 +68,6 @@ struct DeviceContext {
         samples_sent = 0;
         state = DeviceState::kStreaming;
 
-#ifndef PHASE2_DUAL_CORE
-        fake_gen.reset();
-#endif
-
-#ifdef PHASE2_DUAL_CORE
         // Update shared context for Core 1
         if (shared_ctx) {
             shared_ctx->stream_period_us = period_us;
@@ -99,7 +77,6 @@ struct DeviceContext {
             // Ensure memory writes are visible to Core 1 before we signal it.
             __dmb();
         }
-#endif
     }
 
     // Stop streaming

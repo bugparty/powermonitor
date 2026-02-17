@@ -196,7 +196,6 @@ int main() {
                 g_boot_text_sent = true;
             }
         }
-
         // Process incoming USB data
         if (tud_cdc_available()) {
             uint8_t buf[64];

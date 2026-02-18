@@ -1,0 +1,17 @@
+{
+    "name": "powermonitor-tools",
+    "private": true,
+    "scripts": {
+        "dev": "vite --config web_viewer/vite.config.js",
+        "build:web": "vite build --config web_viewer/vite.config.js",
+        "preview:web": "vite preview --config web_viewer/vite.config.js"
+    },
+    "dependencies": {
+        "react": "^19.1.0",
+        "react-dom": "^19.1.0"
+    },
+    "devDependencies": {
+        "@vitejs/plugin-react": "^5.0.0",
+        "vite": "^7.1.0"
+    }
+}

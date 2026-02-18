@@ -1,0 +1,184 @@
+:root {
+    color-scheme: dark;
+    --bg: #111317;
+    --panel: #181b21;
+    --line: #2f3643;
+    --text: #dbe2ee;
+    --muted: #94a0b8;
+    --accent: #3f8cff;
+    --voltage: #22c55e;
+    --current: #f59e0b;
+    --power: #a855f7;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    min-height: 100vh;
+}
+
+#root {
+    min-height: 100vh;
+}
+
+.topbar {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    background: #0f1115;
+}
+
+.topbar h1 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.file-button,
+button {
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.file-button:hover,
+button:hover {
+    border-color: var(--accent);
+}
+
+#json-file {
+    display: none;
+}
+
+.meta {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.track-control-row {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.track-control-title {
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.track-list {
+    display: flex;
+    gap: 8px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    flex-wrap: wrap;
+}
+
+.track-item {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 6px 10px;
+    background: var(--panel);
+    cursor: grab;
+    user-select: none;
+}
+
+.track-item:active {
+    cursor: grabbing;
+}
+
+.track-item label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+}
+
+.track-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.chart-area {
+    padding: 12px;
+}
+
+#timeline-svg {
+    width: 100%;
+    height: min(78vh, 740px);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--panel);
+}
+
+.status-row {
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    padding: 10px 16px;
+    font-size: 12px;
+}
+
+.track-label {
+    fill: var(--muted);
+    font-size: 12px;
+    dominant-baseline: middle;
+}
+
+.axis-label {
+    fill: var(--muted);
+    font-size: 11px;
+}
+
+.axis-line,
+.grid-line {
+    stroke: var(--line);
+    stroke-width: 1;
+}
+
+.axis-line-minor {
+    stroke: var(--line);
+    stroke-width: 1.1;
+    opacity: 0.45;
+}
+
+.grid-line {
+    opacity: 0.55;
+}
+
+.hover-line {
+    stroke: #6b7280;
+    stroke-width: 1;
+    stroke-dasharray: 4 3;
+}
+
+.legend {
+    font-size: 12px;
+    fill: var(--muted);
+}

@@ -1,4 +1,4 @@
-﻿#include <gtest/gtest.h>
+#include <gtest/gtest.h>
 #include "node/device_node.h"
 #include "node/pc_node.h"
 #include "sim/event_loop.h"
@@ -149,4 +149,31 @@ TEST_F(PowerMonitorTest, CommunicationWithBitFlips) {
     // With bit flips, we may have CRC failures detected and handled
     // This test just ensures the system doesn't crash
     EXPECT_GE(pc->crc_fail_count(), 0);
+}
+
+// Test time synchronization sequence
+TEST_F(PowerMonitorTest, TimeSynchronizationSequence) {
+    constexpr uint8_t kMsgTimeSync = 0x05;
+    constexpr uint8_t kMsgTimeAdjust = 0x06;
+    constexpr uint8_t kMsgTimeSet = 0x07;
+
+    // Send TIME_SYNC
+    pc->send_time_sync(loop.now_us());
+    // Wait for response and subsequent TIME_ADJUST + response
+    // Sequence: PC->TimeSync, Dev->Rsp, PC->TimeAdjust, Dev->Rsp
+    RunSimulation(200'000, 500);
+
+    EXPECT_EQ(pc->timeout_count(), 0) << "Timeouts detected during TimeSync sequence";
+    EXPECT_EQ(pc->crc_fail_count(), 0) << "CRC failures detected";
+
+    // Verify both TimeSync and TimeAdjust were acknowledged
+    EXPECT_EQ(pc->get_rx_count(kMsgTimeSync), 1) << "TimeSync response missing";
+    EXPECT_EQ(pc->get_rx_count(kMsgTimeAdjust), 1) << "TimeAdjust response missing";
+
+    // Send TIME_SET
+    pc->send_time_set(1678900000000000ULL, loop.now_us());
+    RunSimulation(100'000, 500);
+
+    EXPECT_EQ(pc->timeout_count(), 0) << "Timeouts detected during TimeSet";
+    EXPECT_EQ(pc->get_rx_count(kMsgTimeSet), 1) << "TimeSet response missing";
 }

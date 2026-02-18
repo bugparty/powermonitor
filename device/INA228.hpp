@@ -224,6 +224,7 @@ private:
     float current_lsb_; ///< Current LSB value used for calculations
 
     void update_shunt_cal_register();
+    [[nodiscard]] uint16_t calculate_shunt_threshold(float value) const;
 
 public:
     INA228(i2c_inst_t *i2c_inst, uint8_t i2c_addr, float shunt_ohms, float max_current = 3.5f);

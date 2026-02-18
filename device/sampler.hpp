@@ -9,7 +9,7 @@
 
 #include "core/shared_context.hpp"
 #include "core/raw_sample.hpp"
-#include "INA228.hpp"
+#include <INA228.hpp>
 
 namespace device {
 

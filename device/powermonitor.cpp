@@ -27,9 +27,6 @@ static device::DeviceContext g_ctx;
 static protocol::Parser g_parser;
 static device::CommandHandler* g_handler = nullptr;
 
-// Static member definition for CommandHandler::tx_buf_ (keeps it off the stack)
-uint8_t device::CommandHandler::tx_buf_[device::CommandHandler::kMaxFrameBytes];
-
 // USB stress mode sample template (fixed values)
 static constexpr uint32_t kStressVbusRaw = 0x0F000;     // ~12V equivalent
 static constexpr int32_t kStressVshuntRaw = 0x00100;

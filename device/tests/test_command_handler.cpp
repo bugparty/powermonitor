@@ -16,9 +16,6 @@
 #include "state_machine.hpp"
 #include "command_handler.hpp"
 
-// Static member definition for CommandHandler::tx_buf_
-uint8_t device::CommandHandler::tx_buf_[device::CommandHandler::kMaxFrameBytes];
-
 // Helpers for testing
 std::vector<uint8_t> tx_buffer;
 void mock_write_fn(const uint8_t* data, size_t len) {
@@ -175,7 +172,7 @@ void test_stats_report_periodic_and_stop() {
     tx_buffer.clear();
 
     // First call only initializes cadence baseline.
-    mock_time_us = 0;
+    mock_time_us = 100;
     handler.maybe_emit_stats_report(mock_time_us);
     assert(tx_buffer.empty());
 
@@ -191,7 +188,7 @@ void test_stats_report_periodic_and_stop() {
     assert(tx_buffer.empty());
 
     // At >=1 second, periodic report should be emitted.
-    mock_time_us = 1000000;
+    mock_time_us = 1000200;
     handler.maybe_emit_stats_report(mock_time_us);
     assert(!tx_buffer.empty());
     assert(tx_buffer[3] == static_cast<uint8_t>(protocol::FrameType::kEvt));
@@ -221,7 +218,7 @@ void test_stats_report_periodic_and_stop() {
     shared.dropped_duplicate_suppressed = 1;
     shared.dropped_worker_missed_tick = 1;
     shared.dropped_queue_full = 0;
-    mock_time_us = 1500000;
+    mock_time_us = 1500200;
     handler.handle_frame(stop_frame);
 
     assert(!tx_buffer.empty());

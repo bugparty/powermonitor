@@ -19,7 +19,7 @@ constexpr uint16_t kMaxPayloadLen = 256;
 
 // Maximum payload length for SENDING frames (e.g. TEXT_REPORT up to 4096 bytes).
 // LEN = MSGID(1) + text(4096) = 4097.
-constexpr uint16_t kMaxTxPayloadLen = 1025;
+constexpr uint16_t kMaxTxPayloadLen = 4097;
 
 // Frame header size (VER + TYPE + FLAGS + SEQ + LEN)
 constexpr size_t kHeaderSize = 6;

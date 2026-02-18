@@ -1,0 +1,446 @@
+#include "command_handler.hpp"
+
+#include <cstring>
+#include "pico/stdlib.h"
+
+#include "protocol/frame_builder.hpp"
+#include <INA228.hpp>
+#include "sampler.hpp"
+
+namespace device {
+
+// Static member definition
+uint8_t CommandHandler::tx_buf_[CommandHandler::kMaxFrameBytes];
+
+CommandHandler::CommandHandler(DeviceContext& ctx, UsbWriteFn write_fn)
+    : ctx_(ctx), write_flush_fn_(write_fn), write_noflush_fn_(write_fn) {}
+
+CommandHandler::CommandHandler(DeviceContext& ctx, UsbWriteFn write_fn, UsbWriteFn data_write_fn)
+    : ctx_(ctx), write_flush_fn_(write_fn), write_noflush_fn_(data_write_fn) {}
+
+void CommandHandler::maybe_emit_stats_report(uint64_t now_us) {
+    if (!ctx_.is_streaming()) {
+        return;
+    }
+    constexpr uint16_t kStatsReportPeriodMs = 1000;
+    if (last_stats_report_us_ == 0) {
+        last_stats_report_us_ = now_us;
+        return;
+    }
+    const uint64_t elapsed_us = now_us - last_stats_report_us_;
+    if (elapsed_us < static_cast<uint64_t>(kStatsReportPeriodMs) * 1000ULL) {
+        return;
+    }
+    const uint16_t window_ms = static_cast<uint16_t>(elapsed_us / 1000ULL);
+    if (send_stats_report(window_ms)) {
+        last_stats_report_us_ = now_us;
+    }
+}
+
+void CommandHandler::handle_frame(const protocol::Frame& frame) {
+    // Only process CMD frames
+    if (frame.type != protocol::FrameType::kCmd) {
+        return;
+    }
+
+    ctx_.cmd_received++;
+
+    switch (static_cast<protocol::MsgId>(frame.msgid)) {
+    case protocol::MsgId::kPing:
+        handle_ping(frame);
+        break;
+    case protocol::MsgId::kTimeSync:
+        handle_time_sync(frame);
+        break;
+    case protocol::MsgId::kTimeAdjust:
+        handle_time_adjust(frame);
+        break;
+    case protocol::MsgId::kTimeSet:
+        handle_time_set(frame);
+        break;
+    case protocol::MsgId::kSetCfg:
+        handle_set_cfg(frame);
+        break;
+    case protocol::MsgId::kGetCfg:
+        handle_get_cfg(frame);
+        break;
+    case protocol::MsgId::kRegRead:
+        handle_reg_read(frame);
+        break;
+    case protocol::MsgId::kRegWrite:
+        handle_reg_write(frame);
+        break;
+    case protocol::MsgId::kStreamStart:
+        handle_stream_start(frame);
+        break;
+    case protocol::MsgId::kStreamStop:
+        handle_stream_stop(frame);
+        break;
+    default:
+        send_rsp(frame.seq, frame.msgid, protocol::Status::kErrUnkCmd);
+        break;
+    }
+}
+
+bool CommandHandler::send_text_report(const uint8_t* text, size_t text_len) {
+    if (text == nullptr || text_len == 0 || text_len > 4096) {
+        return false;
+    }
+
+    size_t len = protocol::build_frame(
+        tx_buf_, sizeof(tx_buf_),
+        protocol::FrameType::kEvt,
+        0,
+        ctx_.next_data_seq(),
+        static_cast<uint8_t>(protocol::MsgId::kTextReport),
+        text,
+        text_len
+    );
+
+    if (len > 0 && write_flush_fn_) {
+        write_flush_fn_(tx_buf_, len);
+        return true;
+    }
+    return false;
+}
+
+bool CommandHandler::send_time_sync_request() {
+    size_t len = protocol::build_frame(
+        tx_buf_, sizeof(tx_buf_),
+        protocol::FrameType::kEvt,
+        0,
+        ctx_.next_data_seq(),
+        static_cast<uint8_t>(protocol::MsgId::kTimeSyncRequest),
+        nullptr,
+        0
+    );
+
+    if (len > 0 && write_flush_fn_) {
+        write_flush_fn_(tx_buf_, len);
+        return true;
+    }
+    return false;
+}
+
+void CommandHandler::handle_ping(const protocol::Frame& frame) {
+    send_rsp(frame.seq, frame.msgid, protocol::Status::kOk);
+}
+
+void CommandHandler::handle_time_sync(const protocol::Frame& frame) {
+    // T2: capture receive time immediately (monotonic)
+    uint64_t t2_mono = time_us_64();
+
+    if (frame.data_len < sizeof(protocol::TimeSyncPayload)) {
+        send_rsp(frame.seq, frame.msgid, protocol::Status::kErrLen);
+        return;
+    }
+
+    const auto* cmd = reinterpret_cast<const protocol::TimeSyncPayload*>(frame.data);
+
+    // Capture T3 just before sending (monotonic)
+    uint64_t t3_mono = time_us_64();
+
+    // Convert to Unix time using epoch_offset
+    uint64_t t2 = t2_mono + static_cast<uint64_t>(ctx_.epoch_offset_us);
+    uint64_t t3 = t3_mono + static_cast<uint64_t>(ctx_.epoch_offset_us);
+
+    // Prepare response with T3 captured right before sending
+    protocol::TimeSyncResponsePayload rsp;
+    rsp.orig_msgid = frame.msgid;
+    rsp.status = static_cast<uint8_t>(protocol::Status::kOk);
+    rsp.t1 = cmd->t1;
+    rsp.t2 = t2;
+    rsp.t3 = t3;
+
+    size_t len = protocol::build_frame(
+        tx_buf_, sizeof(tx_buf_),
+        protocol::FrameType::kRsp, 0, frame.seq, frame.msgid,
+        reinterpret_cast<const uint8_t*>(&rsp), sizeof(rsp)
+    );
+
+    if (len > 0 && write_flush_fn_) {
+        write_flush_fn_(tx_buf_, len);
+    }
+}
+
+void CommandHandler::handle_time_adjust(const protocol::Frame& frame) {
+    if (frame.data_len < sizeof(protocol::TimeAdjustPayload)) {
+        send_rsp(frame.seq, frame.msgid, protocol::Status::kErrLen);
+        return;
+    }
+    const auto* cmd = reinterpret_cast<const protocol::TimeAdjustPayload*>(frame.data);
+    ctx_.epoch_offset_us += cmd->offset_us;
+    send_rsp(frame.seq, frame.msgid, protocol::Status::kOk);
+    ctx_.sync_waiting = false;  // Sync complete, resume normal loop
+}
+
+void CommandHandler::handle_time_set(const protocol::Frame& frame) {
+    if (frame.data_len < sizeof(protocol::TimeSetPayload)) {
+        send_rsp(frame.seq, frame.msgid, protocol::Status::kErrLen);
+        return;
+    }
+    const auto* cmd = reinterpret_cast<const protocol::TimeSetPayload*>(frame.data);
+    uint64_t now_us = time_us_64();
+    // epoch_offset = unix_time - monotonic_time
+    ctx_.epoch_offset_us = static_cast<int64_t>(cmd->unix_time_us) - static_cast<int64_t>(now_us);
+    send_rsp(frame.seq, frame.msgid, protocol::Status::kOk);
+}
+
+void CommandHandler::handle_set_cfg(const protocol::Frame& frame) {
+    if (frame.data_len < sizeof(protocol::SetCfgPayload)) {
+        send_rsp(frame.seq, frame.msgid, protocol::Status::kErrLen);
+        return;
+    }
+
+    const auto* cfg = reinterpret_cast<const protocol::SetCfgPayload*>(frame.data);
+
+    // Update software context
+    ctx_.config_reg = cfg->config_reg;
+    ctx_.adc_config_reg = cfg->adc_config_reg;
+    ctx_.shunt_cal = cfg->shunt_cal;
+    ctx_.shunt_tempco = cfg->shunt_tempco;
+
+    // Update hardware registers
+    if (ctx_.ina228) {
+        bool ok = true;
+        ok &= ctx_.ina228->write_register16(INA228::INA228_Register::CONFIG, cfg->config_reg);
+        ok &= ctx_.ina228->write_register16(INA228::INA228_Register::ADC_CONFIG, cfg->adc_config_reg);
+        ok &= ctx_.ina228->write_register16(INA228::INA228_Register::SHUNT_CAL, cfg->shunt_cal);
+        ok &= ctx_.ina228->write_register16(INA228::INA228_Register::SHUNT_TEMPCO, cfg->shunt_tempco);
+        if (!ok) {
+            send_rsp(frame.seq, frame.msgid, protocol::Status::kErrHw);
+            return;
+        }
+    }
+
+    // Calculate current_lsb_nA from shunt_cal (simplified)
+    // In real implementation, this would involve the actual INA228 formula
+    ctx_.cal_valid = (cfg->shunt_cal != 0);
+    ctx_.adcrange = (cfg->config_reg >> 4) & 0x01;
+
+    // Send RSP(OK) then CFG_REPORT
+    send_rsp(frame.seq, frame.msgid, protocol::Status::kOk);
+    send_cfg_report();
+}
+
+void CommandHandler::handle_get_cfg(const protocol::Frame& frame) {
+    // Send RSP(OK) then CFG_REPORT
+    send_rsp(frame.seq, frame.msgid, protocol::Status::kOk);
+    send_cfg_report();
+}
+
+void CommandHandler::handle_reg_read(const protocol::Frame& frame) {
+    if (frame.data_len < sizeof(protocol::RegReadCmdPayload)) {
+        send_rsp(frame.seq, frame.msgid, protocol::Status::kErrLen);
+        return;
+    }
+    const auto* cmd = reinterpret_cast<const protocol::RegReadCmdPayload*>(frame.data);
+    auto reg_addr = static_cast<INA228::INA228_Register>(cmd->reg_addr);
+
+    if (!ctx_.ina228) {
+        send_rsp(frame.seq, frame.msgid, protocol::Status::kErrHw);
+        return;
+    }
+
+    uint8_t rsp_buf[10]; // Space for header + 40-bit value
+    size_t value_len = 0;
+    bool ok = false;
+
+    if (cmd->reg_type == 0) { // 16-bit
+        value_len = 2;
+        uint16_t val;
+        ok = ctx_.ina228->read_register16(reg_addr, val);
+        if (ok) {
+            val = INA228::to_bytes16(val); // to little-endian
+            memcpy(&rsp_buf[3], &val, value_len);
+        }
+    } else if (cmd->reg_type == 1) { // 24-bit
+        value_len = 3;
+        uint32_t val;
+        ok = ctx_.ina228->read_register24(reg_addr, val);
+        if (ok) {
+            // val is already little-endian from I2C read
+            memcpy(&rsp_buf[3], &val, value_len);
+        }
+    } else if (cmd->reg_type == 2) { // 40-bit
+        value_len = 5;
+        uint64_t val;
+        ok = ctx_.ina228->read_register40(reg_addr, val);
+        if (ok) {
+            // val is already little-endian from I2C read
+            memcpy(&rsp_buf[3], &val, value_len);
+        }
+    } else {
+        send_rsp(frame.seq, frame.msgid, protocol::Status::kErrParam);
+        return;
+    }
+
+    if (!ok) {
+        send_rsp(frame.seq, frame.msgid, protocol::Status::kErrHw);
+        return;
+    }
+
+    // Build and send response frame
+    rsp_buf[0] = frame.msgid;
+    rsp_buf[1] = static_cast<uint8_t>(protocol::Status::kOk);
+    rsp_buf[2] = cmd->reg_addr;
+
+    size_t len = protocol::build_frame(
+        tx_buf_, sizeof(tx_buf_),
+        protocol::FrameType::kRsp, 0, frame.seq, frame.msgid,
+        rsp_buf, 3 + value_len
+    );
+
+    if (len > 0 && write_flush_fn_) {
+        write_flush_fn_(tx_buf_, len);
+    }
+}
+
+void CommandHandler::handle_reg_write(const protocol::Frame& frame) {
+    if (frame.data_len < sizeof(protocol::RegWriteCmdPayload)) {
+        send_rsp(frame.seq, frame.msgid, protocol::Status::kErrLen);
+        return;
+    }
+    const auto* cmd = reinterpret_cast<const protocol::RegWriteCmdPayload*>(frame.data);
+
+    if (!ctx_.ina228) {
+        send_rsp(frame.seq, frame.msgid, protocol::Status::kErrHw);
+        return;
+    }
+
+    auto reg_addr = static_cast<INA228::INA228_Register>(cmd->reg_addr);
+    bool ok = ctx_.ina228->write_register16(reg_addr, cmd->reg_value);
+
+    send_rsp(frame.seq, frame.msgid, ok ? protocol::Status::kOk : protocol::Status::kErrHw);
+}
+
+void CommandHandler::handle_stream_start(const protocol::Frame& frame) {
+    if (frame.data_len < sizeof(protocol::StreamStartPayload)) {
+        send_rsp(frame.seq, frame.msgid, protocol::Status::kErrLen);
+        return;
+    }
+
+    const auto* cmd = reinterpret_cast<const protocol::StreamStartPayload*>(frame.data);
+    const bool usb_stress_mode = (cmd->channel_mask & kStreamMaskUsbStressMode) != 0;
+    const uint16_t channel_mask = static_cast<uint16_t>(
+        cmd->channel_mask & static_cast<uint16_t>(~kStreamMaskUsbStressMode));
+
+    // Start streaming with given parameters
+    ctx_.start_streaming(cmd->period_us, channel_mask, time_us_32());
+    ctx_.usb_stress_mode = usb_stress_mode;
+    last_stats_report_us_ = time_us_64();
+
+    if (!ctx_.usb_stress_mode) {
+        // Signal Core 1 to start sampling
+        sampler_start();
+    }
+
+    send_rsp(frame.seq, frame.msgid, protocol::Status::kOk);
+}
+
+void CommandHandler::handle_stream_stop(const protocol::Frame& frame) {
+    const uint64_t now_us = time_us_64();
+    if (!ctx_.usb_stress_mode) {
+        // Signal Core 1 to stop sampling
+        sampler_stop();
+    }
+
+    ctx_.stop_streaming();
+    send_rsp(frame.seq, frame.msgid, protocol::Status::kOk);
+    uint16_t window_ms = 0;
+    if (last_stats_report_us_ != 0) {
+        window_ms = static_cast<uint16_t>((now_us - last_stats_report_us_) / 1000ULL);
+    }
+    send_stats_report(window_ms);
+    last_stats_report_us_ = 0;
+}
+
+void CommandHandler::send_rsp(uint8_t seq, uint8_t orig_msgid, protocol::Status status) {
+    uint8_t payload[2];
+    payload[0] = orig_msgid;
+    payload[1] = static_cast<uint8_t>(status);
+
+    size_t len = protocol::build_frame(
+        tx_buf_, sizeof(tx_buf_),
+        protocol::FrameType::kRsp,
+        0,
+        seq,
+        orig_msgid,
+        payload,
+        sizeof(payload)
+    );
+
+    if (len > 0 && write_flush_fn_) {
+        write_flush_fn_(tx_buf_, len);
+    }
+}
+
+void CommandHandler::send_cfg_report() {
+    protocol::CfgReportPayload payload;
+    payload.proto_ver = protocol::kProtoVersion;
+    payload.flags = 0;
+    if (ctx_.is_streaming()) payload.flags |= 0x01;
+    if (ctx_.cal_valid) payload.flags |= 0x02;
+    if (ctx_.adcrange) payload.flags |= 0x04;
+
+    payload.current_lsb_nA = ctx_.current_lsb_nA;
+    payload.shunt_cal_reg = ctx_.shunt_cal;
+    payload.config_reg = ctx_.config_reg;
+    payload.adc_config_reg = ctx_.adc_config_reg;
+    payload.stream_period_us = ctx_.stream_period_us;
+    payload.stream_mask = ctx_.stream_mask;
+
+    size_t len = protocol::build_frame(
+        tx_buf_, sizeof(tx_buf_),
+        protocol::FrameType::kEvt,
+        0,
+        ctx_.next_data_seq(),
+        static_cast<uint8_t>(protocol::MsgId::kCfgReport),
+        reinterpret_cast<const uint8_t*>(&payload),
+        sizeof(payload)
+    );
+
+    if (len > 0 && write_flush_fn_) {
+        write_flush_fn_(tx_buf_, len);
+    }
+}
+
+bool CommandHandler::send_stats_report(uint16_t window_ms) {
+    protocol::StatsReportPayload payload{};
+    payload.report_seq = stats_report_seq_++;
+
+    payload.samples_produced = ctx_.samples_sent;
+
+    if (ctx_.shared_ctx && !ctx_.usb_stress_mode) {
+        payload.samples_produced = ctx_.shared_ctx->samples_produced;
+        payload.samples_dropped = ctx_.shared_ctx->samples_dropped;
+        payload.dropped_cnvrf_not_ready = ctx_.shared_ctx->dropped_cnvrf_not_ready;
+        payload.dropped_duplicate_suppressed =
+            ctx_.shared_ctx->dropped_duplicate_suppressed;
+        payload.dropped_worker_missed_tick =
+            ctx_.shared_ctx->dropped_worker_missed_tick;
+        payload.dropped_queue_full = ctx_.shared_ctx->dropped_queue_full;
+        payload.queue_depth = static_cast<uint16_t>(ctx_.shared_ctx->sample_queue.size());
+    }
+
+    payload.reason_bits = 0;
+    payload.window_ms = window_ms;
+
+    size_t len = protocol::build_frame(
+        tx_buf_, sizeof(tx_buf_),
+        protocol::FrameType::kEvt,
+        0,
+        ctx_.next_data_seq(),
+        static_cast<uint8_t>(protocol::MsgId::kStatsReport),
+        reinterpret_cast<const uint8_t*>(&payload),
+        sizeof(payload)
+    );
+
+    if (len > 0 && write_flush_fn_) {
+        write_flush_fn_(tx_buf_, len);
+        return true;
+    }
+    return false;
+}
+
+} // namespace device

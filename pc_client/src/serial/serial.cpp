@@ -27,6 +27,8 @@
 namespace serial {
 
 namespace {
+constexpr size_t kAsyncReadBufferSize = 3;
+
 #ifdef _WIN32
 std::string get_registry_property(HDEVINFO hDevInfo, SP_DEVINFO_DATA *devInfoData, DWORD property) {
     char buffer[512] = {0};
@@ -160,7 +162,7 @@ public:
     asio::serial_port serial_;
     asio::steady_timer timer_;
     std::mutex mutex_;
-    std::array<uint8_t, 4096> read_buf_{};
+    std::array<uint8_t, kAsyncReadBufferSize> read_buf_{};
     ReadCallback read_cb_{};
     ErrorCallback error_cb_{};
     std::atomic<bool> async_reading_{false};

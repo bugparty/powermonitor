@@ -1,0 +1,308 @@
+[INFO] Power Monitor Test Suite
+======================================
+[INFO] Detected OS: Linux
+[INFO] Configuring CMake...
+[INFO] Using default generator
+-- The CXX compiler identification is GNU 13.3.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Setting build type to 'Debug' as none was specified.
+-- The C compiler identification is GNU 13.3.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Found Python3: /home/jules/.pyenv/shims/python3 (found version "3.12.12") found components: Interpreter
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE
+-- Using the multi-header code from /app/build/_deps/nlohmann_json-src/include/
+-- ┌─ FTXUI options ─────────────────────
+-- │ FTXUI_ENABLE_INSTALL     : ON
+-- │ FTXUI_BUILD_EXAMPLES     : OFF
+-- │ FTXUI_QUIET              : OFF
+-- │ FTXUI_BUILD_DOCS         : OFF
+-- │ FTXUI_BUILD_TESTS        : OFF
+-- │ FTXUI_BUILD_TESTS_FUZZER : OFF
+-- │ FTXUI_ENABLE_COVERAGE    : OFF
+-- │ FTXUI_DEV_WARNINGS       : OFF
+-- │ FTXUI_CLANG_TIDY         : OFF
+-- └─────────────────────────────────────
+-- Configuring done (41.7s)
+-- Generating done (0.1s)
+-- Build files have been written to: /app/build
+[SUCCESS] CMake configured
+[INFO] Building project...
+[  0%] Building CXX object protocol/CMakeFiles/powermonitor_protocol.dir/crc16_ccitt_false.cpp.o
+[  1%] Building CXX object protocol/CMakeFiles/powermonitor_protocol.dir/frame_builder.cpp.o
+[  2%] Building CXX object protocol/CMakeFiles/powermonitor_protocol.dir/parser.cpp.o
+[  2%] Building CXX object protocol/CMakeFiles/powermonitor_protocol.dir/unpack.cpp.o
+[  3%] Linking CXX static library ../lib/libpowermonitor_protocol.a
+[  3%] Built target powermonitor_protocol
+[  3%] Building CXX object pc_sim/CMakeFiles/powermonitor_lib.dir/__/sim/event_loop.cpp.o
+[  4%] Building CXX object pc_sim/CMakeFiles/powermonitor_lib.dir/__/sim/virtual_link.cpp.o
+[  5%] Building CXX object pc_sim/CMakeFiles/powermonitor_lib.dir/__/node/ina228_model.cpp.o
+[  5%] Building CXX object pc_sim/CMakeFiles/powermonitor_lib.dir/__/node/pc_node.cpp.o
+[  6%] Building CXX object pc_sim/CMakeFiles/powermonitor_lib.dir/__/node/device_node.cpp.o
+[  7%] Linking CXX static library ../lib/libpowermonitor_lib.a
+[  7%] Built target powermonitor_lib
+[  7%] Building CXX object pc_sim/CMakeFiles/pc_sim.dir/pc_sim_main.cpp.o
+[  8%] Linking CXX executable ../bin/pc_sim
+[  8%] Built target pc_sim
+[  9%] Building CXX object pc_sim/CMakeFiles/pc_sim_time_sync_demo.dir/time_sync_demo.cpp.o
+[  9%] Linking CXX executable ../bin/pc_sim_time_sync_demo
+[  9%] Built target pc_sim_time_sync_demo
+[  9%] Building CXX object _deps/googletest-build/googletest/CMakeFiles/gtest.dir/src/gtest-all.cc.o
+[ 10%] Linking CXX static library ../../../lib/libgtest.a
+[ 10%] Built target gtest
+[ 11%] Building CXX object _deps/googletest-build/googletest/CMakeFiles/gtest_main.dir/src/gtest_main.cc.o
+[ 11%] Linking CXX static library ../../../lib/libgtest_main.a
+[ 11%] Built target gtest_main
+[ 12%] Building CXX object pc_sim/CMakeFiles/pc_sim_test.dir/functional_test.cpp.o
+[ 12%] Building CXX object pc_sim/CMakeFiles/pc_sim_test.dir/state_machine_test.cpp.o
+[ 13%] Linking CXX executable ../bin/pc_sim_test
+[ 13%] Built target pc_sim_test
+[ 14%] Building CXX object _deps/googletest-build/googlemock/CMakeFiles/gmock.dir/src/gmock-all.cc.o
+[ 14%] Linking CXX static library ../../../lib/libgmock.a
+[ 14%] Built target gmock
+[ 15%] Building CXX object _deps/googletest-build/googlemock/CMakeFiles/gmock_main.dir/src/gmock_main.cc.o
+[ 16%] Linking CXX static library ../../../lib/libgmock_main.a
+[ 16%] Built target gmock_main
+[ 17%] Building CXX object pc_client/CMakeFiles/serial.dir/src/serial/serial.cpp.o
+[ 18%] Linking CXX static library ../lib/libserial.a
+[ 18%] Built target serial
+[ 19%] Building CXX object pc_client/CMakeFiles/pc_client_lib.dir/src/sample_queue.cpp.o
+[ 19%] Building CXX object pc_client/CMakeFiles/pc_client_lib.dir/src/response_queue.cpp.o
+[ 20%] Building CXX object pc_client/CMakeFiles/pc_client_lib.dir/src/read_thread.cpp.o
+[ 21%] Building CXX object pc_client/CMakeFiles/pc_client_lib.dir/src/session.cpp.o
+[ 21%] Linking CXX static library ../lib/libpc_client_lib.a
+[ 21%] Built target pc_client_lib
+[ 21%] Building CXX object _deps/ftxui-build/CMakeFiles/screen.dir/src/ftxui/screen/box.cpp.o
+[ 22%] Building CXX object _deps/ftxui-build/CMakeFiles/screen.dir/src/ftxui/screen/color.cpp.o
+[ 23%] Building CXX object _deps/ftxui-build/CMakeFiles/screen.dir/src/ftxui/screen/color_info.cpp.o
+[ 23%] Building CXX object _deps/ftxui-build/CMakeFiles/screen.dir/src/ftxui/screen/screen.cpp.o
+[ 24%] Building CXX object _deps/ftxui-build/CMakeFiles/screen.dir/src/ftxui/screen/string.cpp.o
+[ 25%] Building CXX object _deps/ftxui-build/CMakeFiles/screen.dir/src/ftxui/screen/terminal.cpp.o
+[ 25%] Linking CXX static library ../../lib/libftxui-screen.a
+[ 25%] Built target screen
+[ 25%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/automerge.cpp.o
+[ 26%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/blink.cpp.o
+[ 27%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/bold.cpp.o
+[ 27%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/hyperlink.cpp.o
+[ 28%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/border.cpp.o
+[ 29%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/box_helper.cpp.o
+[ 29%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/canvas.cpp.o
+[ 30%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/clear_under.cpp.o
+[ 31%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/color.cpp.o
+[ 31%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/composite_decorator.cpp.o
+[ 32%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/dbox.cpp.o
+[ 33%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/dim.cpp.o
+[ 33%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/flex.cpp.o
+[ 34%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/flexbox.cpp.o
+[ 35%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/flexbox_config.cpp.o
+[ 35%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/flexbox_helper.cpp.o
+[ 36%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/focus.cpp.o
+[ 37%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/frame.cpp.o
+[ 37%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/gauge.cpp.o
+[ 38%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/graph.cpp.o
+[ 39%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/gridbox.cpp.o
+[ 39%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/hbox.cpp.o
+[ 40%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/inverted.cpp.o
+[ 41%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/linear_gradient.cpp.o
+[ 41%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/node.cpp.o
+[ 42%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/node_decorator.cpp.o
+[ 42%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/paragraph.cpp.o
+[ 43%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/reflect.cpp.o
+[ 44%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/scroll_indicator.cpp.o
+[ 44%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/separator.cpp.o
+[ 45%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/size.cpp.o
+[ 46%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/spinner.cpp.o
+[ 46%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/strikethrough.cpp.o
+[ 47%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/table.cpp.o
+[ 48%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/text.cpp.o
+[ 48%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/underlined.cpp.o
+[ 49%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/underlined_double.cpp.o
+[ 50%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/util.cpp.o
+[ 50%] Building CXX object _deps/ftxui-build/CMakeFiles/dom.dir/src/ftxui/dom/vbox.cpp.o
+[ 51%] Linking CXX static library ../../lib/libftxui-dom.a
+[ 51%] Built target dom
+[ 51%] Building CXX object _deps/ftxui-build/CMakeFiles/component.dir/src/ftxui/component/animation.cpp.o
+[ 52%] Building CXX object _deps/ftxui-build/CMakeFiles/component.dir/src/ftxui/component/button.cpp.o
+[ 52%] Building CXX object _deps/ftxui-build/CMakeFiles/component.dir/src/ftxui/component/catch_event.cpp.o
+[ 53%] Building CXX object _deps/ftxui-build/CMakeFiles/component.dir/src/ftxui/component/checkbox.cpp.o
+[ 54%] Building CXX object _deps/ftxui-build/CMakeFiles/component.dir/src/ftxui/component/collapsible.cpp.o
+[ 54%] Building CXX object _deps/ftxui-build/CMakeFiles/component.dir/src/ftxui/component/component.cpp.o
+[ 55%] Building CXX object _deps/ftxui-build/CMakeFiles/component.dir/src/ftxui/component/component_options.cpp.o
+[ 56%] Building CXX object _deps/ftxui-build/CMakeFiles/component.dir/src/ftxui/component/container.cpp.o
+[ 56%] Building CXX object _deps/ftxui-build/CMakeFiles/component.dir/src/ftxui/component/dropdown.cpp.o
+[ 57%] Building CXX object _deps/ftxui-build/CMakeFiles/component.dir/src/ftxui/component/event.cpp.o
+[ 58%] Building CXX object _deps/ftxui-build/CMakeFiles/component.dir/src/ftxui/component/hoverable.cpp.o
+[ 58%] Building CXX object _deps/ftxui-build/CMakeFiles/component.dir/src/ftxui/component/input.cpp.o
+[ 59%] Building CXX object _deps/ftxui-build/CMakeFiles/component.dir/src/ftxui/component/loop.cpp.o
+[ 60%] Building CXX object _deps/ftxui-build/CMakeFiles/component.dir/src/ftxui/component/maybe.cpp.o
+[ 60%] Building CXX object _deps/ftxui-build/CMakeFiles/component.dir/src/ftxui/component/menu.cpp.o
+[ 61%] Building CXX object _deps/ftxui-build/CMakeFiles/component.dir/src/ftxui/component/modal.cpp.o
+[ 62%] Building CXX object _deps/ftxui-build/CMakeFiles/component.dir/src/ftxui/component/radiobox.cpp.o
+[ 62%] Building CXX object _deps/ftxui-build/CMakeFiles/component.dir/src/ftxui/component/renderer.cpp.o
+[ 63%] Building CXX object _deps/ftxui-build/CMakeFiles/component.dir/src/ftxui/component/resizable_split.cpp.o
+[ 64%] Building CXX object _deps/ftxui-build/CMakeFiles/component.dir/src/ftxui/component/screen_interactive.cpp.o
+[ 64%] Building CXX object _deps/ftxui-build/CMakeFiles/component.dir/src/ftxui/component/slider.cpp.o
+[ 65%] Building CXX object _deps/ftxui-build/CMakeFiles/component.dir/src/ftxui/component/terminal_input_parser.cpp.o
+[ 66%] Building CXX object _deps/ftxui-build/CMakeFiles/component.dir/src/ftxui/component/util.cpp.o
+[ 66%] Building CXX object _deps/ftxui-build/CMakeFiles/component.dir/src/ftxui/component/window.cpp.o
+[ 67%] Linking CXX static library ../../lib/libftxui-component.a
+[ 67%] Built target component
+[ 67%] Built target CLI11
+[ 68%] Building CXX object _deps/yaml-cpp-build/CMakeFiles/yaml-cpp.dir/src/contrib/graphbuilder.cpp.o
+[ 68%] Building CXX object _deps/yaml-cpp-build/CMakeFiles/yaml-cpp.dir/src/contrib/graphbuilderadapter.cpp.o
+[ 69%] Building CXX object _deps/yaml-cpp-build/CMakeFiles/yaml-cpp.dir/src/binary.cpp.o
+[ 70%] Building CXX object _deps/yaml-cpp-build/CMakeFiles/yaml-cpp.dir/src/convert.cpp.o
+[ 70%] Building CXX object _deps/yaml-cpp-build/CMakeFiles/yaml-cpp.dir/src/depthguard.cpp.o
+[ 71%] Building CXX object _deps/yaml-cpp-build/CMakeFiles/yaml-cpp.dir/src/directives.cpp.o
+[ 72%] Building CXX object _deps/yaml-cpp-build/CMakeFiles/yaml-cpp.dir/src/emit.cpp.o
+[ 72%] Building CXX object _deps/yaml-cpp-build/CMakeFiles/yaml-cpp.dir/src/emitfromevents.cpp.o
+[ 73%] Building CXX object _deps/yaml-cpp-build/CMakeFiles/yaml-cpp.dir/src/emitter.cpp.o
+[ 74%] Building CXX object _deps/yaml-cpp-build/CMakeFiles/yaml-cpp.dir/src/emitterstate.cpp.o
+[ 74%] Building CXX object _deps/yaml-cpp-build/CMakeFiles/yaml-cpp.dir/src/emitterutils.cpp.o
+[ 75%] Building CXX object _deps/yaml-cpp-build/CMakeFiles/yaml-cpp.dir/src/exceptions.cpp.o
+[ 76%] Building CXX object _deps/yaml-cpp-build/CMakeFiles/yaml-cpp.dir/src/exp.cpp.o
+[ 76%] Building CXX object _deps/yaml-cpp-build/CMakeFiles/yaml-cpp.dir/src/fptostring.cpp.o
+[ 77%] Building CXX object _deps/yaml-cpp-build/CMakeFiles/yaml-cpp.dir/src/memory.cpp.o
+[ 77%] Building CXX object _deps/yaml-cpp-build/CMakeFiles/yaml-cpp.dir/src/node.cpp.o
+[ 78%] Building CXX object _deps/yaml-cpp-build/CMakeFiles/yaml-cpp.dir/src/node_data.cpp.o
+[ 79%] Building CXX object _deps/yaml-cpp-build/CMakeFiles/yaml-cpp.dir/src/nodebuilder.cpp.o
+[ 79%] Building CXX object _deps/yaml-cpp-build/CMakeFiles/yaml-cpp.dir/src/nodeevents.cpp.o
+[ 80%] Building CXX object _deps/yaml-cpp-build/CMakeFiles/yaml-cpp.dir/src/null.cpp.o
+[ 81%] Building CXX object _deps/yaml-cpp-build/CMakeFiles/yaml-cpp.dir/src/ostream_wrapper.cpp.o
+[ 81%] Building CXX object _deps/yaml-cpp-build/CMakeFiles/yaml-cpp.dir/src/parse.cpp.o
+[ 82%] Building CXX object _deps/yaml-cpp-build/CMakeFiles/yaml-cpp.dir/src/parser.cpp.o
+[ 83%] Building CXX object _deps/yaml-cpp-build/CMakeFiles/yaml-cpp.dir/src/regex_yaml.cpp.o
+[ 83%] Building CXX object _deps/yaml-cpp-build/CMakeFiles/yaml-cpp.dir/src/scanner.cpp.o
+[ 84%] Building CXX object _deps/yaml-cpp-build/CMakeFiles/yaml-cpp.dir/src/scanscalar.cpp.o
+[ 85%] Building CXX object _deps/yaml-cpp-build/CMakeFiles/yaml-cpp.dir/src/scantag.cpp.o
+[ 85%] Building CXX object _deps/yaml-cpp-build/CMakeFiles/yaml-cpp.dir/src/scantoken.cpp.o
+[ 86%] Building CXX object _deps/yaml-cpp-build/CMakeFiles/yaml-cpp.dir/src/simplekey.cpp.o
+[ 87%] Building CXX object _deps/yaml-cpp-build/CMakeFiles/yaml-cpp.dir/src/singledocparser.cpp.o
+[ 87%] Building CXX object _deps/yaml-cpp-build/CMakeFiles/yaml-cpp.dir/src/stream.cpp.o
+[ 88%] Building CXX object _deps/yaml-cpp-build/CMakeFiles/yaml-cpp.dir/src/tag.cpp.o
+[ 89%] Linking CXX static library ../../lib/libyaml-cppd.a
+[ 89%] Built target yaml-cpp
+[ 90%] Building CXX object pc_client/CMakeFiles/host_pc_client.dir/src/main.cpp.o
+/app/pc_client/src/main.cpp: In function ‘int main(int, char**)’:
+/app/pc_client/src/main.cpp:397:7: warning: exception of type ‘serial::PortNotOpenedException’ will be caught by earlier handler [-Wexceptions]
+  397 |     } catch (const serial::PortNotOpenedException& e) {
+      |       ^~~~~
+/app/pc_client/src/main.cpp:394:7: note: for type ‘serial::SerialException’
+  394 |     } catch (const serial::SerialException& e) {
+      |       ^~~~~
+[ 91%] Building CXX object pc_client/CMakeFiles/host_pc_client.dir/src/power_monitor_session.cpp.o
+[ 91%] Linking CXX executable ../bin/host_pc_client
+[ 91%] Built target host_pc_client
+[ 92%] Building CXX object pc_client/CMakeFiles/pc_time_sync_demo.dir/src/time_sync_demo.cpp.o
+[ 93%] Linking CXX executable ../bin/pc_time_sync_demo
+[ 93%] Built target pc_time_sync_demo
+[ 94%] Building CXX object pc_client/CMakeFiles/pc_client_tests.dir/tests/device_serial_tests.cpp.o
+[ 95%] Linking CXX executable ../bin/pc_client_tests
+[ 95%] Built target pc_client_tests
+[ 96%] Building CXX object _deps/yaml-cpp-build/util/CMakeFiles/yaml-cpp-sandbox.dir/sandbox.cpp.o
+[ 97%] Linking CXX executable ../../../bin/sandbox
+[ 97%] Built target yaml-cpp-sandbox
+[ 97%] Building CXX object _deps/yaml-cpp-build/util/CMakeFiles/yaml-cpp-parse.dir/parse.cpp.o
+[ 98%] Linking CXX executable ../../../bin/parse
+[ 98%] Built target yaml-cpp-parse
+[ 99%] Building CXX object _deps/yaml-cpp-build/util/CMakeFiles/yaml-cpp-read.dir/read.cpp.o
+[ 99%] Linking CXX executable ../../../bin/read
+[ 99%] Built target yaml-cpp-read
+[ 99%] Building CXX object asio_serial_demo/CMakeFiles/serial_demo.dir/main.cpp.o
+[100%] Linking CXX executable ../bin/serial_demo
+[100%] Built target serial_demo
+[SUCCESS] Build completed
+[WARNING] Using discovered test executable: /app/build/bin/pc_sim_test
+
+[INFO] Running tests...
+Using executable: /app/build/bin/pc_sim_test
+======================================
+Running main() from /app/build/_deps/googletest-src/googletest/src/gtest_main.cc
+CMD send msgid=0x1 seq=0
+DEV CFG_REPORT sent
+CFG_REPORT ver=1 lsb_nA=1000 shunt_cal=0 config=0x0 adc=0x0 period_us=0 mask=0xf
+TEXT_REPORT len=13 text="device online"
+RSP msgid=0x1 status=0x0
+CMD send msgid=0x10 seq=0
+DEV CFG_REPORT sent
+DEV CFG_REPORT sent
+CFG_REPORT ver=1 lsb_nA=1000 shunt_cal=0 config=0x0 adc=0x0 period_us=0 mask=0xf
+TEXT_REPORT len=13 text="device online"
+RSP msgid=0x10 status=0x0
+CFG_REPORT ver=1 lsb_nA=1000 shunt_cal=4096 config=0x0 adc=0x0 period_us=0 mask=0xf
+CMD send msgid=0x30 seq=0
+DEV CFG_REPORT sent
+CFG_REPORT ver=1 lsb_nA=1000 shunt_cal=0 config=0x0 adc=0x0 period_us=0 mask=0xf
+TEXT_REPORT len=13 text="device online"
+RSP msgid=0x30 status=0x0
+CMD send msgid=0x31 seq=1
+RSP msgid=0x31 status=0x0
+CMD send msgid=0x1 seq=0
+CMD send msgid=0x10 seq=1
+CMD send msgid=0x30 seq=2
+DEV CFG_REPORT sent
+DEV CFG_REPORT sent
+CFG_REPORT ver=1 lsb_nA=1000 shunt_cal=0 config=0x0 adc=0x0 period_us=0 mask=0xf
+TEXT_REPORT len=13 text="device online"
+RSP msgid=0x1 status=0x0
+RSP msgid=0x10 status=0x0
+CFG_REPORT ver=1 lsb_nA=1000 shunt_cal=4096 config=0x0 adc=0x0 period_us=0 mask=0xf
+RSP msgid=0x30 status=0x0
+DATA ts_us=1000111 flags=0x5 vbus=11.9994 current=0.510678 temp=35.1562
+DATA ts_us=2000111 flags=0x5 vbus=12.0006 current=0.31336 temp=35.6094
+DATA ts_us=3000111 flags=0x5 vbus=11.9994 current=0.373972 temp=36.3125
+DATA ts_us=4000111 flags=0x5 vbus=12.0006 current=0.524287 temp=37.2031
+DATA ts_us=5000111 flags=0x5 vbus=11.9994 current=0.524287 temp=38.1875
+DATA ts_us=6000111 flags=0x5 vbus=12.0006 current=0.510678 temp=39.1719
+DATA ts_us=7000111 flags=0x5 vbus=11.9994 current=0.31336 temp=40.0547
+DATA ts_us=8000111 flags=0x5 vbus=12.0006 current=0.373972 temp=40.7578
+DATA ts_us=9000111 flags=0x5 vbus=11.9994 current=0.524287 temp=41.2109
+CMD send msgid=0x31 seq=3
+RSP msgid=0x31 status=0x0
+CMD send msgid=0x1 seq=0
+CMD send msgid=0x10 seq=1
+CMD send msgid=0x30 seq=2
+DEV CFG_REPORT sent
+TEXT_REPORT len=13 text="device online"
+DEV CFG_REPORT sent
+RSP msgid=0x1 status=0x0
+RSP msgid=0x10 status=0x0
+CFG_REPORT ver=1 lsb_nA=1000 shunt_cal=4096 config=0x0 adc=0x0 period_us=0 mask=0xf
+RSP msgid=0x30 status=0x0
+CMD send msgid=0x31 seq=3
+CMD retry msgid=0x31 seq=3
+CMD retry msgid=0x31 seq=3
+RSP msgid=0x31 status=0x0
+CMD send msgid=0x1 seq=0
+CMD send msgid=0x10 seq=1
+CMD send msgid=0x30 seq=2
+DEV CFG_REPORT sent
+TEXT_REPORT len=13 text="device online"
+CMD retry msgid=0x1 seq=0
+CMD retry msgid=0x10 seq=1
+CMD retry msgid=0x30 seq=2
+CMD retry msgid=0x1 seq=0
+CMD retry msgid=0x10 seq=1
+CMD retry msgid=0x30 seq=2
+CMD retry msgid=0x1 seq=0
+CMD retry msgid=0x10 seq=1
+CMD retry msgid=0x30 seq=2
+CMD timeout msgid=0x1
+CMD timeout msgid=0x10
+CMD timeout msgid=0x30
+CMD send msgid=0x31 seq=3
+CMD retry msgid=0x31 seq=3
+CMD retry msgid=0x31 seq=3
+[0;32m[==========] [m28 tests from 2 test suites ran. (277 ms total)
+[0;32m[  PASSED  ] [m28 tests.
+======================================
+[SUCCESS] All tests passed!

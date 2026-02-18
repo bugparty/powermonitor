@@ -409,7 +409,7 @@ void INA228::get_diag_alerts(INA228_Alert alert) const {
     }
 }
 
-bool INA228::set_shunt_overvoltage(float value) {
+uint16_t INA228::calculate_shunt_threshold(float value) const {
     uint16_t data;
     float conv_factor = get_shunt_conv_factor();
 
@@ -420,23 +420,17 @@ bool INA228::set_shunt_overvoltage(float value) {
         int16_t temp = (int16_t)((value_temp * this->shunt_ohms_) / conv_factor);
         data = (uint16_t)(~temp + 1);
     }
+    return data;
+}
 
+bool INA228::set_shunt_overvoltage(float value) {
+    uint16_t data = calculate_shunt_threshold(value);
     detail::DEBUG_PRINTF("Setting shunt overvoltage threshold: %f (data=0x%04X)\n", value, data);
     return write_register16(INA228_Register::SOVL, data);
 }
 
 bool INA228::set_shunt_undervoltage(float value) {
-    uint16_t data;
-    float conv_factor = get_shunt_conv_factor();
-
-    if (value >= 0) {
-        data = (uint16_t)((value * this->shunt_ohms_) / conv_factor);
-    } else {
-        float value_temp = value * (-1.0);
-        int16_t temp = (int16_t)((value_temp * this->shunt_ohms_) / conv_factor);
-        data = (uint16_t)(~temp + 1);
-    }
-
+    uint16_t data = calculate_shunt_threshold(value);
     detail::DEBUG_PRINTF("Setting shunt undervoltage threshold: %f (data=0x%04X)\n", value, data);
     return write_register16(INA228_Register::SUVL, data);
 }

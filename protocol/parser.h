@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <vector>
 
@@ -63,7 +64,7 @@ private:
     void resync();  // Scan for SOF after CRC failure
 
     FrameCallback callback_;
-    std::vector<uint8_t> buffer_;
+    std::deque<uint8_t> buffer_;
     State state_ = State::kWaitSof0;
     Frame current_frame_{};
     uint16_t max_len_ = 1024;

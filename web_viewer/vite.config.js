@@ -9,7 +9,15 @@ export default defineConfig({
     appType: "mpa",
     plugins: [react()],
     server: {
-        open: "/web_viewer/index.html"
+        open: "/web_viewer/index.html",
+        watch: {
+            usePolling: true,
+            interval: 120,
+            awaitWriteFinish: {
+                stabilityThreshold: 120,
+                pollInterval: 60
+            }
+        }
     },
     build: {
         outDir: path.resolve(repoRoot, "build/web_viewer_dist"),

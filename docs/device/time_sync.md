@@ -3,9 +3,8 @@
 > **Note**: Complete protocol specification (frame format, MSGID definitions, payload structures) is documented in [uart_protocol.md](../protocol/uart_protocol.md) Section 5.2. This document focuses on the synchronization algorithm, timing considerations, and implementation details.
 
 Related code:
-- `device/time_sync.cpp`
-- `device/time_sync.hpp`
-- `device/timesync.py`
+- `device/command_handler.hpp`
+- `device/protocol/frame_defs.hpp`
 
 This document describes the time synchronization protocol implemented between a host computer (Master) and a Raspberry Pi Pico device (Slave) over a serial connection.
 
@@ -74,15 +73,13 @@ sequenceDiagram
 
 ## Implementation Notes
 
-### Master Side (Python)
-- Uses monotonic clock to track time consistently
-- Logs all transactions for debugging and analysis
-- Implements error recovery strategies
-- Provides command-line interface for configuration
+### Master Side (Host)
+- Should use a monotonic clock to track time consistently
+- Should log all transactions for debugging and analysis
+- Should implement error recovery strategies
 
 ### Slave Side (C++ on Pico)
 - Maintains an epoch offset (`epoch_offset_us`) that is adjusted with each `TIME_ADJUST` command
-- Provides a `get_unix_time_us()` function for application use
 - Validates all incoming packets with CRC checks using the unified protocol's CRC-16/CCITT-FALSE
 - Uses low-level serial I/O for efficient communication
 

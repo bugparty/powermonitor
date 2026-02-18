@@ -1,17 +1,36 @@
 import { useMemo, useState } from "react";
 import { defaultTracks } from "../constants/tracks";
+import type { ParsedPayload, Point, Range, Track } from "../types";
 
-export function useTimelineState() {
-    const [tracks, setTracks] = useState(defaultTracks);
-    const [points, setPoints] = useState([]);
-    const [range, setRange] = useState({ start: 0, end: 1 });
+interface TimelineState {
+    tracks: Track[];
+    visibleTracks: Track[];
+    points: Point[];
+    range: Range;
+    metaText: string;
+    statusText: string;
+    hoverX: number | null;
+    setRange: (range: Range) => void;
+    setHoverX: (hoverX: number | null) => void;
+    fitAll: (inputPoints?: Point[]) => void;
+    applyParsedData: (parsed: ParsedPayload, sourceLabel: string) => void;
+    clearDataWithStatus: (message: string) => void;
+    toggleTrack: (trackId: Track["id"]) => void;
+    reorderTracks: (sourceId: Track["id"] | null, targetId: Track["id"]) => void;
+    setHoverStatus: (point: Point | null) => void;
+}
+
+export function useTimelineState(): TimelineState {
+    const [tracks, setTracks] = useState<Track[]>(defaultTracks);
+    const [points, setPoints] = useState<Point[]>([]);
+    const [range, setRange] = useState<Range>({ start: 0, end: 1 });
     const [metaText, setMetaText] = useState("No file loaded.");
     const [statusText, setStatusText] = useState("Select a powermonitor JSON file to render timeline.");
-    const [hoverX, setHoverX] = useState(null);
+    const [hoverX, setHoverX] = useState<number | null>(null);
 
     const visibleTracks = useMemo(() => tracks.filter((track) => track.visible), [tracks]);
 
-    function fitAll(inputPoints = points) {
+    function fitAll(inputPoints: Point[] = points): void {
         if (!inputPoints.length) {
             return;
         }
@@ -23,7 +42,7 @@ export function useTimelineState() {
         setRange({ start, end });
     }
 
-    function applyParsedData(parsed, sourceLabel) {
+    function applyParsedData(parsed: ParsedPayload, sourceLabel: string): void {
         setPoints(parsed.points);
         setMetaText(
             `schema=${parsed.meta.schema_version || "n/a"} protocol=${parsed.meta.protocol_version || "n/a"} samples=${parsed.points.length} stream_period_us=${parsed.meta.config?.stream_period_us ?? "n/a"}`
@@ -33,19 +52,19 @@ export function useTimelineState() {
         fitAll(parsed.points);
     }
 
-    function clearDataWithStatus(message) {
+    function clearDataWithStatus(message: string): void {
         setPoints([]);
         setHoverX(null);
         setStatusText(message);
     }
 
-    function toggleTrack(trackId) {
+    function toggleTrack(trackId: Track["id"]): void {
         setTracks((prev) =>
             prev.map((track) => (track.id === trackId ? { ...track, visible: !track.visible } : track))
         );
     }
 
-    function reorderTracks(sourceId, targetId) {
+    function reorderTracks(sourceId: Track["id"] | null, targetId: Track["id"]): void {
         if (!sourceId || sourceId === targetId) {
             return;
         }
@@ -62,7 +81,7 @@ export function useTimelineState() {
         });
     }
 
-    function setHoverStatus(point) {
+    function setHoverStatus(point: Point | null): void {
         if (!point) {
             return;
         }
@@ -89,4 +108,3 @@ export function useTimelineState() {
         setHoverStatus
     };
 }
-

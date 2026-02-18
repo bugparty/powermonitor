@@ -1,15 +1,30 @@
 import { useEffect, useRef } from "react";
+import type { MouseEvent as ReactMouseEvent, RefObject, WheelEvent } from "react";
 import { toLocalX } from "../chart-core/scales";
+import type { Layout, Point, Range } from "../types";
 
 const MIN_SPAN_US = 200;
 
-export function usePanZoom({ points, range, setRange, layout, svgRef }) {
-    const panRef = useRef(null);
+interface UsePanZoomArgs {
+    points: Point[];
+    range: Range;
+    setRange: (range: Range) => void;
+    layout: Layout;
+    svgRef: RefObject<SVGSVGElement | null>;
+}
+
+interface DragState {
+    startClientX: number;
+    baseRange: Range;
+}
+
+export function usePanZoom({ points, range, setRange, layout, svgRef }: UsePanZoomArgs) {
+    const panRef = useRef<DragState | null>(null);
     const chartRight = layout.width - layout.right;
     const plotWidth = chartRight - layout.left;
 
     useEffect(() => {
-        function onMouseMove(event) {
+        function onMouseMove(event: MouseEvent): void {
             const drag = panRef.current;
             if (!drag || !points.length) {
                 return;
@@ -39,7 +54,7 @@ export function usePanZoom({ points, range, setRange, layout, svgRef }) {
             setRange({ start, end });
         }
 
-        function onMouseUp() {
+        function onMouseUp(): void {
             panRef.current = null;
         }
 
@@ -51,7 +66,7 @@ export function usePanZoom({ points, range, setRange, layout, svgRef }) {
         };
     }, [points, plotWidth, setRange]);
 
-    function zoomAt(factor, localX) {
+    function zoomAt(factor: number, localX: number): void {
         if (!points.length) {
             return;
         }
@@ -81,7 +96,7 @@ export function usePanZoom({ points, range, setRange, layout, svgRef }) {
         setRange({ start, end });
     }
 
-    function onWheel(event) {
+    function onWheel(event: WheelEvent<SVGSVGElement>): void {
         if (!points.length || !svgRef.current) {
             return;
         }
@@ -94,7 +109,7 @@ export function usePanZoom({ points, range, setRange, layout, svgRef }) {
         zoomAt(factor, localX);
     }
 
-    function onMouseDown(event) {
+    function onMouseDown(event: ReactMouseEvent<SVGSVGElement>): void {
         if (!points.length) {
             return;
         }
@@ -106,4 +121,3 @@ export function usePanZoom({ points, range, setRange, layout, svgRef }) {
 
     return { onWheel, onMouseDown };
 }
-

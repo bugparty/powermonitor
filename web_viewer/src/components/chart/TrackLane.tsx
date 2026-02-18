@@ -1,7 +1,17 @@
-import React from "react";
 import { computeBounds } from "../../chart-core/bounds";
 import { yScale } from "../../chart-core/scales";
 import { formatValue } from "../../domain/formatters";
+import type { LayoutConfig, TimelinePoint, Track } from "../../types";
+
+interface TrackLaneProps {
+    track: Track;
+    laneTop: number;
+    laneHeight: number;
+    layout: LayoutConfig;
+    chartRight: number;
+    visiblePoints: TimelinePoint[];
+    xScale: (time_us: number) => number;
+}
 
 export default function TrackLane({
     track,
@@ -11,8 +21,9 @@ export default function TrackLane({
     chartRight,
     visiblePoints,
     xScale
-}) {
-    const bounds = computeBounds(visiblePoints.map((point) => point[track.key]));
+}: TrackLaneProps) {
+    const values = visiblePoints.map((point) => point[track.key]);
+    const bounds = computeBounds(values);
     const pathD =
         visiblePoints.length > 1
             ? visiblePoints
@@ -61,4 +72,3 @@ export default function TrackLane({
         </g>
     );
 }
-

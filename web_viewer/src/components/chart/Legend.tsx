@@ -1,6 +1,11 @@
-import React from "react";
+import type { LayoutConfig, Track } from "../../types";
 
-export default function Legend({ tracks, layout }) {
+interface LegendProps {
+    tracks: Track[];
+    layout: LayoutConfig;
+}
+
+export default function Legend({ tracks, layout }: LegendProps) {
     return (
         <>
             {tracks.map((track, index) => {
@@ -17,4 +22,3 @@ export default function Legend({ tracks, layout }) {
         </>
     );
 }
-

@@ -1,7 +1,13 @@
-import React from "react";
 import { formatTimeUs } from "../../domain/formatters";
+import type { LayoutConfig, TimeTicks } from "../../types";
 
-export default function TimeAxis({ layout, timeTicks, xScale }) {
+interface TimeAxisProps {
+    layout: LayoutConfig;
+    timeTicks: TimeTicks;
+    xScale: (time_us: number) => number;
+}
+
+export default function TimeAxis({ layout, timeTicks, xScale }: TimeAxisProps) {
     return (
         <>
             {timeTicks.minorTicks.map((timeUs) => {
@@ -32,4 +38,3 @@ export default function TimeAxis({ layout, timeTicks, xScale }) {
         </>
     );
 }
-

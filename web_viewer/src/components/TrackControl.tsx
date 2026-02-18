@@ -1,13 +1,20 @@
-import React, { useRef } from "react";
+import { useRef } from "react";
+import type { Track } from "../types";
 
-export default function TrackControl({ tracks, onToggle, onReorder }) {
-    const dragTrackId = useRef(null);
+interface TrackControlProps {
+    tracks: Track[];
+    onToggle: (trackId: string) => void;
+    onReorder: (sourceId: string | null, targetId: string) => void;
+}
 
-    function handleDragStart(trackId) {
+export default function TrackControl({ tracks, onToggle, onReorder }: TrackControlProps) {
+    const dragTrackId = useRef<string | null>(null);
+
+    function handleDragStart(trackId: string): void {
         dragTrackId.current = trackId;
     }
 
-    function handleDrop(targetId) {
+    function handleDrop(targetId: string): void {
         const sourceId = dragTrackId.current;
         dragTrackId.current = null;
         onReorder(sourceId, targetId);
@@ -37,4 +44,3 @@ export default function TrackControl({ tracks, onToggle, onReorder }) {
         </section>
     );
 }
-

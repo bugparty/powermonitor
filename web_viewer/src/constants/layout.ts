@@ -1,4 +1,6 @@
-export const layout = Object.freeze({
+import type { LayoutConfig } from "../types";
+
+export const layout: LayoutConfig = Object.freeze({
     width: 1200,
     height: 620,
     left: 160,
@@ -7,4 +9,3 @@ export const layout = Object.freeze({
     bottom: 36,
     laneGap: 16
 });
-

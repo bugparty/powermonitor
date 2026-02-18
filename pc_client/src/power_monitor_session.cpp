@@ -278,11 +278,11 @@ bool PowerMonitorSession::initialize_device() {
     // Device may still be streaming from a previous session, so try to stop it first.
     send_command_with_retry(0x31, {});  // STREAM_STOP (best effort)
 
-    if (!run_time_sync_rounds(3)) {
+    if (!run_time_sync_rounds(10)) {
         std::cerr << "Initial TIME_SYNC failed" << std::endl;
         return false;
     }
-    append_log("Initial time sync completed (3 rounds)");
+    append_log("Initial time sync completed (10 rounds)");
 
     // Drop any samples that might have arrived before calibration completed.
     SampleQueue::Sample dropped_sample;
@@ -424,9 +424,12 @@ bool PowerMonitorSession::run_time_sync_rounds(int rounds) {
         return true;
     }
     for (int i = 0; i < rounds; ++i) {
-        if (!perform_time_sync_once(nullptr, false)) {
+        std::string detail;
+        if (!perform_time_sync_once(&detail, false)) {
+            append_log("Time sync round " + std::to_string(i + 1) + "/" + std::to_string(rounds) + " failed: " + detail);
             return false;
         }
+        append_log("Time sync round " + std::to_string(i + 1) + "/" + std::to_string(rounds) + " ok: " + detail);
     }
     return true;
 }

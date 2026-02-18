@@ -69,7 +69,6 @@ struct ParserState {
           response_q(rq), sample_q(sq), stats(st) {}
 
     void on_frame(const protocol::Frame& frame, uint64_t receive_time_us) {
-        (void)receive_time_us;  // Not used in pc_client, but required by callback signature
         stats->rx_counts[frame.msgid].fetch_add(1, std::memory_order_relaxed);
 
         if (frame.msgid == kMsgDataSample) {  // DATA_SAMPLE
@@ -80,7 +79,7 @@ struct ParserState {
 
             SampleQueue::Sample sample;
             sample.seq = frame.seq;
-            sample.host_timestamp_us = now_steady_us();
+            sample.host_timestamp_us = receive_time_us;
             sample.device_timestamp_us = unpack_u32(frame.data.data());
             sample.raw_data = frame.data;
 

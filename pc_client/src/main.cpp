@@ -389,5 +389,19 @@ int main(int argc, char **argv) {
     session_options.interactive = options.interactive;
 
     powermonitor::client::PowerMonitorSession session(session_options);
-    return session.run();
+    try {
+        return session.run();
+    } catch (const serial::SerialException& e) {
+        std::cerr << "\n[ERROR] Serial Exception: " << e.what() << std::endl;
+        return 1;
+    } catch (const serial::PortNotOpenedException& e) {
+        std::cerr << "\n[ERROR] Port Exception: " << e.what() << std::endl;
+        return 1;
+    } catch (const std::exception& e) {
+        std::cerr << "\n[ERROR] Unexpected Exception: " << e.what() << std::endl;
+        return 1;
+    } catch (...) {
+        std::cerr << "\n[ERROR] Unknown exception occurred" << std::endl;
+        return 1;
+    }
 }

@@ -93,7 +93,9 @@ public:
     }
 
     // Build and send a DATA_SAMPLE frame from a RawSample
-    void send_data_sample(const core::RawSample& sample) {
+    // Use template parameter to choose flush behavior at compile time
+    template<bool FlushAfterWrite = true>
+    size_t send_data_sample_impl(const core::RawSample& sample) {
         // Build DATA_SAMPLE payload (16 bytes)
         protocol::DataSamplePayload payload;
         payload.timestamp_us = sample.timestamp_us;
@@ -116,10 +118,29 @@ public:
             sizeof(payload)
         );
 
-        if (len > 0 && write_flush_fn_) {
-            write_noflush_fn_(tx_buf_, len);
+        if (len > 0) {
+            if constexpr (FlushAfterWrite) {
+                if (write_flush_fn_) {
+                    write_flush_fn_(tx_buf_, len);
+                }
+            } else {
+                if (write_noflush_fn_) {
+                    write_noflush_fn_(tx_buf_, len);
+                }
+            }
             ctx_.samples_sent++;
         }
+        return len;
+    }
+
+    // Default: flush after write (for real USB device)
+    inline size_t send_data_sample(const core::RawSample& sample) {
+        return send_data_sample_impl<true>(sample);
+    }
+
+    // For simulation: no flush needed
+    inline size_t send_data_sample_noflush(const core::RawSample& sample) {
+        return send_data_sample_impl<false>(sample);
     }
 
     // Send asynchronous text event to PC.

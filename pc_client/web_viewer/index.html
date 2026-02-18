@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Power Monitor Timeline Viewer</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header class="topbar">
+        <h1>Power Monitor Timeline Viewer</h1>
+        <div class="controls">
+            <label class="file-button" for="json-file">Load JSON</label>
+            <input id="json-file" type="file" accept="application/json,.json">
+            <button id="fit-btn" type="button">Fit All</button>
+        </div>
+    </header>
+
+    <section class="meta" id="meta-panel">
+        <span>No file loaded.</span>
+    </section>
+
+    <section class="chart-area">
+        <svg id="timeline-svg" viewBox="0 0 1200 620" aria-label="Power timeline chart"></svg>
+    </section>
+
+    <section class="status-row">
+        <span id="status-text">Select a powermonitor JSON file to render voltage/current/power timeline.</span>
+    </section>
+
+    <script src="app.js"></script>
+</body>
+</html>

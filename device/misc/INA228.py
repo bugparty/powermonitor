@@ -192,6 +192,11 @@ class INA228:
         self._address = address
         self._i2c = i2c_obj
         self._shunt_ohms = shunt_ohms
+        if(INA228_ADCRANGE == 0):
+            temp = 163.84e-3
+        else:
+            temp = 40.96e-3
+        self._current_lsb = (temp / self._shunt_ohms) / 524288
     
     def __convert2comp2float(self, twocompdata, nrofbit, factor):
         isnegative = 1
@@ -228,12 +233,7 @@ class INA228:
         result = self._i2c.writeto_mem(self._address, register, bytearray(register_bytes) )
 
     def get_current_lsb(self):
-        if(INA228_ADCRANGE == 0):
-            temp = 163.84e-3
-        else:
-            temp = 40.96e-3
-        current_lsb = (temp / self._shunt_ohms) / 524288
-        return current_lsb
+        return self._current_lsb
 
     def get_shunt_conv_factor(self):
         if(INA228_ADCRANGE == 0):

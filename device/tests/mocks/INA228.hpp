@@ -35,5 +35,12 @@ public:
     bool read_register24(INA228_Register reg, uint32_t& val) { val = 0; return true; }
     bool read_register40(INA228_Register reg, uint64_t& val) { val = 0; return true; }
 
+    // Mock methods used by Sampler
+    bool read_diag_alrt(uint16_t& val) { val = 0; return true; }
+    bool read_vbus_raw(uint32_t& val) { val = 0; return true; }
+    bool read_vshunt_raw(int32_t& val) { val = 0; return true; }
+    bool read_current_raw(int32_t& val) { val = 0; return true; }
+    bool read_temp_raw(int16_t& val) { val = 0; return true; }
+
     static uint16_t to_bytes16(uint16_t val) { return val; }
 };

@@ -36,7 +36,7 @@ pico_sdk_init()
 # Add executable. Default name is the project name, version 0.1
 
 add_executable(powermonitor powermonitor.cpp INA228.cpp
-        INA228.hpp)
+        INA228.hpp command_handler.cpp)
 
 pico_set_program_name(powermonitor "powermonitor")
 pico_set_program_version(powermonitor "0.1")

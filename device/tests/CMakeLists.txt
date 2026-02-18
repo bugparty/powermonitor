@@ -11,6 +11,6 @@ include_directories(
 )
 
 # Test executable
-add_executable(test_command_handler test_command_handler.cpp)
+add_executable(test_command_handler test_command_handler.cpp ../command_handler.cpp)
 
 # No libraries needed as everything is header-only or mocked inline

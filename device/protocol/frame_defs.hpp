@@ -17,9 +17,9 @@ constexpr uint8_t kProtoVersion = 0x01;
 // Keep this small to avoid large stack/BSS allocations on RP2040.
 constexpr uint16_t kMaxPayloadLen = 256;
 
-// Maximum payload length for SENDING frames (e.g. TEXT_REPORT up to 4096 bytes).
-// LEN = MSGID(1) + text(4096) = 4097.
-constexpr uint16_t kMaxTxPayloadLen = 4097;
+// Maximum payload length for SENDING frames (e.g. TEXT_REPORT up to 1023 bytes).
+// LEN = MSGID(1) + text(1023) = 1024.
+constexpr uint16_t kMaxTxPayloadLen = 1024;
 
 // Frame header size (VER + TYPE + FLAGS + SEQ + LEN)
 constexpr size_t kHeaderSize = 6;

@@ -83,7 +83,7 @@ void CommandHandler::handle_frame(const protocol::Frame& frame) {
 }
 
 bool CommandHandler::send_text_report(const uint8_t* text, size_t text_len) {
-    if (text == nullptr || text_len == 0 || text_len > 4096) {
+    if (text == nullptr || text_len == 0 || text_len > (protocol::kMaxTxPayloadLen - 1)) {
         return false;
     }
 

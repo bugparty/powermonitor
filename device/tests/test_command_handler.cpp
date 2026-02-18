@@ -270,20 +270,20 @@ void test_text_report_length_limits() {
                    (static_cast<uint16_t>(tx_buffer[7]) << 8);
     assert(len == 2); // MSGID(1) + text(1)
 
-    // Accept max 4096-byte payload
+    // Accept max 1023-byte payload
     tx_buffer.clear();
-    std::vector<uint8_t> max_text(4096, 'x');
+    std::vector<uint8_t> max_text(1023, 'x');
     assert(handler.send_text_report(max_text.data(), max_text.size()));
     assert(!tx_buffer.empty());
     assert(tx_buffer[3] == static_cast<uint8_t>(protocol::FrameType::kEvt));
     assert(tx_buffer[8] == static_cast<uint8_t>(protocol::MsgId::kTextReport));
     len = static_cast<uint16_t>(tx_buffer[6]) |
           (static_cast<uint16_t>(tx_buffer[7]) << 8);
-    assert(len == 4097); // MSGID(1) + text(4096)
+    assert(len == 1024); // MSGID(1) + text(1023)
 
     // Reject oversized payload
     tx_buffer.clear();
-    std::vector<uint8_t> too_large(4097, 'y');
+    std::vector<uint8_t> too_large(1024, 'y');
     assert(!handler.send_text_report(too_large.data(), too_large.size()));
     assert(tx_buffer.empty());
 

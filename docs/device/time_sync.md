@@ -3,9 +3,8 @@
 > **Note**: Complete protocol specification (frame format, MSGID definitions, payload structures) is documented in [uart_protocol.md](../protocol/uart_protocol.md) Section 5.2. This document focuses on the synchronization algorithm, timing considerations, and implementation details.
 
 Related code:
-- `device/time_sync.cpp`
-- `device/time_sync.hpp`
-- `device/timesync.py`
+- `device/command_handler.hpp`
+- `device/protocol/frame_defs.hpp`
 
 This document describes the time synchronization protocol implemented between a host computer (Master) and a Raspberry Pi Pico device (Slave) over a serial connection.
 

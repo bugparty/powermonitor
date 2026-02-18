@@ -1,11 +1,26 @@
-import React, { useMemo } from "react";
+import { useMemo } from "react";
+import type { MouseEvent, RefObject, WheelEvent } from "react";
 import { buildTimeTicks } from "../chart-core/ticks";
 import { laneHeight } from "../chart-core/bounds";
 import { createXScale } from "../chart-core/scales";
+import type { Layout, Point, Range, Track } from "../types";
 import TrackLane from "./chart/TrackLane";
 import TimeAxis from "./chart/TimeAxis";
 import Legend from "./chart/Legend";
 import HoverLayer from "./chart/HoverLayer";
+
+interface TimelineChartProps {
+    svgRef: RefObject<SVGSVGElement | null>;
+    layout: Layout;
+    tracks: Track[];
+    points: Point[];
+    range: Range;
+    hoverX: number | null;
+    onWheel: (event: WheelEvent<SVGSVGElement>) => void;
+    onMouseDown: (event: MouseEvent<SVGSVGElement>) => void;
+    onHoverMove: (x: number | null, nearestPoint: Point | null) => void;
+    onHoverLeave: () => void;
+}
 
 export default function TimelineChart({
     svgRef,
@@ -18,7 +33,7 @@ export default function TimelineChart({
     onMouseDown,
     onHoverMove,
     onHoverLeave
-}) {
+}: TimelineChartProps) {
     const chartRight = layout.width - layout.right;
     const plotWidth = chartRight - layout.left;
     const visiblePoints = useMemo(
@@ -30,14 +45,14 @@ export default function TimelineChart({
     const currentLaneHeight = laneHeight(laneCount, layout);
     const xScale = useMemo(() => createXScale(range, layout.left, plotWidth), [range, layout.left, plotWidth]);
 
-    function handleHoverMove(localX) {
+    function handleHoverMove(localX: number | null): void {
         if (localX === null) {
             onHoverMove(null, null);
             return;
         }
         const span = Math.max(1, range.end - range.start);
         const timeUs = range.start + ((localX - layout.left) / plotWidth) * span;
-        const nearestPoint = visiblePoints.reduce((best, point) => {
+        const nearestPoint = visiblePoints.reduce<Point | null>((best, point) => {
             if (!best) return point;
             return Math.abs(point.timeUs - timeUs) < Math.abs(best.timeUs - timeUs) ? point : best;
         }, null);
@@ -95,4 +110,3 @@ export default function TimelineChart({
         </section>
     );
 }
-

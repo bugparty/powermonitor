@@ -1,6 +1,11 @@
-import React from "react";
+import type { ChangeEvent } from "react";
 
-export default function TopBar({ onFileChange, onFitAll }) {
+interface TopBarProps {
+    onFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
+    onFitAll: () => void;
+}
+
+export default function TopBar({ onFileChange, onFitAll }: TopBarProps) {
     return (
         <header className="topbar">
             <h1>Power Monitor Timeline Viewer</h1>
@@ -16,4 +21,3 @@ export default function TopBar({ onFileChange, onFitAll }) {
         </header>
     );
 }
-

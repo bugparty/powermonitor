@@ -1,5 +1,15 @@
-import React from "react";
 import { toLocalX } from "../../chart-core/scales";
+import type { MouseEvent, RefObject } from "react";
+import type { Layout } from "../../types";
+
+interface HoverLayerProps {
+    svgRef: RefObject<SVGSVGElement | null>;
+    layout: Layout;
+    chartRight: number;
+    hoverX: number | null;
+    onHoverMove: (x: number | null) => void;
+    onHoverLeave: () => void;
+}
 
 export default function HoverLayer({
     svgRef,
@@ -8,8 +18,8 @@ export default function HoverLayer({
     hoverX,
     onHoverMove,
     onHoverLeave
-}) {
-    function handleMouseMove(event) {
+}: HoverLayerProps) {
+    function handleMouseMove(event: MouseEvent<SVGRectElement>): void {
         if (!svgRef.current) {
             return;
         }
@@ -45,4 +55,3 @@ export default function HoverLayer({
         </>
     );
 }
-

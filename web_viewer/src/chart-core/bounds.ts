@@ -1,4 +1,6 @@
-export function computeBounds(values) {
+import type { Layout } from "../types";
+
+export function computeBounds(values: number[]): { min: number; max: number } {
     let min = Number.POSITIVE_INFINITY;
     let max = Number.NEGATIVE_INFINITY;
     values.forEach((value) => {
@@ -17,7 +19,6 @@ export function computeBounds(values) {
     return { min: min - padding, max: max + padding };
 }
 
-export function laneHeight(laneCount, layout) {
+export function laneHeight(laneCount: number, layout: Layout): number {
     return (layout.height - layout.top - layout.bottom - layout.laneGap * (laneCount - 1)) / laneCount;
 }
-

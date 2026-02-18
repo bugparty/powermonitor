@@ -1,8 +1,25 @@
-export function parsePayload(text) {
-    const root = JSON.parse(text);
+import type { ParsedMeta, ParsedPayload, Point } from "../types";
+
+interface RawSample {
+    engineering?: {
+        vbus_v?: unknown;
+        current_a?: unknown;
+    };
+    seq?: unknown;
+    device_timestamp_us?: unknown;
+    host_timestamp_us?: unknown;
+}
+
+interface RawPayload {
+    samples?: RawSample[];
+    meta?: ParsedMeta;
+}
+
+export function parsePayload(text: string): ParsedPayload {
+    const root = JSON.parse(text) as RawPayload;
     const samples = Array.isArray(root.samples) ? root.samples : [];
-    const points = samples
-        .map((sample) => {
+    const points: Point[] = samples
+        .map((sample): Point | null => {
             const engineering = sample.engineering || {};
             const voltage = Number(engineering.vbus_v);
             const current = Number(engineering.current_a);
@@ -19,7 +36,7 @@ export function parsePayload(text) {
                 power: voltage * current
             };
         })
-        .filter(Boolean)
+        .filter((point): point is Point => point !== null)
         .sort((a, b) => a.timeUs - b.timeUs);
 
     if (!points.length) {
@@ -28,4 +45,3 @@ export function parsePayload(text) {
 
     return { meta: root.meta || {}, points };
 }
-

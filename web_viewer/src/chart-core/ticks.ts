@@ -1,4 +1,6 @@
-export function buildTimeTicks(startUs, endUs, maxMajorTicks = 8, minorDivisions = 10) {
+import type { TimeTicks } from "../types";
+
+export function buildTimeTicks(startUs: number, endUs: number, maxMajorTicks = 8, minorDivisions = 10): TimeTicks {
     const span = Math.max(1, endUs - startUs);
     const targetMajorStep = span / maxMajorTicks;
     const niceStepsUs = [
@@ -17,8 +19,8 @@ export function buildTimeTicks(startUs, endUs, maxMajorTicks = 8, minorDivisions
     }
 
     const minorStepUs = Math.max(1_000, Math.floor(majorStepUs / minorDivisions));
-    const majorTicks = [];
-    const minorTicks = [];
+    const majorTicks: number[] = [];
+    const minorTicks: number[] = [];
 
     const majorStart = Math.floor(startUs / majorStepUs) * majorStepUs;
     for (let timeUs = majorStart; timeUs <= endUs; timeUs += majorStepUs) {
@@ -36,4 +38,3 @@ export function buildTimeTicks(startUs, endUs, maxMajorTicks = 8, minorDivisions
 
     return { majorTicks, minorTicks, majorStepUs, minorStepUs };
 }
-

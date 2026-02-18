@@ -10,6 +10,7 @@
 #include "state_machine.hpp"
 #include "core/raw_sample.hpp"
 #include "sampler.hpp"
+#include <INA228.hpp>
 
 namespace device {
 

@@ -16,6 +16,14 @@
 #include "state_machine.hpp"
 #include "command_handler.hpp"
 
+// Stubs for sampler functions (not linked in tests)
+namespace device {
+    void sampler_init(core::SharedContext* shared, INA228* ina228) { (void)shared; (void)ina228; }
+    void sampler_launch_core1() {}
+    void sampler_start() {}
+    void sampler_stop() {}
+}
+
 // Static member definition for CommandHandler::tx_buf_
 uint8_t device::CommandHandler::tx_buf_[device::CommandHandler::kMaxFrameBytes];
 
@@ -175,7 +183,7 @@ void test_stats_report_periodic_and_stop() {
     tx_buffer.clear();
 
     // First call only initializes cadence baseline.
-    mock_time_us = 0;
+    mock_time_us = 1;
     handler.maybe_emit_stats_report(mock_time_us);
     assert(tx_buffer.empty());
 
@@ -191,7 +199,7 @@ void test_stats_report_periodic_and_stop() {
     assert(tx_buffer.empty());
 
     // At >=1 second, periodic report should be emitted.
-    mock_time_us = 1000000;
+    mock_time_us = 1000001;
     handler.maybe_emit_stats_report(mock_time_us);
     assert(!tx_buffer.empty());
     assert(tx_buffer[3] == static_cast<uint8_t>(protocol::FrameType::kEvt));
@@ -221,7 +229,7 @@ void test_stats_report_periodic_and_stop() {
     shared.dropped_duplicate_suppressed = 1;
     shared.dropped_worker_missed_tick = 1;
     shared.dropped_queue_full = 0;
-    mock_time_us = 1500000;
+    mock_time_us = 1500001;
     handler.handle_frame(stop_frame);
 
     assert(!tx_buffer.empty());

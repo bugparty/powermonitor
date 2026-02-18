@@ -15,7 +15,7 @@ Practical handbook for AI agents working in this repo. Keep outputs (docs, comme
 ---
 
 ## Build, Test, Run
-- Quick full test: `pwsh workflow.ps1` (required after any code change).
+- Quick full test: `pwsh workflow.ps1` (required after any code change except changes limited to `web_viewer/`; for `web_viewer/`-only changes use `npm run build:web`).
 - Clean rebuild + test: `pwsh workflow.ps1 -Clean` or `pwsh workflow.ps1 -Rebuild`.
 - Verbose output: `pwsh workflow.ps1 -Verbose`.
 - Help: `pwsh workflow.ps1 -Help` for all options.
@@ -130,4 +130,3 @@ Use this pattern to iterate quickly on failing cases.
 ---
 
 Stay within these boundaries and keep the simulator deterministic and well-tested.
-

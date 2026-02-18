@@ -13,6 +13,17 @@
 ./test.sh --verbose
 ```
 
+## Web Viewer Only Changes
+
+If your change is limited to `web_viewer/` (React/Vite frontend), you do not need to run `workflow.ps1` or host-side C++ tests.
+
+Use:
+
+```bash
+npm install
+npm run build:web
+```
+
 ## Test Script Options
 
 | Option | Description |

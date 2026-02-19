@@ -270,6 +270,9 @@ public:
     [[nodiscard]] bool read_temp_raw(int16_t& raw16) const;
     [[nodiscard]] bool read_diag_alrt(uint16_t& flags) const;
 
+    // Burst read for sampler loop: VSHUNT, VBUS, DIETEMP, CURRENT (11 bytes contiguous)
+    [[nodiscard]] bool read_burst_sample(int32_t& vshunt, uint32_t& vbus, int16_t& temp, int32_t& current) const;
+
     void print_manufacturer_id() const;
     void print_device_id() const;
 

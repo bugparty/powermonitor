@@ -286,6 +286,33 @@ bool INA228::read_diag_alrt(uint16_t& flags) const {
     return read_register16(INA228_Register::DIAG_ALRT, flags);
 }
 
+bool INA228::read_burst_sample(int32_t& vshunt, uint32_t& vbus, int16_t& temp, int32_t& current) const {
+    uint8_t buf[11]; // VSHUNT(3) + VBUS(3) + DIETEMP(2) + CURRENT(3)
+
+    // Burst read starting from VSHUNT (0x04)
+    if (!i2c_read_reg_stop(this->addr_, static_cast<uint8_t>(INA228_Register::VSHUNT), buf, 11)) {
+        return false;
+    }
+
+    // VSHUNT: 3 bytes, 20-bit signed (bits 23-4)
+    uint32_t raw_vshunt = ((uint32_t)buf[0] << 16) | ((uint32_t)buf[1] << 8) | buf[2];
+    vshunt = static_cast<int32_t>(raw_vshunt << 8) >> 12;
+
+    // VBUS: 3 bytes, 20-bit unsigned (bits 23-4)
+    uint32_t raw_vbus = ((uint32_t)buf[3] << 16) | ((uint32_t)buf[4] << 8) | buf[5];
+    vbus = (raw_vbus >> 4) & 0x0FFFFF;
+
+    // DIETEMP: 2 bytes, 16-bit signed
+    uint16_t raw_temp = ((uint16_t)buf[6] << 8) | buf[7];
+    temp = static_cast<int16_t>(raw_temp);
+
+    // CURRENT: 3 bytes, 20-bit signed (bits 23-4)
+    uint32_t raw_current = ((uint32_t)buf[8] << 16) | ((uint32_t)buf[9] << 8) | buf[10];
+    current = static_cast<int32_t>(raw_current << 8) >> 12;
+
+    return true;
+}
+
 void INA228::print_manufacturer_id() const {
     uint16_t raw_id = 0;
     if (!read_register16(INA228_Register::MANUFACTURER_ID, raw_id)) {

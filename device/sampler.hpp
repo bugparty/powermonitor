@@ -101,10 +101,9 @@ static void sampler_do_work(SamplerContext* ctx) {
         return;
     }
 
-    ok &= ctx->ina228->read_vbus_raw(vbus_raw);
-    ok &= ctx->ina228->read_vshunt_raw(vshunt_raw);
-    ok &= ctx->ina228->read_current_raw(current_raw);
-    ok &= ctx->ina228->read_temp_raw(temp_raw);
+    // Use burst read for contiguous registers (VSHUNT, VBUS, DIETEMP, CURRENT)
+    // This reduces I2C transactions from 4 (address+read each) to 1 (address+read all)
+    ok &= ctx->ina228->read_burst_sample(vshunt_raw, vbus_raw, temp_raw, current_raw);
 
     sample.vbus_raw = vbus_raw;
     sample.vshunt_raw = vshunt_raw;

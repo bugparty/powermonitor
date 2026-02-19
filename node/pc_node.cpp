@@ -24,8 +24,10 @@ constexpr uint64_t kCmdTimeoutUs = 200000;
 constexpr uint8_t kMaxRetries = 3;
 
 void append_u16(std::vector<uint8_t> &out, uint16_t value) {
-    out.push_back(static_cast<uint8_t>(value & 0xFF));
-    out.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
+    size_t idx = out.size();
+    out.resize(idx + 2);
+    out[idx] = static_cast<uint8_t>(value & 0xFF);
+    out[idx + 1] = static_cast<uint8_t>((value >> 8) & 0xFF);
 }
 
 uint16_t read_u16(const std::vector<uint8_t> &data, size_t offset) {
@@ -41,14 +43,16 @@ uint32_t read_u32(const std::vector<uint8_t> &data, size_t offset) {
 }
 
 void append_u64(std::vector<uint8_t> &out, uint64_t value) {
-    out.push_back(static_cast<uint8_t>(value & 0xFF));
-    out.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
-    out.push_back(static_cast<uint8_t>((value >> 16) & 0xFF));
-    out.push_back(static_cast<uint8_t>((value >> 24) & 0xFF));
-    out.push_back(static_cast<uint8_t>((value >> 32) & 0xFF));
-    out.push_back(static_cast<uint8_t>((value >> 40) & 0xFF));
-    out.push_back(static_cast<uint8_t>((value >> 48) & 0xFF));
-    out.push_back(static_cast<uint8_t>((value >> 56) & 0xFF));
+    size_t idx = out.size();
+    out.resize(idx + 8);
+    out[idx] = static_cast<uint8_t>(value & 0xFF);
+    out[idx + 1] = static_cast<uint8_t>((value >> 8) & 0xFF);
+    out[idx + 2] = static_cast<uint8_t>((value >> 16) & 0xFF);
+    out[idx + 3] = static_cast<uint8_t>((value >> 24) & 0xFF);
+    out[idx + 4] = static_cast<uint8_t>((value >> 32) & 0xFF);
+    out[idx + 5] = static_cast<uint8_t>((value >> 40) & 0xFF);
+    out[idx + 6] = static_cast<uint8_t>((value >> 48) & 0xFF);
+    out[idx + 7] = static_cast<uint8_t>((value >> 56) & 0xFF);
 }
 
 void append_i64(std::vector<uint8_t> &out, int64_t value) {

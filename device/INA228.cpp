@@ -282,6 +282,37 @@ bool INA228::read_temp_raw(int16_t& raw16) const {
     return true;
 }
 
+bool INA228::read_burst_data(int32_t& vshunt_raw, uint32_t& vbus_raw, int16_t& temp_raw, int32_t& current_raw) const {
+    uint8_t buf[11];
+    if (!i2c_read_reg_stop(this->addr_, static_cast<uint8_t>(INA228_Register::VSHUNT), buf, 11)) {
+        return false;
+    }
+
+    // Unpack VSHUNT (Bytes 0-2, 24-bit -> 20-bit signed)
+    // Register format: 24-bit. Use upper 20 bits.
+    // Existing logic: raw20 = static_cast<int32_t>(reg24 << 8) >> 12;
+    uint32_t vshunt_u24 = ((uint32_t)buf[0] << 16) | ((uint32_t)buf[1] << 8) | buf[2];
+    vshunt_raw = static_cast<int32_t>(vshunt_u24 << 8) >> 12;
+
+    // Unpack VBUS (Bytes 3-5, 24-bit -> 20-bit unsigned)
+    // Register format: 24-bit. Use upper 20 bits.
+    // Existing logic: raw20 = (reg24 >> 4) & 0x0FFFFF;
+    uint32_t vbus_u24 = ((uint32_t)buf[3] << 16) | ((uint32_t)buf[4] << 8) | buf[5];
+    vbus_raw = (vbus_u24 >> 4) & 0x0FFFFF;
+
+    // Unpack DIETEMP (Bytes 6-7, 16-bit signed)
+    uint16_t temp_u16 = ((uint16_t)buf[6] << 8) | buf[7];
+    temp_raw = static_cast<int16_t>(temp_u16);
+
+    // Unpack CURRENT (Bytes 8-10, 24-bit -> 20-bit signed)
+    // Register format: 24-bit. Use upper 20 bits.
+    // Existing logic: raw20 = static_cast<int32_t>(reg24 << 8) >> 12;
+    uint32_t current_u24 = ((uint32_t)buf[8] << 16) | ((uint32_t)buf[9] << 8) | buf[10];
+    current_raw = static_cast<int32_t>(current_u24 << 8) >> 12;
+
+    return true;
+}
+
 bool INA228::read_diag_alrt(uint16_t& flags) const {
     return read_register16(INA228_Register::DIAG_ALRT, flags);
 }

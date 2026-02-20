@@ -268,6 +268,7 @@ public:
     [[nodiscard]] bool read_vshunt_raw(int32_t& raw20) const;
     [[nodiscard]] bool read_current_raw(int32_t& raw20) const;
     [[nodiscard]] bool read_temp_raw(int16_t& raw16) const;
+    [[nodiscard]] bool read_burst_data(int32_t& vshunt_raw, uint32_t& vbus_raw, int16_t& temp_raw, int32_t& current_raw) const;
     [[nodiscard]] bool read_diag_alrt(uint16_t& flags) const;
 
     void print_manufacturer_id() const;

@@ -37,8 +37,8 @@ static const uint16_t crc16_table[256] = {
     0x6E17, 0x7E36, 0x4E55, 0x5E74, 0x2E93, 0x3EB2, 0x0ED1, 0x1EF0,
 };
 
-uint16_t crc16_ccitt_false(const uint8_t *data, size_t len) {
-    uint16_t crc = 0xFFFF;
+uint16_t crc16_ccitt_false(const uint8_t *data, size_t len, uint16_t initial_crc) {
+    uint16_t crc = initial_crc;
     for (size_t i = 0; i < len; ++i) {
         crc = (crc << 8) ^ crc16_table[((crc >> 8) ^ data[i]) & 0xFF];
     }

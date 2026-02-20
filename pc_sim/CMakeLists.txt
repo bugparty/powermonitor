@@ -46,6 +46,7 @@ add_executable(pc_sim_test
         state_machine_test.cpp
         ina228_model_test.cpp
         unpack_test.cpp
+        event_loop_test.cpp
 )
 target_link_libraries(pc_sim_test
         powermonitor_lib

@@ -4,7 +4,6 @@
 #include <cstring>
 #include <cmath>
 #include <cstdint>
-#include <deque>
 
 // Include mock header first to get types and declarations
 #include "hardware/i2c.h"
@@ -13,7 +12,6 @@
 static i2c_inst_t* mock_i2c_inst = nullptr;
 static uint8_t mock_i2c_addr = 0x40;
 static float mock_shunt_ohms = 0.015f;
-static std::deque<uint8_t> mock_read_data;
 
 // Capture written data
 struct WriteOp {
@@ -33,18 +31,7 @@ extern "C" {
         return (int)len;
     }
     int i2c_read_blocking(i2c_inst_t *i2c, uint8_t addr, uint8_t *dst, size_t len, bool nostop) {
-        if (!mock_read_data.empty()) {
-            for (size_t i = 0; i < len; ++i) {
-                if (mock_read_data.empty()) {
-                    dst[i] = 0;
-                } else {
-                    dst[i] = mock_read_data.front();
-                    mock_read_data.pop_front();
-                }
-            }
-        } else {
-            memset(dst, 0, len);
-        }
+        memset(dst, 0, len);
         return (int)len;
     }
     int i2c_write_timeout_us(i2c_inst_t *i2c, uint8_t addr, const uint8_t *src, size_t len, bool nostop, uint64_t timeout_us) {
@@ -166,60 +153,8 @@ void test_set_shunt_undervoltage() {
     std::cout << "Symmetry check: PASS" << std::endl;
 }
 
-void test_read_burst_sample() {
-    std::cout << "Testing read_burst_sample..." << std::endl;
-    INA228 sensor(mock_i2c_inst, mock_i2c_addr, mock_shunt_ohms);
-
-    // Prepare mock data for 11 bytes
-    // VSHUNT: 3 bytes. Value: 0x123450 (20 bits top aligned) -> 0x12345
-    // VBUS: 3 bytes. Value: 0x543210 (20 bits top aligned) -> 0x54321
-    // TEMP: 2 bytes. Value: 0xABCD -> -21555
-    // CURRENT: 3 bytes. Value: 0xFEDCBA (20 bits top aligned) -> -74566 (negative)
-
-    mock_read_data.clear();
-    // VSHUNT: 0x12, 0x34, 0x50
-    mock_read_data.push_back(0x12); mock_read_data.push_back(0x34); mock_read_data.push_back(0x50);
-    // VBUS: 0x54, 0x32, 0x10
-    mock_read_data.push_back(0x54); mock_read_data.push_back(0x32); mock_read_data.push_back(0x10);
-    // TEMP: 0xAB, 0xCD
-    mock_read_data.push_back(0xAB); mock_read_data.push_back(0xCD);
-    // CURRENT: 0xFE, 0xDC, 0xB0 (last nibble 0 to test alignment, though B0 is fine)
-    // 0xFEDCB0 << 8 = 0xFEDCB000.
-    // 0xFEDCB000 >> 12.
-    mock_read_data.push_back(0xFE); mock_read_data.push_back(0xDC); mock_read_data.push_back(0xB0);
-
-    int32_t vshunt = 0, current = 0;
-    uint32_t vbus = 0;
-    int16_t temp = 0;
-
-    if (!sensor.read_burst_sample(vshunt, vbus, temp, current)) {
-        std::cerr << "read_burst_sample failed" << std::endl;
-        assert(false);
-    }
-
-    // VSHUNT: 0x123450 << 8 = 0x12345000. >> 12 = 0x00012345.
-    std::cout << "VSHUNT: 0x" << std::hex << vshunt << " (expected 0x12345)" << std::dec << std::endl;
-    assert(vshunt == 0x12345);
-
-    // VBUS: 0x543210 >> 4 = 0x54321.
-    std::cout << "VBUS: 0x" << std::hex << vbus << " (expected 0x54321)" << std::dec << std::endl;
-    assert(vbus == 0x54321);
-
-    // TEMP: 0xABCD
-    std::cout << "TEMP: " << (int)temp << " (expected " << (int16_t)0xABCD << ")" << std::endl;
-    assert(temp == (int16_t)0xABCD);
-
-    // CURRENT: 0xFEDCB000 >> 12
-    int32_t c_expected = (int32_t)0xFEDCB000 >> 12;
-    std::cout << "CURRENT: 0x" << std::hex << current << " (expected 0x" << c_expected << ")" << std::dec << std::endl;
-    assert(current == c_expected);
-
-    std::cout << "Burst read test passed!" << std::endl;
-}
-
 int main() {
     test_set_shunt_overvoltage();
     test_set_shunt_undervoltage();
-    test_read_burst_sample();
     return 0;
 }

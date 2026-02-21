@@ -1,11 +1,5 @@
 #pragma once
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-static inline void __dmb() {}
-
-#ifdef __cplusplus
-}
-#endif
+static void __sev() {}
+static void __wfe() {}
+static void __dmb() {}

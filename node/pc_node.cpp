@@ -4,6 +4,8 @@
 #include <iostream>
 #include <string>
 
+#include "protocol/serialization.h"
+
 namespace node {
 
 namespace {
@@ -22,57 +24,6 @@ constexpr uint8_t kMsgTextReport = 0x93;
 constexpr uint8_t kStatusOk = 0x00;
 constexpr uint64_t kCmdTimeoutUs = 200000;
 constexpr uint8_t kMaxRetries = 3;
-
-void append_u16(std::vector<uint8_t> &out, uint16_t value) {
-    size_t idx = out.size();
-    out.resize(idx + 2);
-    out[idx] = static_cast<uint8_t>(value & 0xFF);
-    out[idx + 1] = static_cast<uint8_t>((value >> 8) & 0xFF);
-}
-
-uint16_t read_u16(const std::vector<uint8_t> &data, size_t offset) {
-    return static_cast<uint16_t>(data[offset]) |
-           (static_cast<uint16_t>(data[offset + 1]) << 8U);
-}
-
-uint32_t read_u32(const std::vector<uint8_t> &data, size_t offset) {
-    return static_cast<uint32_t>(data[offset]) |
-           (static_cast<uint32_t>(data[offset + 1]) << 8U) |
-           (static_cast<uint32_t>(data[offset + 2]) << 16U) |
-           (static_cast<uint32_t>(data[offset + 3]) << 24U);
-}
-
-void append_u64(std::vector<uint8_t> &out, uint64_t value) {
-    size_t idx = out.size();
-    out.resize(idx + 8);
-    out[idx] = static_cast<uint8_t>(value & 0xFF);
-    out[idx + 1] = static_cast<uint8_t>((value >> 8) & 0xFF);
-    out[idx + 2] = static_cast<uint8_t>((value >> 16) & 0xFF);
-    out[idx + 3] = static_cast<uint8_t>((value >> 24) & 0xFF);
-    out[idx + 4] = static_cast<uint8_t>((value >> 32) & 0xFF);
-    out[idx + 5] = static_cast<uint8_t>((value >> 40) & 0xFF);
-    out[idx + 6] = static_cast<uint8_t>((value >> 48) & 0xFF);
-    out[idx + 7] = static_cast<uint8_t>((value >> 56) & 0xFF);
-}
-
-void append_i64(std::vector<uint8_t> &out, int64_t value) {
-    append_u64(out, static_cast<uint64_t>(value));
-}
-
-uint64_t read_u64(const std::vector<uint8_t> &data, size_t offset) {
-    return static_cast<uint64_t>(data[offset]) |
-           (static_cast<uint64_t>(data[offset + 1]) << 8U) |
-           (static_cast<uint64_t>(data[offset + 2]) << 16U) |
-           (static_cast<uint64_t>(data[offset + 3]) << 24U) |
-           (static_cast<uint64_t>(data[offset + 4]) << 32U) |
-           (static_cast<uint64_t>(data[offset + 5]) << 40U) |
-           (static_cast<uint64_t>(data[offset + 6]) << 48U) |
-           (static_cast<uint64_t>(data[offset + 7]) << 56U);
-}
-
-int64_t read_i64(const std::vector<uint8_t> &data, size_t offset) {
-    return static_cast<int64_t>(read_u64(data, offset));
-}
 
 int64_t signed_diff_u64(uint64_t lhs, uint64_t rhs) {
     return static_cast<int64_t>(lhs) - static_cast<int64_t>(rhs);
@@ -121,30 +72,30 @@ void PCNode::send_ping(uint64_t now_us) { send_cmd(kMsgPing, {}, now_us); }
 
 void PCNode::send_time_sync(uint64_t now_us) {
     std::vector<uint8_t> payload;
-    append_u64(payload, now_us);  // T1 = send time
+    protocol::append_u64(payload, now_us);  // T1 = send time
     time_sync_T1_ = now_us;
     send_cmd(kMsgTimeSync, payload, now_us);
 }
 
 void PCNode::send_time_adjust(int64_t offset_us, uint64_t now_us) {
     std::vector<uint8_t> payload;
-    append_i64(payload, offset_us);
+    protocol::append_i64(payload, offset_us);
     send_cmd(kMsgTimeAdjust, payload, now_us);
 }
 
 void PCNode::send_time_set(uint64_t unix_time_us, uint64_t now_us) {
     std::vector<uint8_t> payload;
-    append_u64(payload, unix_time_us);
+    protocol::append_u64(payload, unix_time_us);
     send_cmd(kMsgTimeSet, payload, now_us);
 }
 
 void PCNode::send_set_cfg(uint16_t config_reg, uint16_t adc_config_reg, uint16_t shunt_cal,
                           uint16_t shunt_tempco, uint64_t now_us) {
     std::vector<uint8_t> payload;
-    append_u16(payload, config_reg);
-    append_u16(payload, adc_config_reg);
-    append_u16(payload, shunt_cal);
-    append_u16(payload, shunt_tempco);
+    protocol::append_u16(payload, config_reg);
+    protocol::append_u16(payload, adc_config_reg);
+    protocol::append_u16(payload, shunt_cal);
+    protocol::append_u16(payload, shunt_tempco);
     send_cmd(kMsgSetCfg, payload, now_us);
 }
 
@@ -152,8 +103,8 @@ void PCNode::send_get_cfg(uint64_t now_us) { send_cmd(kMsgGetCfg, {}, now_us); }
 
 void PCNode::send_stream_start(uint16_t period_us, uint16_t mask, uint64_t now_us) {
     std::vector<uint8_t> payload;
-    append_u16(payload, period_us);
-    append_u16(payload, mask);
+    protocol::append_u16(payload, period_us);
+    protocol::append_u16(payload, mask);
     send_cmd(kMsgStreamStart, payload, now_us);
 }
 
@@ -215,9 +166,9 @@ void PCNode::handle_rsp(const protocol::Frame &frame, uint64_t receive_time_us) 
 
     // Handle TIME_SYNC response: extract T1, T2, T3, calculate offset, send TIME_ADJUST
     if (orig_msgid == kMsgTimeSync && frame.data.size() >= 26) {
-        const uint64_t T1 = read_u64(frame.data, 2);   // Echoed back T1
-        const uint64_t T2 = read_u64(frame.data, 10);  // Device receive time
-        const uint64_t T3 = read_u64(frame.data, 18);  // Device send time
+        const uint64_t T1 = protocol::read_u64(frame.data, 2);   // Echoed back T1
+        const uint64_t T2 = protocol::read_u64(frame.data, 10);  // Device receive time
+        const uint64_t T3 = protocol::read_u64(frame.data, 18);  // Device send time
 
         // T4 is the receive time from VirtualLink (accurate delivery time)
         const uint64_t T4 = receive_time_us;
@@ -240,12 +191,12 @@ void PCNode::handle_cfg_report(const protocol::Frame &frame) {
     }
     const uint8_t proto_ver = frame.data[0];
     const uint8_t flags = frame.data[1];
-    current_lsb_nA_ = read_u32(frame.data, 2);
-    const uint16_t shunt_cal = read_u16(frame.data, 6);
-    const uint16_t config_reg = read_u16(frame.data, 8);
-    const uint16_t adc_config_reg = read_u16(frame.data, 10);
-    stream_period_us_ = read_u16(frame.data, 12);
-    stream_mask_ = read_u16(frame.data, 14);
+    current_lsb_nA_ = protocol::read_u32(frame.data, 2);
+    const uint16_t shunt_cal = protocol::read_u16(frame.data, 6);
+    const uint16_t config_reg = protocol::read_u16(frame.data, 8);
+    const uint16_t adc_config_reg = protocol::read_u16(frame.data, 10);
+    stream_period_us_ = protocol::read_u16(frame.data, 12);
+    stream_mask_ = protocol::read_u16(frame.data, 14);
     adcrange_ = (flags & 0x04) != 0;
     std::cout << "CFG_REPORT ver=" << static_cast<int>(proto_ver)
               << " lsb_nA=" << current_lsb_nA_ << " shunt_cal=" << shunt_cal
@@ -277,12 +228,12 @@ void PCNode::handle_data_sample(const protocol::Frame &frame) {
         last_data_seq_ = frame.seq;
     }
 
-    const uint32_t timestamp = read_u32(frame.data, 0);
+    const uint32_t timestamp = protocol::read_u32(frame.data, 0);
     const uint8_t flags = frame.data[4];
     const uint8_t *vbus20 = &frame.data[5];
     const uint8_t *vshunt20 = &frame.data[8];
     const uint8_t *current20 = &frame.data[11];
-    const int16_t temp_raw = static_cast<int16_t>(read_u16(frame.data, 14));
+    const int16_t temp_raw = static_cast<int16_t>(protocol::read_u16(frame.data, 14));
 
     const uint32_t vbus_raw = protocol::unpack_u20(vbus20);
     const int32_t vshunt_raw = protocol::unpack_s20(vshunt20);

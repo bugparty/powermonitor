@@ -3,6 +3,8 @@
 #include <cstring>
 #include <iostream>
 
+#include "protocol/serialization.h"
+
 namespace node {
 
 namespace {
@@ -20,66 +22,6 @@ constexpr uint8_t kMsgCfgReport = 0x91;
 constexpr uint8_t kMsgTextReport = 0x93;
 constexpr uint8_t kStatusOk = 0x00;
 
-void append_u16(std::vector<uint8_t> &out, uint16_t value) {
-    out.push_back(static_cast<uint8_t>(value & 0xFF));
-    out.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
-}
-
-void append_u32(std::vector<uint8_t> &out, uint32_t value) {
-    out.push_back(static_cast<uint8_t>(value & 0xFF));
-    out.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
-    out.push_back(static_cast<uint8_t>((value >> 16) & 0xFF));
-    out.push_back(static_cast<uint8_t>((value >> 24) & 0xFF));
-}
-
-void append_u64(std::vector<uint8_t> &out, uint64_t value) {
-    out.push_back(static_cast<uint8_t>(value & 0xFF));
-    out.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
-    out.push_back(static_cast<uint8_t>((value >> 16) & 0xFF));
-    out.push_back(static_cast<uint8_t>((value >> 24) & 0xFF));
-    out.push_back(static_cast<uint8_t>((value >> 32) & 0xFF));
-    out.push_back(static_cast<uint8_t>((value >> 40) & 0xFF));
-    out.push_back(static_cast<uint8_t>((value >> 48) & 0xFF));
-    out.push_back(static_cast<uint8_t>((value >> 56) & 0xFF));
-}
-
-void append_i64(std::vector<uint8_t> &out, int64_t value) {
-    append_u64(out, static_cast<uint64_t>(value));
-}
-
-uint16_t read_u16(const std::vector<uint8_t> &data, size_t offset) {
-    return static_cast<uint16_t>(data[offset]) |
-           (static_cast<uint16_t>(data[offset + 1]) << 8U);
-}
-
-uint64_t read_u64(const std::vector<uint8_t> &data, size_t offset) {
-    return static_cast<uint64_t>(data[offset]) |
-           (static_cast<uint64_t>(data[offset + 1]) << 8U) |
-           (static_cast<uint64_t>(data[offset + 2]) << 16U) |
-           (static_cast<uint64_t>(data[offset + 3]) << 24U) |
-           (static_cast<uint64_t>(data[offset + 4]) << 32U) |
-           (static_cast<uint64_t>(data[offset + 5]) << 40U) |
-           (static_cast<uint64_t>(data[offset + 6]) << 48U) |
-           (static_cast<uint64_t>(data[offset + 7]) << 56U);
-}
-
-int64_t read_i64(const std::vector<uint8_t> &data, size_t offset) {
-    return static_cast<int64_t>(read_u64(data, offset));
-}
-
-uint32_t pack_u20(uint32_t value, uint8_t out[3]) {
-    out[0] = static_cast<uint8_t>(value & 0xFF);
-    out[1] = static_cast<uint8_t>((value >> 8) & 0xFF);
-    out[2] = static_cast<uint8_t>((value >> 16) & 0x0F);
-    return value;
-}
-
-void pack_s20(int32_t value, uint8_t out[3]) {
-    const uint32_t raw = static_cast<uint32_t>(value) & 0xFFFFF;
-    out[0] = static_cast<uint8_t>(raw & 0xFF);
-    out[1] = static_cast<uint8_t>((raw >> 8) & 0xFF);
-    out[2] = static_cast<uint8_t>((raw >> 16) & 0x0F);
-}
 
 } // namespace
 
@@ -132,7 +74,7 @@ void DeviceNode::handle_cmd(const protocol::Frame &frame, uint64_t now_us) {
     case kMsgTimeSync: {
         // TIME_SYNC: Extract T1, capture T2 (immediately after parse), capture T3 (before send)
         if (frame.data.size() >= 8) {
-            const uint64_t T1 = read_u64(frame.data, 0);
+            const uint64_t T1 = protocol::read_u64(frame.data, 0);
             // T2 captured immediately after frame parsing completes
             // In simulation, now_us represents the time when handle_cmd is called
             const uint64_t T2 = now_us;
@@ -140,13 +82,13 @@ void DeviceNode::handle_cmd(const protocol::Frame &frame, uint64_t now_us) {
             // Build RSP payload: orig_msgid(1) + status(1) + T1(8) + T2(8) + T3(8)
             // Prepare all data except T3 first
             std::vector<uint8_t> rsp_data;
-            append_u64(rsp_data, T1);
-            append_u64(rsp_data, T2);
+            protocol::append_u64(rsp_data, T1);
+            protocol::append_u64(rsp_data, T2);
 
             // All processing is done, capture T3 immediately before sending
             // In real implementation, this should be captured just before the serial write
             const uint64_t T3 = now_us;
-            append_u64(rsp_data, T3);
+            protocol::append_u64(rsp_data, T3);
 
             send_rsp(frame.seq, frame.msgid, kStatusOk, rsp_data, now_us);
         } else {
@@ -157,7 +99,7 @@ void DeviceNode::handle_cmd(const protocol::Frame &frame, uint64_t now_us) {
     case kMsgTimeAdjust: {
         // TIME_ADJUST: Apply clock offset correction
         if (frame.data.size() >= 8) {
-            const int64_t offset_us = read_i64(frame.data, 0);
+            const int64_t offset_us = protocol::read_i64(frame.data, 0);
             epoch_offset_us_ += offset_us;
             send_rsp(frame.seq, frame.msgid, kStatusOk, {}, now_us);
         } else {
@@ -168,7 +110,7 @@ void DeviceNode::handle_cmd(const protocol::Frame &frame, uint64_t now_us) {
     case kMsgTimeSet: {
         // TIME_SET: Set absolute Unix time
         if (frame.data.size() >= 8) {
-            const uint64_t unix_time_us = read_u64(frame.data, 0);
+            const uint64_t unix_time_us = protocol::read_u64(frame.data, 0);
             // Set epoch_offset such that: unix_time = monotonic + epoch_offset
             // In simulation, we use now_us as the monotonic time
             epoch_offset_us_ = static_cast<int64_t>(unix_time_us) - static_cast<int64_t>(now_us);
@@ -180,10 +122,10 @@ void DeviceNode::handle_cmd(const protocol::Frame &frame, uint64_t now_us) {
     }
     case kMsgSetCfg: {
         if (frame.data.size() >= 8) {
-            config_reg_ = read_u16(frame.data, 0);
-            adc_config_reg_ = read_u16(frame.data, 2);
-            shunt_cal_reg_ = read_u16(frame.data, 4);
-            shunt_tempco_ = read_u16(frame.data, 6);
+            config_reg_ = protocol::read_u16(frame.data, 0);
+            adc_config_reg_ = protocol::read_u16(frame.data, 2);
+            shunt_cal_reg_ = protocol::read_u16(frame.data, 4);
+            shunt_tempco_ = protocol::read_u16(frame.data, 6);
             current_lsb_nA_ = shunt_cal_reg_ == 0 ? 1000 : current_lsb_nA_;
         }
         send_rsp(frame.seq, frame.msgid, kStatusOk, {}, now_us);
@@ -197,8 +139,8 @@ void DeviceNode::handle_cmd(const protocol::Frame &frame, uint64_t now_us) {
     }
     case kMsgStreamStart: {
         if (frame.data.size() >= 4) {
-            stream_period_us_ = read_u16(frame.data, 0);
-            stream_mask_ = read_u16(frame.data, 2);
+            stream_period_us_ = protocol::read_u16(frame.data, 0);
+            stream_mask_ = protocol::read_u16(frame.data, 2);
             streaming_on_ = true;
             stream_start_us_ = now_us;
             next_sample_due_us_ = now_us + stream_period_us_;
@@ -241,12 +183,12 @@ void DeviceNode::send_cfg_report(uint64_t now_us) {
         flags |= 0x04;
     }
     payload.push_back(flags);
-    append_u32(payload, current_lsb_nA_);
-    append_u16(payload, shunt_cal_reg_);
-    append_u16(payload, config_reg_);
-    append_u16(payload, adc_config_reg_);
-    append_u16(payload, stream_period_us_);
-    append_u16(payload, stream_mask_);
+    protocol::append_u32(payload, current_lsb_nA_);
+    protocol::append_u16(payload, shunt_cal_reg_);
+    protocol::append_u16(payload, config_reg_);
+    protocol::append_u16(payload, adc_config_reg_);
+    protocol::append_u16(payload, stream_period_us_);
+    protocol::append_u16(payload, stream_mask_);
 
     const uint8_t seq = data_seq_++;
     auto bytes = protocol::build_frame(protocol::FrameType::kEvt, 0, seq, kMsgCfgReport, payload);
@@ -268,7 +210,7 @@ void DeviceNode::send_data_sample(uint64_t now_us) {
     const auto raw = model_.sample(now_us, current_lsb_nA_, adcrange_);
     std::vector<uint8_t> payload;
     const uint32_t timestamp = static_cast<uint32_t>(now_us - stream_start_us_);
-    append_u32(payload, timestamp);
+    protocol::append_u32(payload, timestamp);
     uint8_t flags = 0;
     flags |= 0x01;
     if (shunt_cal_reg_ != 0) {
@@ -277,13 +219,13 @@ void DeviceNode::send_data_sample(uint64_t now_us) {
     payload.push_back(flags);
 
     uint8_t buf[3] = {};
-    pack_u20(raw.vbus_raw, buf);
+    protocol::pack_u20(raw.vbus_raw, buf);
     payload.insert(payload.end(), buf, buf + 3);
-    pack_s20(raw.vshunt_raw, buf);
+    protocol::pack_s20(raw.vshunt_raw, buf);
     payload.insert(payload.end(), buf, buf + 3);
-    pack_s20(raw.current_raw, buf);
+    protocol::pack_s20(raw.current_raw, buf);
     payload.insert(payload.end(), buf, buf + 3);
-    append_u16(payload, static_cast<uint16_t>(raw.temp_raw));
+    protocol::append_u16(payload, static_cast<uint16_t>(raw.temp_raw));
 
     const uint8_t seq = data_seq_++;
     auto bytes = protocol::build_frame(protocol::FrameType::kData, 0, seq, kMsgDataSample, payload);

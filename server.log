@@ -1,0 +1,5 @@
+127.0.0.1 - - [22/Feb/2026 11:02:27] "GET /build/web_viewer_dist/web_viewer/index.html?data=/test_data.json HTTP/1.1" 200 -
+127.0.0.1 - - [22/Feb/2026 11:02:27] code 404, message File not found
+127.0.0.1 - - [22/Feb/2026 11:02:27] "GET /assets/viewer-CHOSIJZD.js HTTP/1.1" 404 -
+127.0.0.1 - - [22/Feb/2026 11:02:27] code 404, message File not found
+127.0.0.1 - - [22/Feb/2026 11:02:27] "GET /assets/viewer-U2aKBADa.css HTTP/1.1" 404 -

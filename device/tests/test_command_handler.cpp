@@ -6,6 +6,7 @@
 // Mocks
 #include "mocks/pico/stdlib.h"
 #include "mocks/mock_ina228.hpp"
+#define INA228_HPP
 
 // Define core::RawSample needed by command_handler
 #include "core/raw_sample.hpp"

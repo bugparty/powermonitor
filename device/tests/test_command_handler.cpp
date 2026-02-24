@@ -5,6 +5,7 @@
 
 // Mocks
 #include "mocks/pico/stdlib.h"
+#define INA228_HPP // Prevent including real INA228 header
 #include "mocks/mock_ina228.hpp"
 
 // Define core::RawSample needed by command_handler
@@ -175,7 +176,7 @@ void test_stats_report_periodic_and_stop() {
     tx_buffer.clear();
 
     // First call only initializes cadence baseline.
-    mock_time_us = 0;
+    mock_time_us = 1;
     handler.maybe_emit_stats_report(mock_time_us);
     assert(tx_buffer.empty());
 
@@ -191,7 +192,7 @@ void test_stats_report_periodic_and_stop() {
     assert(tx_buffer.empty());
 
     // At >=1 second, periodic report should be emitted.
-    mock_time_us = 1000000;
+    mock_time_us = 1000001;
     handler.maybe_emit_stats_report(mock_time_us);
     assert(!tx_buffer.empty());
     assert(tx_buffer[3] == static_cast<uint8_t>(protocol::FrameType::kEvt));
@@ -221,7 +222,7 @@ void test_stats_report_periodic_and_stop() {
     shared.dropped_duplicate_suppressed = 1;
     shared.dropped_worker_missed_tick = 1;
     shared.dropped_queue_full = 0;
-    mock_time_us = 1500000;
+    mock_time_us = 1500001;
     handler.handle_frame(stop_frame);
 
     assert(!tx_buffer.empty());

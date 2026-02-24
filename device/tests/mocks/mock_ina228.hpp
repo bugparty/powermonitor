@@ -31,9 +31,46 @@ public:
 
     // Mock methods used by CommandHandler
     bool write_register16(INA228_Register reg, uint16_t val) { return true; }
-    bool read_register16(INA228_Register reg, uint16_t& val) { val = 0; return true; }
-    bool read_register24(INA228_Register reg, uint32_t& val) { val = 0; return true; }
-    bool read_register40(INA228_Register reg, uint64_t& val) { val = 0; return true; }
+    bool read_register16(INA228_Register reg, uint16_t& val) const { val = 0; return true; }
+    bool read_register24(INA228_Register reg, uint32_t& val) const { val = 0; return true; }
+    bool read_register40(INA228_Register reg, uint64_t& val) const { val = 0; return true; }
 
     static uint16_t to_bytes16(uint16_t val) { return val; }
+
+    // Mock methods for Sampler
+    mutable int read_vbus_count = 0;
+    mutable int read_vshunt_count = 0;
+    mutable int read_current_count = 0;
+    mutable int read_temp_count = 0;
+    mutable int read_diag_count = 0;
+
+    bool read_vbus_raw(uint32_t& val) const {
+        read_vbus_count++;
+        val = 1000;
+        return true;
+    }
+
+    bool read_vshunt_raw(int32_t& val) const {
+        read_vshunt_count++;
+        val = 2000;
+        return true;
+    }
+
+    bool read_current_raw(int32_t& val) const {
+        read_current_count++;
+        val = 3000;
+        return true;
+    }
+
+    bool read_temp_raw(int16_t& val) const {
+        read_temp_count++;
+        val = 4000;
+        return true;
+    }
+
+    bool read_diag_alrt(uint16_t& val) const {
+        read_diag_count++;
+        val = 0; // No alerts
+        return true;
+    }
 };

@@ -1,6 +1,7 @@
 #ifndef DEVICE_CORE_SHARED_CONTEXT_HPP
 #define DEVICE_CORE_SHARED_CONTEXT_HPP
 
+#include <cstddef>
 #include <cstdint>
 #include "spsc_queue.hpp"
 #include "raw_sample.hpp"
@@ -64,5 +65,8 @@ struct SharedContext {
 };
 
 } // namespace core
+
+static_assert(offsetof(core::SharedContext, epoch_offset_us) % 8 == 0,
+              "SharedContext::epoch_offset_us must be 8-byte aligned");
 
 #endif // DEVICE_CORE_SHARED_CONTEXT_HPP

@@ -211,6 +211,9 @@ void DeviceNode::send_data_sample(uint64_t now_us) {
     std::vector<uint8_t> payload;
     const uint32_t timestamp = static_cast<uint32_t>(now_us - stream_start_us_);
     protocol::append_u32(payload, timestamp);
+    // Add absolute timestamp (sampling time, not send time)
+    const uint64_t timestamp_unix = now_us + epoch_offset_us_;
+    protocol::append_u64(payload, timestamp_unix);
     uint8_t flags = 0;
     flags |= 0x01;
     if (shunt_cal_reg_ != 0) {

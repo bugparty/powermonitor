@@ -85,17 +85,19 @@ struct Frame {
     uint16_t data_len;     // Actual data length (len - 1)
 };
 
-// DATA_SAMPLE payload structure (16 bytes)
+// DATA_SAMPLE payload structure (24 bytes)
+// Field order: 8-byte first for alignment, then 4-byte, 2-byte, 1-byte
 struct DataSamplePayload {
-    uint32_t timestamp_us;  // Relative timestamp since STREAM_START
-    uint8_t flags;          // Bit0: CNVRF, Bit1: ALERT, Bit2: CAL_VALID, Bit3: OVF
-    uint8_t vbus20[3];      // VBUS unsigned 20-bit LE-packed
-    uint8_t vshunt20[3];    // VSHUNT signed 20-bit LE-packed
-    uint8_t current20[3];   // CURRENT signed 20-bit LE-packed
-    int16_t dietemp16;      // DIE_TEMP signed 16-bit
+    uint64_t timestamp_unix_us;  // Absolute Unix timestamp in microseconds
+    uint32_t timestamp_us;        // Relative timestamp since STREAM_START
+    uint8_t flags;               // Bit0: CNVRF, Bit1: ALERT, Bit2: CAL_VALID, Bit3: OVF
+    uint8_t vbus20[3];           // VBUS unsigned 20-bit LE-packed
+    uint8_t vshunt20[3];         // VSHUNT signed 20-bit LE-packed
+    uint8_t current20[3];        // CURRENT signed 20-bit LE-packed
+    int16_t dietemp16;           // DIE_TEMP signed 16-bit
 } __attribute__((packed));
 
-static_assert(sizeof(DataSamplePayload) == 16, "DataSamplePayload must be 16 bytes");
+static_assert(sizeof(DataSamplePayload) == 24, "DataSamplePayload must be 24 bytes");
 
 // CFG_REPORT payload structure
 struct CfgReportPayload {

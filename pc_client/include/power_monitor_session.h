@@ -50,7 +50,8 @@ private:
     bool initialize_device();
     bool send_ping();
     bool get_device_config();
-    bool perform_time_sync_once(std::string* detail = nullptr, bool try_lock_command = false);
+    bool perform_time_sync_once(std::string* detail = nullptr, bool try_lock_command = false,
+                               int64_t* out_offset = nullptr, bool send_adjust = true);
     bool run_time_sync_rounds(int rounds);
     bool start_streaming();
     bool stop_streaming();
@@ -106,6 +107,7 @@ private:
      std::atomic<bool> save_requested_{false};
      std::atomic<uint64_t> sample_counter_{0};
      uint8_t cmd_seq_ = 0;
+     uint64_t sync_start_time_us_ = 0;  // Set when first TIME_SET succeeds
      std::mutex command_mutex_;
      mutable size_t last_stats_width_ = 0;
      UiState ui_state_;

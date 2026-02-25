@@ -28,6 +28,7 @@ public:
         uint32_t seq = 0;
         uint64_t host_timestamp_us = 0;
         uint64_t device_timestamp_us = 0;
+        uint64_t device_timestamp_unix_us = 0;  // 新增：绝对时间戳
         uint8_t flags = 0;
         uint32_t vbus_raw = 0;
         int32_t vshunt_raw = 0;

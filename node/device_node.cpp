@@ -21,26 +21,32 @@ constexpr uint8_t kMsgTextReport = 0x93;
 constexpr uint8_t kStatusOk = 0x00;
 
 void append_u16(std::vector<uint8_t> &out, uint16_t value) {
-    out.push_back(static_cast<uint8_t>(value & 0xFF));
-    out.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
+    size_t idx = out.size();
+    out.resize(idx + 2);
+    out[idx] = static_cast<uint8_t>(value & 0xFF);
+    out[idx + 1] = static_cast<uint8_t>((value >> 8) & 0xFF);
 }
 
 void append_u32(std::vector<uint8_t> &out, uint32_t value) {
-    out.push_back(static_cast<uint8_t>(value & 0xFF));
-    out.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
-    out.push_back(static_cast<uint8_t>((value >> 16) & 0xFF));
-    out.push_back(static_cast<uint8_t>((value >> 24) & 0xFF));
+    size_t idx = out.size();
+    out.resize(idx + 4);
+    out[idx] = static_cast<uint8_t>(value & 0xFF);
+    out[idx + 1] = static_cast<uint8_t>((value >> 8) & 0xFF);
+    out[idx + 2] = static_cast<uint8_t>((value >> 16) & 0xFF);
+    out[idx + 3] = static_cast<uint8_t>((value >> 24) & 0xFF);
 }
 
 void append_u64(std::vector<uint8_t> &out, uint64_t value) {
-    out.push_back(static_cast<uint8_t>(value & 0xFF));
-    out.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
-    out.push_back(static_cast<uint8_t>((value >> 16) & 0xFF));
-    out.push_back(static_cast<uint8_t>((value >> 24) & 0xFF));
-    out.push_back(static_cast<uint8_t>((value >> 32) & 0xFF));
-    out.push_back(static_cast<uint8_t>((value >> 40) & 0xFF));
-    out.push_back(static_cast<uint8_t>((value >> 48) & 0xFF));
-    out.push_back(static_cast<uint8_t>((value >> 56) & 0xFF));
+    size_t idx = out.size();
+    out.resize(idx + 8);
+    out[idx] = static_cast<uint8_t>(value & 0xFF);
+    out[idx + 1] = static_cast<uint8_t>((value >> 8) & 0xFF);
+    out[idx + 2] = static_cast<uint8_t>((value >> 16) & 0xFF);
+    out[idx + 3] = static_cast<uint8_t>((value >> 24) & 0xFF);
+    out[idx + 4] = static_cast<uint8_t>((value >> 32) & 0xFF);
+    out[idx + 5] = static_cast<uint8_t>((value >> 40) & 0xFF);
+    out[idx + 6] = static_cast<uint8_t>((value >> 48) & 0xFF);
+    out[idx + 7] = static_cast<uint8_t>((value >> 56) & 0xFF);
 }
 
 void append_i64(std::vector<uint8_t> &out, int64_t value) {
@@ -67,18 +73,17 @@ int64_t read_i64(const std::vector<uint8_t> &data, size_t offset) {
     return static_cast<int64_t>(read_u64(data, offset));
 }
 
-uint32_t pack_u20(uint32_t value, uint8_t out[3]) {
-    out[0] = static_cast<uint8_t>(value & 0xFF);
-    out[1] = static_cast<uint8_t>((value >> 8) & 0xFF);
-    out[2] = static_cast<uint8_t>((value >> 16) & 0x0F);
-    return value;
+void append_u20(std::vector<uint8_t> &out, uint32_t value) {
+    size_t idx = out.size();
+    out.resize(idx + 3);
+    out[idx] = static_cast<uint8_t>(value & 0xFF);
+    out[idx + 1] = static_cast<uint8_t>((value >> 8) & 0xFF);
+    out[idx + 2] = static_cast<uint8_t>((value >> 16) & 0x0F);
 }
 
-void pack_s20(int32_t value, uint8_t out[3]) {
+void append_s20(std::vector<uint8_t> &out, int32_t value) {
     const uint32_t raw = static_cast<uint32_t>(value) & 0xFFFFF;
-    out[0] = static_cast<uint8_t>(raw & 0xFF);
-    out[1] = static_cast<uint8_t>((raw >> 8) & 0xFF);
-    out[2] = static_cast<uint8_t>((raw >> 16) & 0x0F);
+    append_u20(out, raw);
 }
 
 } // namespace
@@ -220,6 +225,7 @@ void DeviceNode::handle_cmd(const protocol::Frame &frame, uint64_t now_us) {
 void DeviceNode::send_rsp(uint8_t seq, uint8_t orig_msgid, uint8_t status,
                           const std::vector<uint8_t> &data, uint64_t now_us) {
     std::vector<uint8_t> payload;
+    payload.reserve(2 + data.size());
     payload.push_back(orig_msgid);
     payload.push_back(status);
     payload.insert(payload.end(), data.begin(), data.end());
@@ -229,6 +235,7 @@ void DeviceNode::send_rsp(uint8_t seq, uint8_t orig_msgid, uint8_t status,
 
 void DeviceNode::send_cfg_report(uint64_t now_us) {
     std::vector<uint8_t> payload;
+    payload.reserve(16);
     payload.push_back(protocol::kProtoVersion);
     uint8_t flags = 0;
     if (streaming_on_) {
@@ -267,6 +274,7 @@ void DeviceNode::send_text_report(const char *text, size_t text_len, uint64_t no
 void DeviceNode::send_data_sample(uint64_t now_us) {
     const auto raw = model_.sample(now_us, current_lsb_nA_, adcrange_);
     std::vector<uint8_t> payload;
+    payload.reserve(16);
     const uint32_t timestamp = static_cast<uint32_t>(now_us - stream_start_us_);
     append_u32(payload, timestamp);
     uint8_t flags = 0;
@@ -276,13 +284,9 @@ void DeviceNode::send_data_sample(uint64_t now_us) {
     }
     payload.push_back(flags);
 
-    uint8_t buf[3] = {};
-    pack_u20(raw.vbus_raw, buf);
-    payload.insert(payload.end(), buf, buf + 3);
-    pack_s20(raw.vshunt_raw, buf);
-    payload.insert(payload.end(), buf, buf + 3);
-    pack_s20(raw.current_raw, buf);
-    payload.insert(payload.end(), buf, buf + 3);
+    append_u20(payload, raw.vbus_raw);
+    append_s20(payload, raw.vshunt_raw);
+    append_s20(payload, raw.current_raw);
     append_u16(payload, static_cast<uint16_t>(raw.temp_raw));
 
     const uint8_t seq = data_seq_++;

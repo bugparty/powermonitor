@@ -31,6 +31,7 @@ public:
     uint64_t data_drop_count() const { return data_drop_count_; }
     uint64_t timeout_count() const { return timeout_count_; }
     uint64_t retransmit_count() const { return retransmit_count_; }
+    uint64_t get_rx_count(uint8_t msgid) const { return rx_counts_[msgid]; }
 
 private:
     // Tracks an outstanding command awaiting RSP, used for timeout/retransmit logic.

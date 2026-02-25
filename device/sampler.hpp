@@ -77,6 +77,8 @@ static void sampler_do_work(SamplerContext* ctx) {
     // Calculate timestamp relative to stream start
     uint32_t now = time_us_32();
     sample.timestamp_us = now - shared->stream_start_us;
+    // Calculate absolute Unix timestamp at sampling time (not send time)
+    sample.timestamp_unix_us = static_cast<uint64_t>(now) + static_cast<uint64_t>(shared->epoch_offset_us);
 
     // Gate reads by conversion-ready (CNVRF) to avoid sampling mid-conversion
     // values from VBUS/VSHUNT/CURRENT registers.

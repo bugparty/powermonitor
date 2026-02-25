@@ -98,23 +98,33 @@ void Parser::read_payload() {
     const uint8_t crc_h = buffer_[payload_len + 1];
     buffer_.erase(buffer_.begin(), buffer_.begin() + payload_len + 2);
 
-    // Calculate CRC incrementally to avoid allocation
-    uint8_t header[6];
-    header[0] = current_frame_.ver;
-    header[1] = static_cast<uint8_t>(current_frame_.type);
-    header[2] = current_frame_.flags;
-    header[3] = current_frame_.seq;
-    header[4] = static_cast<uint8_t>(current_frame_.len & 0xFF);
-    header[5] = static_cast<uint8_t>((current_frame_.len >> 8) & 0xFF);
+  // Extract msgid from payload for frame type detection
+    const uint8_t msgid = (payload_len > 0) ? payload[0] : 0;
 
-    uint16_t expected = crc16_ccitt_false(header, 6);
-    expected = crc16_ccitt_false(payload.data(), payload.size(), expected);
-    const uint16_t actual = static_cast<uint16_t>(crc_l) | (static_cast<uint16_t>(crc_h) << 8U);
-    if (expected != actual) {
-        ++crc_fail_count_;
-        // Resync: scan for SOF pattern in the processed data
-        resync();
-        return;
+    // Skip CRC check for TIME_SYNC response frames.
+    // On the device side, T3 timestamp is patched into the frame AFTER CRC calculation,
+    // so the CRC will always fail if we validate it here.
+    // TIME_SYNC response: FrameType::kRsp (0x02) + msgid 0x05
+    const bool is_time_sync_rsp = (current_frame_.type == FrameType::kRsp && msgid == 0x05);
+    if (!is_time_sync_rsp) {
+      // Calculate CRC incrementally to avoid allocation
+      uint8_t header[6];
+      header[0] = current_frame_.ver;
+      header[1] = static_cast<uint8_t>(current_frame_.type);
+      header[2] = current_frame_.flags;
+      header[3] = current_frame_.seq;
+      header[4] = static_cast<uint8_t>(current_frame_.len & 0xFF);
+      header[5] = static_cast<uint8_t>((current_frame_.len >> 8) & 0xFF);
+
+      uint16_t expected = crc16_ccitt_false(header, 6);
+      expected = crc16_ccitt_false(payload.data(), payload.size(), expected);
+      const uint16_t actual = static_cast<uint16_t>(crc_l) | (static_cast<uint16_t>(crc_h) << 8U);
+      if (expected != actual) {
+          ++crc_fail_count_;
+          // Resync: scan for SOF pattern in the processed data
+          resync();
+          return;
+      }
     }
 
     current_frame_.msgid = payload[0];

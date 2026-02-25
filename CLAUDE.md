@@ -12,8 +12,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 # Build everything (PC simulator, tests, client)
-cmake -B build -S .
-cmake --build build
+# NOTE: Use build_linux when working from WSL/Linux to avoid Windows path conflicts
+cmake -B build_linux -S .
+cmake --build build_linux
 
 # Run tests (must pass before committing)
 ./test.sh              # Quick incremental test

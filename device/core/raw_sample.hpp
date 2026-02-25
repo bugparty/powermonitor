@@ -5,19 +5,22 @@
 
 namespace core {
 
-// Compact representation of one sensor reading (20 bytes)
+// Compact representation of one sensor reading (28 bytes)
 // Used for inter-core communication via ring buffer
+// Field order: 8-byte first for alignment, then 4-byte, 2-byte, 1-byte
 struct RawSample {
-    uint32_t timestamp_us;  // Relative to stream start
-    uint32_t vbus_raw;      // 20-bit unsigned raw value (in low 20 bits)
-    int32_t vshunt_raw;     // 20-bit signed raw
-    int32_t current_raw;    // 20-bit signed raw
-    int16_t dietemp_raw;    // 16-bit signed raw
-    uint8_t flags;          // See SampleFlags namespace
-    uint8_t _pad;           // Alignment padding
+    uint64_t timestamp_unix_us;      // Absolute Unix timestamp (sampling time + epoch_offset)
+    uint32_t timestamp_us;           // Relative to stream start (sampling time)
+    uint32_t vbus_raw;              // 20-bit unsigned raw value (in low 20 bits)
+    int32_t vshunt_raw;             // 20-bit signed raw
+    int32_t current_raw;            // 20-bit signed raw
+    int16_t dietemp_raw;            // 16-bit signed raw
+    uint8_t flags;                  // See SampleFlags namespace
+    uint8_t _pad;                  // Padding (for 28 bytes total)
 };
 
-static_assert(sizeof(RawSample) == 20, "RawSample must be 20 bytes");
+// 28 bytes data + potential tail padding for alignment
+static_assert(sizeof(RawSample) >= 28, "RawSample must be at least 28 bytes");
 
 // Flag bit definitions
 namespace SampleFlags {

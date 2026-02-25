@@ -46,6 +46,7 @@ nlohmann::json Session::sample_to_json(const Sample& sample) const {
     j["seq"] = sample.seq;
     j["host_timestamp_us"] = sample.host_timestamp_us;
     j["device_timestamp_us"] = sample.device_timestamp_us;
+    j["device_timestamp_unix_us"] = sample.device_timestamp_unix_us;  // 新增
     j["flags"] = sample.flags;
     
     j["raw"]["vbus"] = sample.vbus_raw;

@@ -85,8 +85,10 @@ struct Frame {
     uint16_t data_len;     // Actual data length (len - 1)
 };
 
-// DATA_SAMPLE payload structure (24 bytes)
-// Field order: 8-byte first for alignment, then 4-byte, 2-byte, 1-byte
+// DATA_SAMPLE payload structure (24 bytes, packed).
+// Field order is the wire/protocol order: timestamp_unix_us (8), timestamp_us (4),
+// flags (1), vbus20[3], vshunt20[3], current20[3], then dietemp16 (int16_t) last.
+// Because this struct is packed, do not apply manual alignment-based reordering.
 struct DataSamplePayload {
     uint64_t timestamp_unix_us;  // Absolute Unix timestamp in microseconds
     uint32_t timestamp_us;        // Relative timestamp since STREAM_START

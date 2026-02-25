@@ -705,8 +705,9 @@ void PowerMonitorSession::process_samples_loop() {
 
     while (!stop_requested_.load()) {
         if (sample_queue_->pop_wait(sample)) {
-            // New 24-byte format: timestamp_unix_us(8) + timestamp_us(4) + flags(1) + vbus20(3) + vshunt20(3) + current20(3) + dietemp16(2)
-            // Offsets: timestamp_unix_us(0) + timestamp_us(8) + flags(12) + vbus20(13) + vshunt20(16) + current20(19) + dietemp16(22)
+            // DATA_SAMPLE (24-byte layout): timestamp_unix_us(8) + timestamp_us(4), then flags and packed fields.
+            // Offsets: timestamp_unix_us@0, timestamp_us@8, flags@12, vbus20@13, vshunt20@16, current20@19, dietemp16@22.
+            // See protocol::DataSamplePayload (device/protocol/frame_defs.hpp) for packed field order.
 
             Session::Sample session_sample;
             session_sample.seq = sample.seq;
@@ -736,7 +737,7 @@ void PowerMonitorSession::process_samples_loop() {
         }
     }
 
-    // 处理队列中剩余的所有采样
+    // Drain any remaining samples from the queue before exit.
     while (sample_queue_->pop(sample)) {
         if (sample.raw_data.size() >= 16) {
             const bool is_new_format = sample.raw_data.size() >= 24;
@@ -747,9 +748,13 @@ void PowerMonitorSession::process_samples_loop() {
             session_sample.device_timestamp_us = session_->process_device_timestamp(sample.device_timestamp_us);
             session_sample.device_timestamp_unix_us = sample.device_timestamp_unix_us;
 
-            // 旧布局: timestamp_us(4) + flags(1) + vbus20(3) + vshunt20(3) + current20(3) + dietemp16(2) = 16 bytes
-            // 新布局: timestamp_unix_us(8) + timestamp_us(4) + flags(1) + vbus20(3) + vshunt20(3) + current20(3) + dietemp16(2) = 24 bytes
-            // 偏移量: timestamp_unix_us(0) + timestamp_us(8) + flags(12) + vbus20(13) + vshunt20(16) + current20(19) + dietemp16(22)
+            // DATA_SAMPLE supports two wire layouts while draining queued frames:
+            // - Legacy 16-byte layout: timestamp_us@0, flags@4, vbus20@5, vshunt20@8, current20@11, dietemp16@14.
+            // - Current 24-byte layout: timestamp_unix_us@0 (8-byte Unix prefix), timestamp_us@8,
+            //   flags@12, vbus20@13, vshunt20@16, current20@19, dietemp16@22.
+            // flags_offset and related offsets are selected from is_new_format.
+            // For timestamp semantics and packed-field edge cases, see docs/device/time_sync.md and
+            // protocol::DataSamplePayload in device/protocol/frame_defs.hpp.
             const size_t flags_offset = is_new_format ? 12 : 4;
             const size_t vbus_offset = is_new_format ? 13 : 5;
             const size_t vshunt_offset = is_new_format ? 16 : 8;

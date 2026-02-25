@@ -57,7 +57,7 @@ Before approving a change, verify:
 
 1. Read the changed files
 2. Check against AGENTS.md rules
-3. Run tests if needed: `cmake --build linuxbuild/pc_sim && ./linuxbuild/bin/pc_sim_test`
+3. Run tests if needed: `cmake --build build_linux/pc_sim && ./build_linux/bin/pc_sim_test`
 4. Provide specific, actionable feedback
 5. Approve or request changes
 

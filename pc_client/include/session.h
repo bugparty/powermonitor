@@ -49,7 +49,7 @@ public:
         return samples_.size();
     }
 
-    // 时间戳溢出处理
+    // Handle device timestamp overflow
     uint64_t process_device_timestamp(uint32_t ts_us);
 
 private:
@@ -57,7 +57,7 @@ private:
     std::vector<nlohmann::json> samples_;
     mutable std::mutex mutex_;
 
-    // 时间戳溢出状态
+    // Device timestamp overflow state
     uint32_t last_device_ts_ = 0;
     uint64_t overflow_count_ = 0;
 

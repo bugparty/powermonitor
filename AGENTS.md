@@ -21,7 +21,7 @@ Practical handbook for AI agents working in this repo. Keep outputs (docs, comme
 - Help: `pwsh workflow.ps1 -Help` for all options.
 - Windows-only: `pwsh workflow.ps1 -GenerateSolution` to create VS solution, `-OpenVS` to open in Visual Studio.
 - Device firmware: `pwsh workflow.ps1 -BuildDevice` (requires PICO_SDK_PATH environment variable).
-- Run tests directly: `./build/pc_sim/pc_sim_test` (or `.\build\pc_sim\pc_sim_test.exe` on Windows).
+- Run tests directly: `./build_linux/bin/pc_sim_test` (Linux/WSL) or `.\build\bin\Debug\pc_sim_test.exe` (Windows).
 - Single test case: `--gtest_filter=SuiteName.TestName`.
 - Do not skip tests before commit; 34/34 must pass.
 
@@ -118,7 +118,7 @@ Practical handbook for AI agents working in this repo. Keep outputs (docs, comme
 ## Safe Single-Test Loop Example
 ```bash
 pwsh workflow.ps1
-./build/pc_sim/pc_sim_test --gtest_filter=ParserStateMachineTests.SyncAfterNoise
+./build_linux/bin/pc_sim_test --gtest_filter=ParserStateMachineTests.SyncAfterNoise
 ```
 Use this pattern to iterate quickly on failing cases.
 

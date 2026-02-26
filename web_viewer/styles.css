@@ -50,7 +50,8 @@ body {
 }
 
 .file-button,
-button {
+button,
+select {
     border: 1px solid var(--line);
     background: var(--panel);
     color: var(--text);
@@ -61,7 +62,8 @@ button {
 }
 
 .file-button:hover,
-button:hover {
+button:hover,
+select:hover {
     border-color: var(--accent);
 }
 

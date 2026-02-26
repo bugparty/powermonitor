@@ -5,25 +5,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Important Documents
 
 **Read these before starting development:**
-- `AGENTS.md` - AI agent guidelines, protocol specs, development workflow, testing requirements
+- `AGENTS.md` - AI agent guidelines, protocol specs, development workflow, testing requirements (MUST READ)
+- `README.md` - Project overview, building, quick start
 - `docs/protocol/uart_protocol.md` - Complete UART protocol specification
-
-## Build Commands
-
-```bash
-# Build everything (PC simulator, tests, client)
-# NOTE: Use build_linux when working from WSL/Linux to avoid Windows path conflicts
-cmake -B build_linux -S .
-cmake --build build_linux
-
-# Run tests (must pass before committing)
-./test.sh              # Quick incremental test
-./test.sh --clean      # Clean rebuild and test
-./test.sh --verbose    # Detailed test output
-
-# Build device firmware (requires Pico SDK)
-cd device && cmake -B build && cmake --build build
-```
 
 ## Architecture Overview
 

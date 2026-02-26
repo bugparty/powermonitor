@@ -20,6 +20,9 @@ enum class FrameType : uint8_t {
 enum class MsgId : uint8_t {
     // Management
     kPing = 0x01,
+    kTimeSync = 0x05,
+    kTimeAdjust = 0x06,
+    kTimeSet = 0x07,
 
     // Configuration
     kSetCfg = 0x10,
@@ -39,6 +42,7 @@ enum class MsgId : uint8_t {
     // Events
     kEvtAlert = 0x90,
     kCfgReport = 0x91,
+    kStatsReport = 0x92,
     kTextReport = 0x93,
     kTimeSyncRequest = 0x94,
 };

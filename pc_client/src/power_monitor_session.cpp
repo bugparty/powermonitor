@@ -140,6 +140,8 @@ int PowerMonitorSession::run() {
     std::signal(SIGTERM, signal_handler);
 #endif
 
+    session_start_unix_us_ = now_unix_us();
+
     append_log("Connecting to device...");
 
     if (!connect_device()) {
@@ -174,7 +176,22 @@ int PowerMonitorSession::run() {
         tui_rc = run_tui_loop();
     } else {
         auto next_stats_time = std::chrono::steady_clock::now();
+        std::chrono::steady_clock::time_point deadline;
+        bool has_deadline = false;
+        if (options_.duration_us > 0 || options_.duration_s > 0) {
+            uint64_t run_us = options_.duration_us;
+            if (run_us == 0 && options_.duration_s > 0) {
+                run_us = static_cast<uint64_t>(options_.duration_s) * 1000000ULL;
+            }
+            deadline = std::chrono::steady_clock::now() + std::chrono::microseconds(run_us);
+            has_deadline = true;
+        }
+
         while (!g_signal_interrupted.load() && !stop_requested_.load()) {
+            if (has_deadline && std::chrono::steady_clock::now() >= deadline) {
+                append_log("Capture duration reached, stopping session");
+                break;
+            }
             protocol::Frame async_frame;
             if (response_queue_->pop_wait(async_frame, 50)) {
                 if (async_frame.type == protocol::FrameType::kEvt &&
@@ -211,6 +228,7 @@ int PowerMonitorSession::run() {
         processor.join();
     }
 
+    session_end_unix_us_ = now_unix_us();
     save_and_exit();
 
     std::cout << "Session complete. Samples collected: "
@@ -264,8 +282,8 @@ bool PowerMonitorSession::initialize_device() {
     );
     read_thread_->start();
 
-    // 留时间让线程启动
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    // 留时间让线程启动和USB CDC接口初始化
+    std::this_thread::sleep_for(std::chrono::milliseconds(2500));
 
     // 发送PING
     if (!send_ping()) {
@@ -308,12 +326,16 @@ bool PowerMonitorSession::initialize_device() {
             sync_start_time_us_ = now_unix_us();
             // Run TIME_SYNC for fine-tuning using Unix time algorithm
             if (!run_time_sync_rounds(10)) {
-                std::cerr << "Initial TIME_SYNC failed" << std::endl;
-                return false;
+                std::cerr << "Initial TIME_SYNC failed, continuing with degraded timestamp accuracy" << std::endl;
+                append_log("WARNING: Initial TIME_SYNC failed, device running with uncalibrated timestamps");
+                time_sync_succeeded_ = false;
+            } else {
+                append_log("Initial time sync completed (10 rounds)");
+                time_sync_succeeded_ = true;
             }
-            append_log("Initial time sync completed (10 rounds)");
         } else {
             append_log("TIME_SET failed, device time not synchronized!");
+            time_sync_succeeded_ = false;
         }
     }
 
@@ -566,6 +588,7 @@ bool PowerMonitorSession::send_command_with_retry(uint8_t msgid,
             // 超时，准备重试
             std::cerr << "Command timeout, retry " << (retry + 1) << "/" << kMaxRetries << std::endl;
             stats_->timeouts.fetch_add(1, std::memory_order_relaxed);
+            stats_->retries.fetch_add(1, std::memory_order_relaxed);
 
         } catch (const serial::SerialException& e) {
             std::cerr << "Serial error: " << e.what() << std::endl;
@@ -994,6 +1017,29 @@ void PowerMonitorSession::append_log(const std::string& message) {
 }
 
 void PowerMonitorSession::save_and_exit() {
+    Session::RuntimeMeta runtime_meta;
+    runtime_meta.vid_hex = options_.vid_hex;
+    runtime_meta.pid_hex = options_.pid_hex;
+    runtime_meta.port = options_.port;
+    runtime_meta.baud = static_cast<uint32_t>(options_.baud_rate);
+    runtime_meta.run_label = options_.run_label;
+    runtime_meta.tags = options_.run_tags;
+    session_->set_runtime_meta(runtime_meta);
+
+    Session::Stats session_stats;
+    for (size_t i = 0; i < session_stats.rx_counts.size(); ++i) {
+        session_stats.rx_counts[i] = stats_->rx_counts[i].load(std::memory_order_relaxed);
+        session_stats.tx_counts[i] = stats_->tx_counts[i].load(std::memory_order_relaxed);
+    }
+    session_stats.crc_fail = stats_->crc_fail.load(std::memory_order_relaxed);
+    session_stats.queue_overflow = stats_->queue_overflow.load(std::memory_order_relaxed);
+    session_stats.timeouts = stats_->timeouts.load(std::memory_order_relaxed);
+    session_stats.retries = stats_->retries.load(std::memory_order_relaxed);
+    session_stats.io_errors = stats_->io_errors.load(std::memory_order_relaxed);
+    session_->set_stats(session_stats);
+
+    session_->set_session_timing(session_start_unix_us_, session_end_unix_us_);
+
     if (!options_.output_file.empty()) {
         std::cout << "Saving data to " << options_.output_file << std::endl;
         try {

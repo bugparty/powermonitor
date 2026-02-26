@@ -31,6 +31,12 @@ struct SamplerContext {
     int32_t last_vshunt_raw;
     int32_t last_current_raw;
     uint32_t last_sent_time_us;
+
+    // Temperature decimation state
+    // Skip temperature read 9 out of 10 times (1kHz -> 100Hz)
+    // to save I2C transaction overhead.
+    uint8_t dietemp_skip_counter;
+    int16_t last_dietemp_raw;
 };
 
 // Global sampler context (Core 1 only)
@@ -106,7 +112,16 @@ static void sampler_do_work(SamplerContext* ctx) {
     ok &= ctx->ina228->read_vbus_raw(vbus_raw);
     ok &= ctx->ina228->read_vshunt_raw(vshunt_raw);
     ok &= ctx->ina228->read_current_raw(current_raw);
-    ok &= ctx->ina228->read_temp_raw(temp_raw);
+
+    // Decimate temperature reading
+    if (ctx->dietemp_skip_counter == 0) {
+        ok &= ctx->ina228->read_temp_raw(temp_raw);
+        ctx->last_dietemp_raw = temp_raw;
+        ctx->dietemp_skip_counter = 9; // Skip next 9 samples
+    } else {
+        temp_raw = ctx->last_dietemp_raw;
+        ctx->dietemp_skip_counter--;
+    }
 
     sample.vbus_raw = vbus_raw;
     sample.vshunt_raw = vshunt_raw;
@@ -160,6 +175,8 @@ static void core1_entry() {
     g_sampler_ctx.last_vshunt_raw = 0;
     g_sampler_ctx.last_current_raw = 0;
     g_sampler_ctx.last_sent_time_us = 0;
+    g_sampler_ctx.dietemp_skip_counter = 0;
+    g_sampler_ctx.last_dietemp_raw = 0;
 
     while (true) {
         // Check for command from Core 0 (non-blocking)
@@ -183,6 +200,8 @@ static void core1_entry() {
                     g_sampler_ctx.last_vshunt_raw = 0;
                     g_sampler_ctx.last_current_raw = 0;
                     g_sampler_ctx.last_sent_time_us = 0;
+                    g_sampler_ctx.dietemp_skip_counter = 0;
+                    g_sampler_ctx.last_dietemp_raw = 0;
 
                     // Reset statistics
                     g_sampler_ctx.shared->reset_stats();
@@ -236,6 +255,8 @@ inline void sampler_init(core::SharedContext* shared, INA228* ina228) {
     g_sampler_ctx.last_vshunt_raw = 0;
     g_sampler_ctx.last_current_raw = 0;
     g_sampler_ctx.last_sent_time_us = 0;
+    g_sampler_ctx.dietemp_skip_counter = 0;
+    g_sampler_ctx.last_dietemp_raw = 0;
 }
 
 // Launch Core 1 (call from Core 0 after sampler_init)

@@ -12,6 +12,7 @@ import {
 } from "chart.js";
 import type { Layout, Point as DataPoint, Range, Track, DownsampleMode } from "../types";
 import { formatTimeUs } from "../domain/formatters";
+import { findStartIndex, findEndIndex } from "../domain/search";
 
 ChartJS.register(LineElement, PointElement, LinearScale, Tooltip, ChartLegend, Filler);
 
@@ -36,10 +37,12 @@ export default function TimelineChart({
     onMouseDown,
     onPointHover
 }: TimelineChartProps) {
-    const visiblePoints = useMemo(
-        () => points.filter((point) => point.timeUs >= range.start && point.timeUs <= range.end),
-        [points, range]
-    );
+    const visiblePoints = useMemo(() => {
+        if (points.length === 0) return [];
+        const startIdx = findStartIndex(points, range.start);
+        const endIdx = findEndIndex(points, range.end);
+        return startIdx <= endIdx ? points.slice(startIdx, endIdx + 1) : [];
+    }, [points, range]);
 
     type RawPoint = { x: number; y: number; _point: DataPoint };
 

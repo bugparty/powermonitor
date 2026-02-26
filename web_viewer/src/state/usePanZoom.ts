@@ -1,6 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { MouseEvent as ReactMouseEvent, RefObject, WheelEvent } from "react";
-import { toLocalX } from "../chart-core/scales";
+import type { MouseEvent as ReactMouseEvent, WheelEvent } from "react";
 import type { Layout, Point, Range } from "../types";
 
 const MIN_SPAN_US = 200;
@@ -10,7 +9,6 @@ interface UsePanZoomArgs {
     range: Range;
     setRange: (range: Range) => void;
     layout: Layout;
-    svgRef: RefObject<SVGSVGElement | null>;
 }
 
 interface DragState {
@@ -18,7 +16,7 @@ interface DragState {
     baseRange: Range;
 }
 
-export function usePanZoom({ points, range, setRange, layout, svgRef }: UsePanZoomArgs) {
+export function usePanZoom({ points, range, setRange, layout }: UsePanZoomArgs) {
     const panRef = useRef<DragState | null>(null);
     const chartRight = layout.width - layout.right;
     const plotWidth = chartRight - layout.left;
@@ -96,12 +94,16 @@ export function usePanZoom({ points, range, setRange, layout, svgRef }: UsePanZo
         setRange({ start, end });
     }
 
-    function onWheel(event: WheelEvent<SVGSVGElement>): void {
-        if (!points.length || !svgRef.current) {
+    function onWheel(event: WheelEvent<HTMLElement>): void {
+        if (!points.length) {
             return;
         }
         event.preventDefault();
-        const localX = toLocalX(svgRef.current, event.clientX, layout.width);
+        const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+        if (rect.width <= 0) {
+            return;
+        }
+        const localX = ((event.clientX - rect.left) / rect.width) * layout.width;
         if (localX < layout.left || localX > chartRight) {
             return;
         }
@@ -109,7 +111,7 @@ export function usePanZoom({ points, range, setRange, layout, svgRef }: UsePanZo
         zoomAt(factor, localX);
     }
 
-    function onMouseDown(event: ReactMouseEvent<SVGSVGElement>): void {
+    function onMouseDown(event: ReactMouseEvent<HTMLElement>): void {
         if (!points.length) {
             return;
         }

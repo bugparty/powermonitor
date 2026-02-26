@@ -1,5 +1,7 @@
 export type MetricKey = "voltage" | "current" | "power";
 
+export type DownsampleMode = "none" | "min-max" | "lttb";
+
 export interface Point {
     seq: number;
     timeUs: number;

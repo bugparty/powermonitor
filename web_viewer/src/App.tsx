@@ -1,17 +1,17 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
 import type { ChangeEvent } from "react";
 import { layout } from "./constants/layout";
 import { parsePayload } from "./domain/parsePayload";
 import { useTimelineState } from "./state/useTimelineState";
 import { usePanZoom } from "./state/usePanZoom";
-import type { Point } from "./types";
+import type { DownsampleMode } from "./types";
 import TopBar from "./components/TopBar";
 import MetaBar from "./components/MetaBar";
 import TrackControl from "./components/TrackControl";
 import TimelineChart from "./components/TimelineChart";
 
 export default function App() {
-    const svgRef = useRef<SVGSVGElement | null>(null);
+    const [downsampleMode, setDownsampleMode] = useState<DownsampleMode>("none");
     const {
         tracks,
         visibleTracks,
@@ -19,9 +19,7 @@ export default function App() {
         range,
         metaText,
         statusText,
-        hoverX,
         setRange,
-        setHoverX,
         fitAll,
         applyParsedData,
         clearDataWithStatus,
@@ -30,13 +28,7 @@ export default function App() {
         setHoverStatus
     } = useTimelineState();
 
-    const { onWheel, onMouseDown } = usePanZoom({
-        points,
-        range,
-        setRange,
-        layout,
-        svgRef
-    });
+    const { onWheel, onMouseDown } = usePanZoom({ points, range, setRange, layout });
 
     async function loadFromUrl(urlPath: string): Promise<void> {
         try {
@@ -76,31 +68,25 @@ export default function App() {
             });
     }
 
-    function handleHoverMove(localX: number | null, nearestPoint: Point | null): void {
-        setHoverX(localX);
-        setHoverStatus(nearestPoint);
-    }
-
-    function handleHoverLeave(): void {
-        setHoverX(null);
-    }
-
     return (
         <>
-            <TopBar onFileChange={handleFileChange} onFitAll={() => fitAll()} />
+            <TopBar
+                onFileChange={handleFileChange}
+                onFitAll={() => fitAll()}
+                downsampleMode={downsampleMode}
+                onDownsampleModeChange={setDownsampleMode}
+            />
             <MetaBar text={metaText} />
             <TrackControl tracks={tracks} onToggle={toggleTrack} onReorder={reorderTracks} />
             <TimelineChart
-                svgRef={svgRef}
                 layout={layout}
                 tracks={visibleTracks}
                 points={points}
                 range={range}
-                hoverX={hoverX}
+                downsampleMode={downsampleMode}
                 onWheel={onWheel}
                 onMouseDown={onMouseDown}
-                onHoverMove={handleHoverMove}
-                onHoverLeave={handleHoverLeave}
+                onPointHover={setHoverStatus}
             />
             <section className="status-row">{statusText}</section>
         </>

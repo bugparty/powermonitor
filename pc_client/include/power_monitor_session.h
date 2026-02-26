@@ -3,7 +3,7 @@
 #include <atomic>
 #include <deque>
 #include <memory>
- #include <mutex>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -34,6 +34,12 @@ public:
         bool usb_stress_mode = false;
         bool verbose = false;
         bool interactive = false;
+        uint32_t duration_s = 0;
+        uint64_t duration_us = 0;
+        std::string run_label;
+        std::vector<std::string> run_tags;
+        std::string vid_hex = "0x0000";
+        std::string pid_hex = "0x0000";
     };
 
     explicit PowerMonitorSession(const Options& options);
@@ -106,8 +112,11 @@ private:
      std::atomic<bool> streaming_{false};
      std::atomic<bool> save_requested_{false};
      std::atomic<uint64_t> sample_counter_{0};
+     uint64_t session_start_unix_us_ = 0;
+     uint64_t session_end_unix_us_ = 0;
      uint8_t cmd_seq_ = 0;
      uint64_t sync_start_time_us_ = 0;  // Set when first TIME_SET succeeds
+     bool time_sync_succeeded_ = false;  // Tracks if TIME_SYNC completed successfully
      std::mutex command_mutex_;
      mutable size_t last_stats_width_ = 0;
      UiState ui_state_;

@@ -9,9 +9,7 @@ interface TimelineState {
     range: Range;
     metaText: string;
     statusText: string;
-    hoverX: number | null;
     setRange: (range: Range) => void;
-    setHoverX: (hoverX: number | null) => void;
     fitAll: (inputPoints?: Point[]) => void;
     applyParsedData: (parsed: ParsedPayload, sourceLabel: string) => void;
     clearDataWithStatus: (message: string) => void;
@@ -26,7 +24,6 @@ export function useTimelineState(): TimelineState {
     const [range, setRange] = useState<Range>({ start: 0, end: 1 });
     const [metaText, setMetaText] = useState("No file loaded.");
     const [statusText, setStatusText] = useState("Select a powermonitor JSON file to render timeline.");
-    const [hoverX, setHoverX] = useState<number | null>(null);
 
     const visibleTracks = useMemo(() => tracks.filter((track) => track.visible), [tracks]);
 
@@ -48,13 +45,11 @@ export function useTimelineState(): TimelineState {
             `schema=${parsed.meta.schema_version || "n/a"} protocol=${parsed.meta.protocol_version || "n/a"} samples=${parsed.points.length} stream_period_us=${parsed.meta.config?.stream_period_us ?? "n/a"}`
         );
         setStatusText(`Loaded ${sourceLabel}. Mouse wheel to zoom, drag to pan, hover to inspect.`);
-        setHoverX(null);
         fitAll(parsed.points);
     }
 
     function clearDataWithStatus(message: string): void {
         setPoints([]);
-        setHoverX(null);
         setStatusText(message);
     }
 
@@ -97,9 +92,7 @@ export function useTimelineState(): TimelineState {
         range,
         metaText,
         statusText,
-        hoverX,
         setRange,
-        setHoverX,
         fitAll,
         applyParsedData,
         clearDataWithStatus,

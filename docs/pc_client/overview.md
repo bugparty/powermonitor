@@ -90,6 +90,10 @@ powermonitor -i
 | `-b` | `--baud` | Baud rate | 115200 |
 | | `--period` | Sampling period in microseconds | 1000 |
 | | `--mask` | Channel mask | 0x0F (all channels) |
+| | `--duration-s` | Auto-stop capture after N seconds | 0 (disabled) |
+| | `--duration-us` | Auto-stop capture after N microseconds | 0 (disabled) |
+| | `--run-label` | Run label stored in output metadata | Empty |
+| | `--run-tag` | Repeatable run tag stored in output metadata | None |
 | | `--usb-stress` | Enable USB throughput stress mode (sets STREAM_START mask bit15) | No |
 | `-i` | `--interactive` | Enter interactive mode | No |
 | `-v` | `--verbose` | Verbose output | No |
@@ -176,6 +180,7 @@ operating systems, so the client should use tolerant parsing rather than strict 
 Typical examples:
 
 - Windows (COM):
+  - `USB\\VID_2E8A&PID_000A\\...`
   - `USB VID:PID=2E8A:000A SER=...`
 - Linux (`/dev/ttyACM*`):
   - `USB VID:PID=2E8A:000A SER=...`
@@ -184,8 +189,7 @@ Typical examples:
 
 Recommended approach:
 1. Normalize `hardware_id` to uppercase.
-2. Search for `VID:PID=` and parse the next 4 hex digits as VID and the following 4 hex digits
-   as PID.
+2. Parse either `USB\\VID_xxxx&PID_xxxx` or `VID:PID=xxxx:xxxx`.
 3. If parsing fails:
    - If exactly one port exists, use it.
    - Otherwise, require an explicit `--port`.

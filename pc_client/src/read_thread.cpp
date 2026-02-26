@@ -13,7 +13,6 @@
 
 #include "protocol/unpack.h"
 #include "protocol_helpers.h"
-#include "protocol_helpers.h"
 namespace powermonitor {
 namespace client {
 
@@ -90,7 +89,9 @@ struct ParserState {
             sample.device_timestamp_us = unpack_u32(frame.data.data() + 8);
             sample.raw_data = frame.data;
 
-            sample_q->push(std::move(sample));
+            if (!sample_q->push(std::move(sample))) {
+                stats->queue_overflow.fetch_add(1, std::memory_order_relaxed);
+            }
         } else if (frame.type == protocol::FrameType::kEvt && frame.msgid == kMsgTextReport) {
             // Route to control queue; UI/log layer decides how to display it.
             response_q->push(protocol::Frame(frame));

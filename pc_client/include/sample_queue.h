@@ -26,7 +26,7 @@ public:
     SampleQueue(const SampleQueue&) = delete;
     SampleQueue& operator=(const SampleQueue&) = delete;
 
-    void push(Sample&& sample);
+    bool push(Sample&& sample);
     bool pop(Sample& sample);
     bool pop_wait(Sample& sample);
     void stop();

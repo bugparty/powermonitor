@@ -3,13 +3,17 @@
 namespace powermonitor {
 namespace client {
 
-void SampleQueue::push(Sample&& sample) {
+bool SampleQueue::push(Sample&& sample) {
     std::unique_lock<std::mutex> lock(mutex_);
     if (queue_.size() >= max_size_) {
         queue_.pop();
+        queue_.push(std::move(sample));
+        cv_.notify_one();
+        return false;
     }
     queue_.push(std::move(sample));
     cv_.notify_one();
+    return true;
 }
 
 bool SampleQueue::pop(Sample& sample) {

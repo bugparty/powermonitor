@@ -170,7 +170,7 @@ npm run build:web
 
 The communication protocol uses framed messages with the following features:
 
-- Frame format: `0x7E [payload] [CRC16] 0x7E`
+- Frame format: `SOF(0xAA 0x55) + VER + TYPE + FLAGS + SEQ + LEN(LE) + MSGID + DATA + CRC16(CCITT-FALSE)`
 - CRC16-CCITT-FALSE error detection
 - Sequence numbering for reliable delivery
 - ACK/NACK responses with automatic retransmission

@@ -156,6 +156,12 @@ int main() {
     // Initialize stdio (for debug output)
     stdio_init_all();
 
+      // Wait until the host actually opens CDC (more robust, no fixed 2s delay needed)
+    absolute_time_t deadline = make_timeout_time_ms(3000);
+    while (!tud_cdc_connected() && !time_reached(deadline)) {
+        sleep_ms(10);
+    }
+
     // Initialize I2C
     i2c_init(I2C_PORT, 400 * 1000);
     gpio_set_function(I2C_SDA, GPIO_FUNC_I2C);
@@ -163,8 +169,7 @@ int main() {
     gpio_pull_up(I2C_SDA);
     gpio_pull_up(I2C_SCL);
 
-    // Wait for USB enumeration
-    sleep_ms(1000);
+
 
     // Initialize INA228
     INA228 ina228(I2C_PORT, INA228_ADDR, INA228_SHUNT_OHMS);
@@ -201,10 +206,12 @@ int main() {
         // TinyUSB housekeeping
         tud_task();
 
-        if (!g_boot_text_sent && g_handler && tud_cdc_connected()) {
+        // Send boot text: retry each iteration until successful (USB may not be ready on first attempt)
+        if (!g_boot_text_sent && tud_cdc_connected()) {
             const uint8_t* text = reinterpret_cast<const uint8_t*>(kBootTextReport);
             const size_t text_len = sizeof(kBootTextReport) - 1;
-            if (g_handler->send_text_report(text, text_len)) {
+            // Keep retrying each loop iteration until send succeeds
+            if (g_handler && g_handler->send_text_report(text, text_len)) {
                 g_boot_text_sent = true;
             }
         }

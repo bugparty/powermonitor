@@ -35,8 +35,9 @@ public:
             return;
         }
         constexpr uint16_t kStatsReportPeriodMs = 1000;
-        if (last_stats_report_us_ == 0) {
+        if (!stats_initialized_) {
             last_stats_report_us_ = now_us;
+            stats_initialized_ = true;
             return;
         }
         const uint64_t elapsed_us = now_us - last_stats_report_us_;
@@ -414,6 +415,7 @@ private:
         ctx_.start_streaming(cmd->period_us, channel_mask, time_us_32());
         ctx_.usb_stress_mode = usb_stress_mode;
         last_stats_report_us_ = time_us_64();
+        stats_initialized_ = true;
 
         if (!ctx_.usb_stress_mode) {
             // Signal Core 1 to start sampling
@@ -433,11 +435,12 @@ private:
         ctx_.stop_streaming();
         send_rsp(frame.seq, frame.msgid, protocol::Status::kOk);
         uint16_t window_ms = 0;
-        if (last_stats_report_us_ != 0) {
+        if (stats_initialized_) {
             window_ms = static_cast<uint16_t>((now_us - last_stats_report_us_) / 1000ULL);
         }
         send_stats_report(window_ms);
         last_stats_report_us_ = 0;
+        stats_initialized_ = false;
     }
 
     void send_rsp(uint8_t seq, uint8_t orig_msgid, protocol::Status status) {
@@ -538,6 +541,7 @@ private:
     static uint8_t tx_buf_[kMaxFrameBytes];
     uint16_t stats_report_seq_ = 0;
     uint64_t last_stats_report_us_ = 0;
+    bool stats_initialized_ = false;
 };
 
 } // namespace device

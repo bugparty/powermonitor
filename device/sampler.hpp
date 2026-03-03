@@ -103,10 +103,7 @@ static void sampler_do_work(SamplerContext* ctx) {
         return;
     }
 
-    ok &= ctx->ina228->read_vbus_raw(vbus_raw);
-    ok &= ctx->ina228->read_vshunt_raw(vshunt_raw);
-    ok &= ctx->ina228->read_current_raw(current_raw);
-    ok &= ctx->ina228->read_temp_raw(temp_raw);
+    ok &= ctx->ina228->read_burst_data(vshunt_raw, vbus_raw, temp_raw, current_raw);
 
     sample.vbus_raw = vbus_raw;
     sample.vshunt_raw = vshunt_raw;

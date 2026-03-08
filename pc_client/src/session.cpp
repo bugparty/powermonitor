@@ -49,13 +49,9 @@ void Session::add_sample(const Sample& sample) {
 void Session::save(const std::string& filepath) const {
     nlohmann::json root;
     root["meta"] = build_meta_json();
-    root["samples"] = nlohmann::json::array();
-    
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        for (const auto& sample : samples_) {
-            root["samples"].push_back(sample);
-        }
+        root["samples"] = samples_;
     }
     
     std::ofstream file(filepath);

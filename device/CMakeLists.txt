@@ -35,8 +35,16 @@ pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(powermonitor powermonitor.cpp INA228.cpp
+option(POWERMONITOR_TEST_MODE "Enable self-test on boot" OFF)
+if(POWERMONITOR_TEST_MODE)
+    add_compile_definitions(POWERMONITOR_TEST_MODE)
+endif()
+
+add_executable(powermonitor powermonitor.cpp INA228.cpp pio_i2c.c
         INA228.hpp)
+
+# Generate i2c.pio.h from i2c.pio
+pico_generate_pio_header(powermonitor ${CMAKE_CURRENT_SOURCE_DIR}/i2c.pio)
 
 pico_set_program_name(powermonitor "powermonitor")
 pico_set_program_version(powermonitor "0.1")
@@ -59,6 +67,7 @@ target_include_directories(powermonitor PRIVATE
 target_link_libraries(powermonitor
         hardware_i2c
         hardware_timer
+        hardware_pio
         hardware_clocks
         pico_multicore
         )

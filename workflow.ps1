@@ -10,7 +10,8 @@ param(
     [switch]$GenerateSolution,
     [switch]$OpenVS,
     [switch]$BuildDevice,
-    [switch]$FlashPico
+    [switch]$FlashPico,
+    [switch]$TestMode
 )
 
 # Exit on error
@@ -62,6 +63,7 @@ if ($Help) {
     Write-Host "  -OpenVS          Generate solution and open in Visual Studio"
     Write-Host "  -BuildDevice     Build device firmware (requires PICO_SDK_PATH)"
     Write-Host "  -FlashPico      Flash device firmware to Pico (requires PICO_SDK_PATH, Windows only)"
+    Write-Host "  -TestMode        Build device firmware in test mode (use with -BuildDevice or -FlashPico)"
     Write-Host "  -Help            Show this help message"
     Write-Host ""
     Write-Host "Examples:"
@@ -72,6 +74,7 @@ if ($Help) {
     Write-Host "  .\workflow.ps1 -OpenVS        # Generate and open in Visual Studio"
     Write-Host "  .\workflow.ps1 -BuildDevice   # Build device firmware"
     Write-Host "  .\workflow.ps1 -FlashPico    # Build and flash device firmware"
+    Write-Host "  .\workflow.ps1 -BuildDevice -TestMode # Build device firmware in test mode"
     exit 0
 }
 
@@ -279,8 +282,9 @@ if ($BuildDevice -or $FlashPico) {
     }
 
     # Configure CMake for device
+    # Always reconfigure when TestMode is specified so the flag is correctly written to the cache
     $DeviceCMakeCache = Join-Path $DeviceBuildDir "CMakeCache.txt"
-    if (-not (Test-Path $DeviceCMakeCache)) {
+    if (-not (Test-Path $DeviceCMakeCache) -or $TestMode) {
         Print-Info "Configuring device CMake..."
 
         Push-Location $DeviceDir
@@ -297,6 +301,13 @@ if ($BuildDevice -or $FlashPico) {
                 Write-Host "  Option 2: choco install ninja"
                 Write-Host "  Option 3: scoop install ninja"
                 exit 1
+            }
+
+            if ($TestMode) {
+                Print-Info "Enabling test mode (-DPOWERMONITOR_TEST_MODE=ON)"
+                $DeviceCMakeArgs += "-DPOWERMONITOR_TEST_MODE=ON"
+            } else {
+                $DeviceCMakeArgs += "-DPOWERMONITOR_TEST_MODE=OFF"
             }
 
             # Add ARM toolchain to PATH if found

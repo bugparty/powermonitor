@@ -48,7 +48,7 @@ protected:
         parser = std::make_unique<protocol::Parser>([this](const protocol::Frame &f, uint64_t /*receive_time*/) {
             last_frame = f;
             frame_count++;
-        });
+        }, 4097);
     }
 
     void TearDown() override {

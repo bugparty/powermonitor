@@ -21,7 +21,8 @@ struct ThreadStats {
     std::atomic<uint64_t> crc_fail{0};
     std::atomic<uint64_t> queue_overflow{0};
     std::atomic<uint64_t> timeouts{0};
-    std::atomic<uint64_t> io_errors{ 0 };
+    std::atomic<uint64_t> retries{0};
+    std::atomic<uint64_t> io_errors{0};
 };
 
 class ReadThread {

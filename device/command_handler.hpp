@@ -13,6 +13,9 @@
 
 namespace device {
 
+// External global variable for T2 timing (defined in powermonitor.cpp)
+extern uint64_t g_last_frame_recv_time_us;
+
 constexpr uint16_t kStreamMaskUsbStressMode = 0x8000;
 
 // USB CDC write function type
@@ -96,9 +99,10 @@ public:
     // Use template parameter to choose flush behavior at compile time
     template<bool FlushAfterWrite = true>
     size_t send_data_sample_impl(const core::RawSample& sample) {
-        // Build DATA_SAMPLE payload (16 bytes)
+        // Build DATA_SAMPLE payload (24 bytes)
         protocol::DataSamplePayload payload;
         payload.timestamp_us = sample.timestamp_us;
+        payload.timestamp_unix_us = sample.timestamp_unix_us;  // Use value from sampling time
         payload.flags = sample.flags;
 
         // Pack 20-bit values
@@ -192,8 +196,11 @@ private:
     }
 
     void handle_time_sync(const protocol::Frame& frame) {
-        // T2: capture receive time immediately (monotonic)
-        uint64_t t2_mono = time_us_64();
+        // T2: use global variable captured at frame receive time
+        uint64_t t2_mono = g_last_frame_recv_time_us;
+        if (t2_mono == 0) {
+            t2_mono = time_us_64();  // fallback
+        }
 
         if (frame.data_len < sizeof(protocol::TimeSyncPayload)) {
             send_rsp(frame.seq, frame.msgid, protocol::Status::kErrLen);
@@ -202,21 +209,16 @@ private:
 
         const auto* cmd = reinterpret_cast<const protocol::TimeSyncPayload*>(frame.data);
 
-        // Capture T3 just before sending (monotonic)
-        uint64_t t3_mono = time_us_64();
-
-        // Convert to Unix time using epoch_offset
-        uint64_t t2 = t2_mono + static_cast<uint64_t>(ctx_.epoch_offset_us);
-        uint64_t t3 = t3_mono + static_cast<uint64_t>(ctx_.epoch_offset_us);
-
-        // Prepare response with T3 captured right before sending
+        // Build response payload, T3 placeholder (0) first
+        // This allows CRC to be calculated without T3
         protocol::TimeSyncResponsePayload rsp;
         rsp.orig_msgid = frame.msgid;
         rsp.status = static_cast<uint8_t>(protocol::Status::kOk);
         rsp.t1 = cmd->t1;
-        rsp.t2 = t2;
-        rsp.t3 = t3;
+        rsp.t2 = t2_mono + static_cast<uint64_t>(ctx_.epoch_offset_us);
+        //rsp.t3 = 0;  //  Wont waste time setting 0, will be patched before send
 
+        // Build frame with T3=0 (CRC calculated over placeholder)
         size_t len = protocol::build_frame(
             tx_buf_, sizeof(tx_buf_),
             protocol::FrameType::kRsp, 0, frame.seq, frame.msgid,
@@ -224,6 +226,16 @@ private:
         );
 
         if (len > 0 && write_flush_fn_) {
+            // Capture T3 right before USB write
+            uint64_t t3_mono = time_us_64();
+            uint64_t t3 = t3_mono + static_cast<uint64_t>(ctx_.epoch_offset_us);
+
+            // Patch T3 into frame after CRC is calculated
+            // Frame layout: SOF(2) + Header(6) + MSGID(1) + orig_msgid(1) + status(1) + t1(8) + t2(8) + t3(8)
+            // T3 offset = 2 + 6 + 1 + 1 + 1 + 8 + 8 = 27
+            uint64_t* t3_ptr = reinterpret_cast<uint64_t*>(tx_buf_ + 27);
+            *t3_ptr = t3;
+
             write_flush_fn_(tx_buf_, len);
         }
     }
@@ -235,6 +247,10 @@ private:
         }
         const auto* cmd = reinterpret_cast<const protocol::TimeAdjustPayload*>(frame.data);
         ctx_.epoch_offset_us += cmd->offset_us;
+        // Sync epoch_offset to shared context for Core 1 to use
+        if (ctx_.shared_ctx) {
+            ctx_.shared_ctx->epoch_offset_us = ctx_.epoch_offset_us;
+        }
         send_rsp(frame.seq, frame.msgid, protocol::Status::kOk);
         ctx_.sync_waiting = false;  // Sync complete, resume normal loop
     }
@@ -248,6 +264,10 @@ private:
         uint64_t now_us = time_us_64();
         // epoch_offset = unix_time - monotonic_time
         ctx_.epoch_offset_us = static_cast<int64_t>(cmd->unix_time_us) - static_cast<int64_t>(now_us);
+        // Sync epoch_offset to shared context for Core 1 to use
+        if (ctx_.shared_ctx) {
+            ctx_.shared_ctx->epoch_offset_us = ctx_.epoch_offset_us;
+        }
         send_rsp(frame.seq, frame.msgid, protocol::Status::kOk);
     }
 
@@ -501,8 +521,9 @@ private:
             sizeof(payload)
         );
 
-        if (len > 0 && write_flush_fn_) {
-            write_flush_fn_(tx_buf_, len);
+        // Use noflush to avoid blocking the main loop
+        if (len > 0 && write_noflush_fn_) {
+            write_noflush_fn_(tx_buf_, len);
             return true;
         }
         return false;

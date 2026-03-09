@@ -42,6 +42,7 @@ std::atomic<bool> g_signal_interrupted{false};
 
 constexpr uint8_t kMsgTimeSync = 0x05;
 constexpr uint8_t kMsgTimeAdjust = 0x06;
+constexpr uint8_t kMsgTimeSet = 0x07;
 constexpr uint8_t kMsgStatsReport = 0x92;
 constexpr uint8_t kMsgTextReport = 0x93;
 constexpr uint8_t kMsgTimeSyncRequest = 0x94;
@@ -49,6 +50,13 @@ constexpr uint16_t kStreamMaskUsbStressMode = 0x8000;
 
 uint64_t now_steady_us() {
     const auto now = std::chrono::steady_clock::now().time_since_epoch();
+    return static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::microseconds>(now).count());
+}
+
+// Get current Unix time in microseconds (real absolute time)
+uint64_t now_unix_us() {
+    const auto now = std::chrono::system_clock::now().time_since_epoch();
     return static_cast<uint64_t>(
         std::chrono::duration_cast<std::chrono::microseconds>(now).count());
 }
@@ -132,6 +140,8 @@ int PowerMonitorSession::run() {
     std::signal(SIGTERM, signal_handler);
 #endif
 
+    session_start_unix_us_ = now_unix_us();
+
     append_log("Connecting to device...");
 
     if (!connect_device()) {
@@ -166,16 +176,32 @@ int PowerMonitorSession::run() {
         tui_rc = run_tui_loop();
     } else {
         auto next_stats_time = std::chrono::steady_clock::now();
+        std::chrono::steady_clock::time_point deadline;
+        bool has_deadline = false;
+        if (options_.duration_us > 0 || options_.duration_s > 0) {
+            uint64_t run_us = options_.duration_us;
+            if (run_us == 0 && options_.duration_s > 0) {
+                run_us = static_cast<uint64_t>(options_.duration_s) * 1000000ULL;
+            }
+            deadline = std::chrono::steady_clock::now() + std::chrono::microseconds(run_us);
+            has_deadline = true;
+        }
+
         while (!g_signal_interrupted.load() && !stop_requested_.load()) {
+            if (has_deadline && std::chrono::steady_clock::now() >= deadline) {
+                append_log("Capture duration reached, stopping session");
+                break;
+            }
             protocol::Frame async_frame;
             if (response_queue_->pop_wait(async_frame, 50)) {
                 if (async_frame.type == protocol::FrameType::kEvt &&
                     async_frame.msgid == kMsgTimeSyncRequest && streaming_.load()) {
+                    // Run 3 rounds of sync for periodic sync, take the minimum offset
                     std::string sync_detail;
-                    if (perform_time_sync_once(&sync_detail)) {
-                        append_log("Device-requested time sync ok: " + sync_detail);
+                    if (run_time_sync_rounds(3)) {
+                        append_log("Periodic time sync ok (3 rounds)");
                     } else {
-                        append_log("Device-requested time sync failed: " + sync_detail);
+                        append_log("Periodic time sync failed");
                     }
                 } else {
                     process_async_control_frame(async_frame);
@@ -202,6 +228,7 @@ int PowerMonitorSession::run() {
         processor.join();
     }
 
+    session_end_unix_us_ = now_unix_us();
     save_and_exit();
 
     std::cout << "Session complete. Samples collected: "
@@ -255,8 +282,8 @@ bool PowerMonitorSession::initialize_device() {
     );
     read_thread_->start();
 
-    // 留时间让线程启动
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    // 留时间让线程启动和USB CDC接口初始化
+    std::this_thread::sleep_for(std::chrono::milliseconds(2500));
 
     // 发送PING
     if (!send_ping()) {
@@ -278,11 +305,39 @@ bool PowerMonitorSession::initialize_device() {
     // Device may still be streaming from a previous session, so try to stop it first.
     send_command_with_retry(0x31, {});  // STREAM_STOP (best effort)
 
-    if (!run_time_sync_rounds(10)) {
-        std::cerr << "Initial TIME_SYNC failed" << std::endl;
-        return false;
+    // Set initial epoch offset using TIME_SET with current Unix time
+    // NOTE: Do NOT run TIME_SYNC after TIME_SET - the NTP algorithm assumes both
+    // ends use the same time source (steady_clock), but PC uses steady_clock while
+    // device uses monotonic+epoch_offset. Running TIME_SYNC would corrupt epoch_offset!
+    // Fine-tuning is done via drift analysis of DATA_SAMPLE packets instead.
+    {
+        std::vector<uint8_t> time_set_payload;
+        // Use system_clock for real Unix time (steady_clock is relative to process start)
+        auto now = std::chrono::system_clock::now().time_since_epoch();
+        uint64_t unix_time_us = static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(now).count());
+        pack_u64_le(time_set_payload, unix_time_us);
+        if (send_command_with_retry(kMsgTimeSet, time_set_payload, nullptr, true)) {
+            // Log with actual time value for debugging
+            std::ostringstream oss;
+            oss << "TIME_SET succeeded: unix_time_us=" << unix_time_us;
+            append_log(oss.str());
+            // Record sync start time for offset filtering
+            sync_start_time_us_ = now_unix_us();
+            // Run TIME_SYNC for fine-tuning using Unix time algorithm
+            if (!run_time_sync_rounds(10)) {
+                std::cerr << "Initial TIME_SYNC failed, continuing with degraded timestamp accuracy" << std::endl;
+                append_log("WARNING: Initial TIME_SYNC failed, device running with uncalibrated timestamps");
+                time_sync_succeeded_ = false;
+            } else {
+                append_log("Initial time sync completed (10 rounds)");
+                time_sync_succeeded_ = true;
+            }
+        } else {
+            append_log("TIME_SET failed, device time not synchronized!");
+            time_sync_succeeded_ = false;
+        }
     }
-    append_log("Initial time sync completed (10 rounds)");
 
     // Drop any samples that might have arrived before calibration completed.
     SampleQueue::Sample dropped_sample;
@@ -367,13 +422,18 @@ bool PowerMonitorSession::stop_streaming() {
     return ok;
 }
 
-bool PowerMonitorSession::perform_time_sync_once(std::string* detail, bool try_lock_command) {
+bool PowerMonitorSession::perform_time_sync_once(std::string* detail, bool try_lock_command, int64_t* out_offset, bool send_adjust) {
     if (detail) {
         detail->clear();
     }
+    if (out_offset) {
+        *out_offset = 0;
+    }
 
+    // Use system_clock (Unix time) for both T1 and T4
+    // After TIME_SET, device returns T2/T3 in Unix time too
     std::vector<uint8_t> sync_payload;
-    pack_u64_le(sync_payload, now_steady_us());
+    pack_u64_le(sync_payload, now_unix_us());
 
     std::vector<uint8_t> sync_rsp;
     if (!send_command_with_retry(kMsgTimeSync, sync_payload, &sync_rsp, try_lock_command)) {
@@ -392,21 +452,49 @@ bool PowerMonitorSession::perform_time_sync_once(std::string* detail, bool try_l
     const uint64_t T1 = read_u64_le(sync_rsp, 2);
     const uint64_t T2 = read_u64_le(sync_rsp, 10);
     const uint64_t T3 = read_u64_le(sync_rsp, 18);
-    const uint64_t T4 = now_steady_us();
+    const uint64_t T4 = now_unix_us();
 
     const int64_t delay = signed_diff_u64(T4, T1) - signed_diff_u64(T3, T2);
     const int64_t offset = (signed_diff_u64(T2, T1) + signed_diff_u64(T3, T4)) / 2;
 
-    std::vector<uint8_t> adjust_payload;
-    pack_s64_le(adjust_payload, -offset);
-    if (!send_command_with_retry(kMsgTimeAdjust, adjust_payload, nullptr, try_lock_command)) {
-        if (detail) {
-            std::ostringstream oss;
-            oss << "TIME_ADJUST failed offset=" << offset << "us"
-                << " delay=" << delay << "us";
-            *detail = oss.str();
+    // After initial 3 seconds, reject large offsets for initial sync to prevent corrupting epoch_offset
+    // But for periodic sync, allow larger offsets (it's just fine-tuning)
+    // The offset check is only for initial sync rounds, not for periodic sync
+    if (try_lock_command) {
+        // This is periodic sync - allow larger offsets
+    } else {
+        // This is initial sync - apply stricter limit after 3 seconds
+        constexpr int64_t kMaxOffsetAfterInitUs = 1000;  // 1000 us
+        constexpr uint64_t kInitPeriodUs = 3000000;  // 3 seconds
+
+        if (sync_start_time_us_ > 0 && (T4 - sync_start_time_us_) > kInitPeriodUs) {
+            if (offset > kMaxOffsetAfterInitUs || offset < -kMaxOffsetAfterInitUs) {
+                if (detail) {
+                    *detail = "offset rejected: " + std::to_string(offset) + "us (max 1000us after 3s)";
+                }
+                return false;
+            }
         }
-        return false;
+    }
+
+    // Set output offset before potentially skipping send
+    if (out_offset) {
+        *out_offset = offset;
+    }
+
+    // Skip sending TIME_ADJUST if caller will do it (for min offset calculation)
+    if (send_adjust) {
+        std::vector<uint8_t> adjust_payload;
+        pack_s64_le(adjust_payload, -offset);
+        if (!send_command_with_retry(kMsgTimeAdjust, adjust_payload, nullptr, try_lock_command)) {
+            if (detail) {
+                std::ostringstream oss;
+                oss << "TIME_ADJUST failed offset=" << offset << "us"
+                    << " delay=" << delay << "us";
+                *detail = oss.str();
+            }
+            return false;
+        }
     }
 
     if (detail) {
@@ -423,13 +511,27 @@ bool PowerMonitorSession::run_time_sync_rounds(int rounds) {
     if (rounds <= 0) {
         return true;
     }
+    std::vector<int64_t> offsets;
     for (int i = 0; i < rounds; ++i) {
         std::string detail;
-        if (!perform_time_sync_once(&detail, false)) {
+        int64_t offset = 0;
+        // Pass false for send_adjust so we can calculate min offset and send once at the end
+        if (!perform_time_sync_once(&detail, false, &offset, false)) {
             append_log("Time sync round " + std::to_string(i + 1) + "/" + std::to_string(rounds) + " failed: " + detail);
             return false;
         }
-        append_log("Time sync round " + std::to_string(i + 1) + "/" + std::to_string(rounds) + " ok: " + detail);
+        offsets.push_back(offset);
+        append_log("Time sync round " + std::to_string(i + 1) + "/" + std::to_string(rounds) + " ok: offset=" + std::to_string(offset) + "us");
+    }
+
+    // Apply minimum offset (best result)
+    if (!offsets.empty()) {
+        int64_t min_offset = *std::min_element(offsets.begin(), offsets.end());
+        std::vector<uint8_t> adjust_payload;
+        pack_s64_le(adjust_payload, -min_offset);
+        if (send_command_with_retry(kMsgTimeAdjust, adjust_payload, nullptr, false)) {
+            append_log("Applied min offset: " + std::to_string(min_offset) + "us");
+        }
     }
     return true;
 }
@@ -486,6 +588,7 @@ bool PowerMonitorSession::send_command_with_retry(uint8_t msgid,
             // 超时，准备重试
             std::cerr << "Command timeout, retry " << (retry + 1) << "/" << kMaxRetries << std::endl;
             stats_->timeouts.fetch_add(1, std::memory_order_relaxed);
+            stats_->retries.fetch_add(1, std::memory_order_relaxed);
 
         } catch (const serial::SerialException& e) {
             std::cerr << "Serial error: " << e.what() << std::endl;
@@ -625,42 +728,67 @@ void PowerMonitorSession::process_samples_loop() {
 
     while (!stop_requested_.load()) {
         if (sample_queue_->pop_wait(sample)) {
-            if (sample.raw_data.size() >= 16) {
-                Session::Sample session_sample;
-                session_sample.seq = sample.seq;
-                session_sample.host_timestamp_us = sample.host_timestamp_us;
-                session_sample.device_timestamp_us = session_->process_device_timestamp(sample.device_timestamp_us);
-                session_sample.flags = sample.raw_data[4];
+            // DATA_SAMPLE (24-byte layout): timestamp_unix_us(8) + timestamp_us(4), then flags and packed fields.
+            // Offsets: timestamp_unix_us@0, timestamp_us@8, flags@12, vbus20@13, vshunt20@16, current20@19, dietemp16@22.
+            // See protocol::DataSamplePayload (device/protocol/frame_defs.hpp) for packed field order.
 
-                session_sample.vbus_raw = protocol::unpack_u20(sample.raw_data.data() + 5);
-                session_sample.vshunt_raw = protocol::unpack_s20(sample.raw_data.data() + 8);
-                session_sample.current_raw = protocol::unpack_s20(sample.raw_data.data() + 11);
-                session_sample.temp_raw = unpack_s16(sample.raw_data.data() + 14);
-
-                session_->add_sample(session_sample);
-                sample_counter_.fetch_add(1, std::memory_order_relaxed);
-                if ((session_sample.flags & 0x10U) == 0) {
-                    std::lock_guard<std::mutex> lock(ui_state_.mutex);
-                    ui_state_.latest_sample = session_sample;
-                    ui_state_.has_latest_sample = true;
-                }
-            }
-        }
-    }
-
-    // 处理队列中剩余的所有采样
-    while (sample_queue_->pop(sample)) {
-        if (sample.raw_data.size() >= 16) {
             Session::Sample session_sample;
             session_sample.seq = sample.seq;
             session_sample.host_timestamp_us = sample.host_timestamp_us;
             session_sample.device_timestamp_us = session_->process_device_timestamp(sample.device_timestamp_us);
-            session_sample.flags = sample.raw_data[4];
+            session_sample.device_timestamp_unix_us = sample.device_timestamp_unix_us;
 
-            session_sample.vbus_raw = protocol::unpack_u20(sample.raw_data.data() + 5);
-            session_sample.vshunt_raw = protocol::unpack_s20(sample.raw_data.data() + 8);
-            session_sample.current_raw = protocol::unpack_s20(sample.raw_data.data() + 11);
-            session_sample.temp_raw = unpack_s16(sample.raw_data.data() + 14);
+            const size_t flags_offset = 12;
+            const size_t vbus_offset = 13;
+            const size_t vshunt_offset = 16;
+            const size_t current_offset = 19;
+            const size_t temp_offset = 22;
+
+            session_sample.flags = sample.raw_data[flags_offset];
+            session_sample.vbus_raw = protocol::unpack_u20(sample.raw_data.data() + vbus_offset);
+            session_sample.vshunt_raw = protocol::unpack_s20(sample.raw_data.data() + vshunt_offset);
+            session_sample.current_raw = protocol::unpack_s20(sample.raw_data.data() + current_offset);
+            session_sample.temp_raw = unpack_s16(sample.raw_data.data() + temp_offset);
+
+            session_->add_sample(session_sample);
+            sample_counter_.fetch_add(1, std::memory_order_relaxed);
+            if ((session_sample.flags & 0x10U) == 0) {
+                std::lock_guard<std::mutex> lock(ui_state_.mutex);
+                ui_state_.latest_sample = session_sample;
+                ui_state_.has_latest_sample = true;
+            }
+        }
+    }
+
+    // Drain any remaining samples from the queue before exit.
+    while (sample_queue_->pop(sample)) {
+        if (sample.raw_data.size() >= 16) {
+            const bool is_new_format = sample.raw_data.size() >= 24;
+
+            Session::Sample session_sample;
+            session_sample.seq = sample.seq;
+            session_sample.host_timestamp_us = sample.host_timestamp_us;
+            session_sample.device_timestamp_us = session_->process_device_timestamp(sample.device_timestamp_us);
+            session_sample.device_timestamp_unix_us = sample.device_timestamp_unix_us;
+
+            // DATA_SAMPLE supports two wire layouts while draining queued frames:
+            // - Legacy 16-byte layout: timestamp_us@0, flags@4, vbus20@5, vshunt20@8, current20@11, dietemp16@14.
+            // - Current 24-byte layout: timestamp_unix_us@0 (8-byte Unix prefix), timestamp_us@8,
+            //   flags@12, vbus20@13, vshunt20@16, current20@19, dietemp16@22.
+            // flags_offset and related offsets are selected from is_new_format.
+            // For timestamp semantics and packed-field edge cases, see docs/device/time_sync.md and
+            // protocol::DataSamplePayload in device/protocol/frame_defs.hpp.
+            const size_t flags_offset = is_new_format ? 12 : 4;
+            const size_t vbus_offset = is_new_format ? 13 : 5;
+            const size_t vshunt_offset = is_new_format ? 16 : 8;
+            const size_t current_offset = is_new_format ? 19 : 11;
+            const size_t temp_offset = is_new_format ? 22 : 14;
+
+            session_sample.flags = sample.raw_data[flags_offset];
+            session_sample.vbus_raw = protocol::unpack_u20(sample.raw_data.data() + vbus_offset);
+            session_sample.vshunt_raw = protocol::unpack_s20(sample.raw_data.data() + vshunt_offset);
+            session_sample.current_raw = protocol::unpack_s20(sample.raw_data.data() + current_offset);
+            session_sample.temp_raw = unpack_s16(sample.raw_data.data() + temp_offset);
 
             session_->add_sample(session_sample);
             sample_counter_.fetch_add(1, std::memory_order_relaxed);
@@ -794,7 +922,7 @@ int PowerMonitorSession::run_tui_loop() {
                    text("Keys: [t]=toggle stream  [s]=save snapshot  [q]=quit") | dim,
                    separator(),
                    text("Logs (newest first):") | bold,
-                   vbox(std::move(log_lines)) | yframe | size(HEIGHT, LESS_THAN, 12),
+                   vbox(std::move(log_lines)) | yframe | size(HEIGHT, LESS_THAN, 15),
                }) |
                border;
     });
@@ -841,11 +969,11 @@ int PowerMonitorSession::run_tui_loop() {
             if (response_queue_->pop_wait(async_frame, 50)) {
                 if (async_frame.type == protocol::FrameType::kEvt &&
                     async_frame.msgid == kMsgTimeSyncRequest && streaming_.load()) {
-                    std::string sync_detail;
-                    if (perform_time_sync_once(&sync_detail, true)) {
-                        append_log("Device-requested time sync ok: " + sync_detail);
+                    // Run 3 rounds of sync for periodic sync, take the minimum offset
+                    if (run_time_sync_rounds(3)) {
+                        append_log("Periodic time sync ok (3 rounds)");
                     } else {
-                        append_log("Device-requested time sync failed: " + sync_detail);
+                        append_log("Periodic time sync failed");
                     }
                 } else {
                     process_async_control_frame(async_frame);
@@ -882,13 +1010,36 @@ bool PowerMonitorSession::save_snapshot(const std::string& path) {
 void PowerMonitorSession::append_log(const std::string& message) {
     std::lock_guard<std::mutex> lock(ui_state_.mutex);
     ui_state_.logs.push_back(message);
-    constexpr size_t kMaxLogs = 200;
+    constexpr size_t kMaxLogs = 500;
     while (ui_state_.logs.size() > kMaxLogs) {
         ui_state_.logs.pop_front();
     }
 }
 
 void PowerMonitorSession::save_and_exit() {
+    Session::RuntimeMeta runtime_meta;
+    runtime_meta.vid_hex = options_.vid_hex;
+    runtime_meta.pid_hex = options_.pid_hex;
+    runtime_meta.port = options_.port;
+    runtime_meta.baud = static_cast<uint32_t>(options_.baud_rate);
+    runtime_meta.run_label = options_.run_label;
+    runtime_meta.tags = options_.run_tags;
+    session_->set_runtime_meta(runtime_meta);
+
+    Session::Stats session_stats;
+    for (size_t i = 0; i < session_stats.rx_counts.size(); ++i) {
+        session_stats.rx_counts[i] = stats_->rx_counts[i].load(std::memory_order_relaxed);
+        session_stats.tx_counts[i] = stats_->tx_counts[i].load(std::memory_order_relaxed);
+    }
+    session_stats.crc_fail = stats_->crc_fail.load(std::memory_order_relaxed);
+    session_stats.queue_overflow = stats_->queue_overflow.load(std::memory_order_relaxed);
+    session_stats.timeouts = stats_->timeouts.load(std::memory_order_relaxed);
+    session_stats.retries = stats_->retries.load(std::memory_order_relaxed);
+    session_stats.io_errors = stats_->io_errors.load(std::memory_order_relaxed);
+    session_->set_stats(session_stats);
+
+    session_->set_session_timing(session_start_unix_us_, session_end_unix_us_);
+
     if (!options_.output_file.empty()) {
         std::cout << "Saving data to " << options_.output_file << std::endl;
         try {

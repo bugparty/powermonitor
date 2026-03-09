@@ -13,7 +13,7 @@ class Parser {
 public:
     using FrameCallback = std::function<void(const Frame &, uint64_t receive_time_us)>;
 
-    static constexpr uint16_t kDefaultMaxLen = 4097;
+    static constexpr uint16_t kDefaultMaxLen = 1024;
 
     explicit Parser(FrameCallback callback, uint16_t max_len = kDefaultMaxLen);
 

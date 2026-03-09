@@ -149,6 +149,22 @@ struct {
 |**CMD (0x01)**|Reply `RSP(ERR_CRC)`|Notify PC to resend|
 |**EVT (0x04)**|Silently drop|Device event, cannot request retransmission|
 
+> **Special Case: TIME_SYNC Response Frames**
+>
+> TIME_SYNC response frames (RSP with MSGID = 0x05) skip PC-side CRC verification.
+> This is because the device patches the T3 timestamp into the response frame **after** CRC calculation.
+> Since T3 is captured immediately before sending the response, the device cannot pre-calculate
+> the CRC with the correct T3 value. Therefore, the PC-side parser explicitly bypasses CRC
+> validation for these frames to avoid false negatives.
+>
+> Implementation note: In `protocol/parser.cpp`, the check is:
+> ```cpp
+> const bool is_time_sync_rsp = (current_frame_.type == FrameType::kRsp && msgid == 0x05);
+> if (!is_time_sync_rsp) {
+>     // Perform CRC validation...
+> }
+> ```
+
 #### 4.3.2 Invalid Frame Length
 
 |Frame Type|Handling|
@@ -701,32 +717,38 @@ sequenceDiagram
 
 PC-side Parser State Machine
 
+The parser implements a 4-state FSM that combines the CRC verification and
+resync logic into the ReadPayload state for simplicity and performance:
+
 ```mermaid
 stateDiagram-v2
-    [*] --> WAIT_SOF0: Start
+    [*] --> kWaitSof0: Start
 
-    state "WAIT_SOF0 (0xAA)" as WAIT_SOF0
-    state "WAIT_SOF1 (0x55)" as WAIT_SOF1
-    state "READ_HEADER" as READ_HEADER
-    state "READ_PAYLOAD" as READ_PAYLOAD
-    state "VERIFY_CRC" as VERIFY_CRC
-	state "RESYNC" as RESYNC
-	
-    WAIT_SOF0 --> WAIT_SOF1: Recv 0xAA
-    WAIT_SOF0 --> WAIT_SOF0: Recv Other (Drop)
+    state "kWaitSof0 (0xAA)" as kWaitSof0
+    state "kWaitSof1 (0x55)" as kWaitSof1
+    state "kReadHeader" as kReadHeader
+    state "kReadPayload" as kReadPayload
 
-    WAIT_SOF1 --> READ_HEADER: Recv 0x55
-    WAIT_SOF1 --> WAIT_SOF0: Recv Other (Reset)
-    WAIT_SOF1 --> WAIT_SOF1: Recv 0xAA Stay (Treat as new SOF0)
+    kWaitSof0 --> kWaitSof1: Recv 0xAA
+    kWaitSof0 --> kWaitSof0: Recv Other (Drop)
 
-    READ_HEADER --> READ_PAYLOAD: Got 6 Bytes (Get LEN)
-    READ_HEADER --> WAIT_SOF0: Header Timeout/Err
+    kWaitSof1 --> kReadHeader: Recv 0x55
+    kWaitSof1 --> kWaitSof0: Recv Other (Reset)
+    kWaitSof1 --> kWaitSof1: Recv 0xAA Stay (Treat as new SOF0)
 
-    READ_PAYLOAD --> VERIFY_CRC: Got (LEN + 2) Bytes
-    READ_PAYLOAD --> WAIT_SOF0: Payload Timeout
+    kReadHeader --> kReadPayload: Got 6 Bytes (Get LEN)
+    kReadHeader --> kWaitSof0: Header Timeout/Err
 
-    VERIFY_CRC --> WAIT_SOF0: CRC OK (Dispatch Frame)
-    VERIFY_CRC --> RESYNC: CRC Fail 
-    RESYNC --> READ_HEADER: Found AA 55 in buffer 
-    RESYNC --> WAIT_SOF0: No AA 55 found
+    kReadPayload --> kReadPayload: Got (LEN + 2) Bytes (Verify CRC)
+    kReadPayload --> kReadPayload: CRC Fail (Auto-resync: scan for AA 55)
+    kReadPayload --> kWaitSof0: CRC OK (Dispatch Frame)
+    kReadPayload --> kWaitSof0: Payload Timeout
 ```
+
+**Note:** While the protocol specification defines 6 conceptual states
+(WAIT_SOF0, WAIT_SOF1, READ_HEADER, READ_PAYLOAD, VERIFY_CRC, RESYNC),
+the implementation merges VERIFY_CRC into kReadPayload and handles RESYNC
+automatically via buffer search on CRC failures. This design provides:
+- Zero-overhead state transitions (no dynamic allocation)
+- Per-instance state isolation (no global state)
+- Efficient error recovery (single-pass resync)

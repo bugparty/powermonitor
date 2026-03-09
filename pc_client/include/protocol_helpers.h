@@ -15,6 +15,17 @@ inline uint32_t unpack_u32(const uint8_t* buf) {
            (static_cast<uint32_t>(buf[3]) << 24);
 }
 
+inline uint64_t unpack_u64(const uint8_t* data) {
+    return static_cast<uint64_t>(data[0]) |
+           (static_cast<uint64_t>(data[1]) << 8) |
+           (static_cast<uint64_t>(data[2]) << 16) |
+           (static_cast<uint64_t>(data[3]) << 24) |
+           (static_cast<uint64_t>(data[4]) << 32) |
+           (static_cast<uint64_t>(data[5]) << 40) |
+           (static_cast<uint64_t>(data[6]) << 48) |
+           (static_cast<uint64_t>(data[7]) << 56);
+}
+
 inline int32_t unpack_s32(const uint8_t* buf) {
     uint32_t raw = unpack_u32(buf);
     return static_cast<int32_t>(raw);

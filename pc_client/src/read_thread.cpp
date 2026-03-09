@@ -13,7 +13,6 @@
 
 #include "protocol/unpack.h"
 #include "protocol_helpers.h"
-
 namespace powermonitor {
 namespace client {
 
@@ -77,13 +76,22 @@ struct ParserState {
                 return;
             }
 
+            // Only support new 24-byte format: timestamp_unix_us(8) + timestamp_us(4) + flags(1) + vbus20(3) + vshunt20(3) + current20(3) + dietemp16(2)
+            if (frame.data.size() < 24) {
+                stats->crc_fail.fetch_add(1, std::memory_order_relaxed);
+                return;
+            }
+
             SampleQueue::Sample sample;
             sample.seq = frame.seq;
             sample.host_timestamp_us = receive_time_us;
-            sample.device_timestamp_us = unpack_u32(frame.data.data());
+            sample.device_timestamp_unix_us = unpack_u64(frame.data.data());
+            sample.device_timestamp_us = unpack_u32(frame.data.data() + 8);
             sample.raw_data = frame.data;
 
-            sample_q->push(std::move(sample));
+            if (!sample_q->push(std::move(sample))) {
+                stats->queue_overflow.fetch_add(1, std::memory_order_relaxed);
+            }
         } else if (frame.type == protocol::FrameType::kEvt && frame.msgid == kMsgTextReport) {
             // Route to control queue; UI/log layer decides how to display it.
             response_q->push(protocol::Frame(frame));

@@ -7,6 +7,7 @@ interface RawSample {
     };
     seq?: unknown;
     device_timestamp_us?: unknown;
+    device_timestamp_unix_us?: unknown;  // 新增：绝对时间戳
     host_timestamp_us?: unknown;
 }
 
@@ -27,7 +28,13 @@ export function parsePayload(text: string): ParsedPayload {
                 return null;
             }
 
-            const timestamp = Number(sample.device_timestamp_us ?? sample.host_timestamp_us ?? 0);
+            // 优先使用绝对时间戳，其次使用相对时间戳，最后使用主机时间戳
+            const timestamp = Number(
+                sample.device_timestamp_unix_us ??
+                sample.device_timestamp_us ??
+                sample.host_timestamp_us ??
+                0
+            );
             return {
                 seq: Number(sample.seq ?? 0),
                 timeUs: Number.isFinite(timestamp) ? timestamp : 0,

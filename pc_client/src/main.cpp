@@ -1,5 +1,4 @@
 #include <CLI/CLI.hpp>
-#include <CLI/CLI.hpp>
 #include <serial/serial.h>
 #include <yaml-cpp/yaml.h>
 
@@ -102,6 +101,10 @@ struct ConfigOptions {
     bool config_overridden = false;
     bool verbose = false;
     bool interactive = false;
+    uint32_t duration_s = 0;
+    uint64_t duration_us = 0;
+    std::string run_label;
+    std::vector<std::string> run_tags;
     std::string output_path;
     std::string config_path;
 };
@@ -111,14 +114,45 @@ bool parse_vid_pid(const std::string &hardware_id, uint16_t &vid, uint16_t &pid)
     for (char &c : upper) {
         c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
     }
-    const std::string key = "USB\\VID_";
-    const auto pos = upper.find(key);
-    if (pos == std::string::npos || pos + key.size() + 9 > upper.size()) {
-        return false;
+
+    const std::string windows_key = "USB\\VID_";
+    const auto windows_pos = upper.find(windows_key);
+    if (windows_pos != std::string::npos) {
+        const auto vid_pos = windows_pos + windows_key.size();
+        const auto pid_anchor = upper.find("&PID_", vid_pos);
+        if (pid_anchor != std::string::npos && vid_pos + 4 <= upper.size() && pid_anchor + 9 <= upper.size()) {
+            const std::string vid_str = upper.substr(vid_pos, 4);
+            const std::string pid_str = upper.substr(pid_anchor + 5, 4);
+            if (parse_hex_u16(vid_str, vid) && parse_hex_u16(pid_str, pid)) {
+                return true;
+            }
+        }
     }
-    const std::string vid_str = upper.substr(pos + key.size(), 4);
-    const std::string pid_str = upper.substr(pos + key.size() + 9, 4);
-    return parse_hex_u16(vid_str, vid) && parse_hex_u16(pid_str, pid);
+
+    const std::string cross_key = "VID:PID=";
+    const auto cross_pos = upper.find(cross_key);
+    if (cross_pos != std::string::npos) {
+        const auto start = cross_pos + cross_key.size();
+        if (start + 9 <= upper.size() && upper[start + 4] == ':') {
+            const std::string vid_str = upper.substr(start, 4);
+            const std::string pid_str = upper.substr(start + 5, 4);
+            if (parse_hex_u16(vid_str, vid) && parse_hex_u16(pid_str, pid)) {
+                return true;
+            }
+        }
+    }
+
+    // Handle simple "xxxx:xxxx" format (e.g., "2e8a:000a")
+    const auto colon_pos = upper.find(':');
+    if (colon_pos != std::string::npos && colon_pos + 5 <= upper.size()) {
+        const std::string vid_str = upper.substr(0, colon_pos);
+        const std::string pid_str = upper.substr(colon_pos + 1, 4);
+        if (parse_hex_u16(vid_str, vid) && parse_hex_u16(pid_str, pid)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 bool load_yaml_config(const std::string &path, ConfigOptions &options) {
@@ -251,6 +285,11 @@ int main(int argc, char **argv) {
     uint16_t adc_config_reg = options.adc_config_reg;
     uint16_t shunt_cal = options.shunt_cal;
     uint16_t shunt_tempco = options.shunt_tempco;
+    uint32_t duration_s = options.duration_s;
+    uint64_t duration_us = options.duration_us;
+    std::string run_label = options.run_label;
+    std::vector<std::string> run_tags = options.run_tags;
+    bool list_devices = false;
 
     auto opt_output = app.add_option("-o,--output", output_path, "Output JSON file path");
     auto opt_config = app.add_option("-c,--config", config_path, "YAML configuration file");
@@ -267,6 +306,13 @@ int main(int argc, char **argv) {
     auto opt_shunt_cal = app.add_option("--shunt-cal", shunt_cal, "INA228 shunt calibration");
     auto opt_shunt_tempco =
         app.add_option("--shunt-tempco", shunt_tempco, "INA228 shunt tempco");
+    auto opt_duration_s =
+        app.add_option("--duration-s", duration_s, "Auto-stop capture after N seconds (non-interactive)");
+    auto opt_duration_us =
+        app.add_option("--duration-us", duration_us, "Auto-stop capture after N microseconds (non-interactive)");
+    auto opt_run_label = app.add_option("--run-label", run_label, "Run label for metadata");
+    auto opt_run_tag = app.add_option("--run-tag", run_tags, "Run tag (repeatable)");
+    app.add_flag("-l,--list-devices", list_devices, "List available Pico USB serial devices");
     app.add_flag("-v,--verbose", options.verbose, "Verbose logging");
     app.add_flag("-i,--interactive", options.interactive, "Interactive mode");
 
@@ -339,8 +385,79 @@ int main(int argc, char **argv) {
         options.config_overridden = true;
     }
 
+    if (opt_duration_us->count() > 0) {
+        options.duration_us = duration_us;
+    }
+    if (opt_duration_s->count() > 0) {
+        options.duration_s = duration_s;
+    }
+    if (opt_run_label->count() > 0) {
+        options.run_label = run_label;
+    }
+    if (opt_run_tag->count() > 0) {
+        options.run_tags = run_tags;
+    }
+
     if (!ensure_output_dir(options.output_path)) {
         return 1;
+    }
+
+    // Handle --list-devices option
+    if (list_devices) {
+        std::cout << "Searching for Pico USB devices (VID=" << hex_u16(options.vid)
+                  << ", PID=" << hex_u16(options.pid) << ")...\n\n";
+
+        std::vector<serial::PortInfo> all_ports = serial::list_ports();
+        std::vector<serial::PortInfo> pico_devices;
+        uint16_t default_vid = options.vid;
+        uint16_t default_pid = options.pid;
+
+        for (const auto &port : all_ports) {
+            if (port.hardware_id.empty()) {
+                continue;
+            }
+            uint16_t vid = 0;
+            uint16_t pid = 0;
+            if (parse_vid_pid(port.hardware_id, vid, pid)) {
+                if (vid == default_vid && pid == default_pid) {
+                    pico_devices.push_back(port);
+                }
+            }
+        }
+
+        if (pico_devices.empty()) {
+            std::cout << "No Pico devices found.\n";
+            std::cout << "\nAll available serial ports:\n";
+            for (const auto &port : all_ports) {
+                std::cout << "  " << port.port;
+                if (!port.description.empty()) {
+                    std::cout << " - " << port.description;
+                }
+                if (!port.hardware_id.empty()) {
+                    std::cout << " [" << port.hardware_id << "]";
+                }
+                std::cout << "\n";
+            }
+            return 0;
+        }
+
+        std::cout << "Found " << pico_devices.size() << " Pico device(s):\n\n";
+        for (size_t i = 0; i < pico_devices.size(); ++i) {
+            const auto &port = pico_devices[i];
+            std::cout << "  [" << i << "] " << port.port << "\n";
+            if (!port.description.empty()) {
+                std::cout << "      Description: " << port.description << "\n";
+            }
+            if (!port.manufacturer.empty()) {
+                std::cout << "      Manufacturer: " << port.manufacturer << "\n";
+            }
+            if (!port.hardware_id.empty()) {
+                std::cout << "      Hardware ID: " << port.hardware_id << "\n";
+            }
+            std::cout << "\n";
+        }
+        std::cout << "Use with: --port <device> or -p <device>\n";
+        return 0;
     }
 
     std::optional<serial::PortInfo> selected_port;
@@ -387,6 +504,12 @@ int main(int argc, char **argv) {
     session_options.usb_stress_mode = options.usb_stress_mode;
     session_options.verbose = options.verbose;
     session_options.interactive = options.interactive;
+    session_options.duration_s = options.duration_s;
+    session_options.duration_us = options.duration_us;
+    session_options.run_label = options.run_label;
+    session_options.run_tags = options.run_tags;
+    session_options.vid_hex = hex_u16(options.vid);
+    session_options.pid_hex = hex_u16(options.pid);
 
     powermonitor::client::PowerMonitorSession session(session_options);
     try {

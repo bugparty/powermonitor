@@ -42,10 +42,15 @@ static core::SharedContext g_shared_ctx;
 static bool g_boot_text_sent = false;
 static constexpr char kBootTextReport[] = "device online";
 
-// Device-driven time sync: send EVT_TIME_SYNC_REQUEST every 5s when streaming
-static constexpr uint64_t kTimeSyncRequestPeriodUs = 5ULL * 1000ULL * 1000ULL;
+// Device-driven time sync: send EVT_TIME_SYNC_REQUEST every 2 minutes when streaming
+static constexpr uint64_t kTimeSyncRequestPeriodUs = 120ULL * 1000ULL * 1000ULL;  // 2 minutes
 static constexpr uint64_t kSyncWaitTimeoutUs = 200000ULL;  // 200ms
 static uint64_t g_last_time_sync_request_us = 0;
+
+// T2 timing: capture time when frame is received via USB
+namespace device {
+uint64_t g_last_frame_recv_time_us = 0;
+}
 
 // USB CDC write function
 static void usb_cdc_write(const uint8_t* data, size_t len, bool flush = true) {
@@ -118,7 +123,7 @@ static void process_streaming_usb_stress() {
         sample.dietemp_raw = kStressDietempRaw;
         sample.flags = core::SampleFlags::kCnvrf | core::SampleFlags::kCalValid;
         sample._pad = 0;
-        g_handler->send_data_sample(sample);
+        g_handler->send_data_sample_noflush(sample);
     }
 }
 
@@ -126,12 +131,14 @@ static void process_streaming_usb_stress() {
 // Core 1 produces samples, Core 0 consumes and sends
 static void process_streaming() {
     if (!g_ctx.is_streaming()) return;
-    // Pop one samples from queue
-    core::RawSample sample;
-    if (!g_shared_ctx.sample_queue.pop(sample)) {
-        return;
-    }else{
-        g_handler->send_data_sample(sample);
+    // Pop and send multiple samples per call to keep up with 1kHz rate
+    // Process up to 32 samples per iteration
+    for (int i = 0; i < 32; i++) {
+        core::RawSample sample;
+        if (!g_shared_ctx.sample_queue.pop(sample)) {
+            break;  // Queue empty, done
+        }
+        g_handler->send_data_sample_noflush(sample);
     }
 }
 
@@ -149,6 +156,12 @@ int main() {
     // Initialize stdio (for debug output)
     stdio_init_all();
 
+      // Wait until the host actually opens CDC (more robust, no fixed 2s delay needed)
+    absolute_time_t deadline = make_timeout_time_ms(3000);
+    while (!tud_cdc_connected() && !time_reached(deadline)) {
+        sleep_ms(10);
+    }
+
     // Initialize I2C
     i2c_init(I2C_PORT, 400 * 1000);
     gpio_set_function(I2C_SDA, GPIO_FUNC_I2C);
@@ -156,8 +169,7 @@ int main() {
     gpio_pull_up(I2C_SDA);
     gpio_pull_up(I2C_SCL);
 
-    // Wait for USB enumeration
-    sleep_ms(1000);
+
 
     // Initialize INA228
     INA228 ina228(I2C_PORT, INA228_ADDR, INA228_SHUNT_OHMS);
@@ -194,10 +206,12 @@ int main() {
         // TinyUSB housekeeping
         tud_task();
 
-        if (!g_boot_text_sent && g_handler && tud_cdc_connected()) {
+        // Send boot text: retry each iteration until successful (USB may not be ready on first attempt)
+        if (!g_boot_text_sent && tud_cdc_connected()) {
             const uint8_t* text = reinterpret_cast<const uint8_t*>(kBootTextReport);
             const size_t text_len = sizeof(kBootTextReport) - 1;
-            if (g_handler->send_text_report(text, text_len)) {
+            // Keep retrying each loop iteration until send succeeds
+            if (g_handler && g_handler->send_text_report(text, text_len)) {
                 g_boot_text_sent = true;
             }
         }
@@ -206,6 +220,7 @@ int main() {
             uint8_t buf[64];
             uint32_t count = tud_cdc_read(buf, sizeof(buf));
             if (count > 0) {
+                device::g_last_frame_recv_time_us = time_us_64();
                 g_parser.feed(buf, count);
             }
         }

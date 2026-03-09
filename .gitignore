@@ -53,3 +53,5 @@ Thumbs.db
 *.swp
 *.swo
 linuxbuild/
+build_linux/
+build_vs/

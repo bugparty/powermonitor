@@ -268,7 +268,6 @@ static void run_hardware_tests() {
       }
       uint64_t pio_total = time_us_64() - pio_start;
       DEBUG_DMA_PRINT("[DBG] DMA loop done total=%llu us\n", pio_total);
-
       // Retrieve the last parsed DMA sample from the queue
       core::RawSample last_dma_sample;
       bool has_sample = false;

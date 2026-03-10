@@ -122,13 +122,6 @@ static void sampler_do_work(SamplerContext *ctx) {
   // technically "old", but we still got it. We should discard and not push
   // to queue if CNVRF isn't set, to avoid duplicate sequence data.
 
-  // Debug: measure timing for the very first iteration to find slowness
-  static bool first_iter_timed = false;
-  uint32_t t_start = 0, t_dma_start = 0, t_dma_done = 0;
-  if (!first_iter_timed) {
-    t_start = time_us_32();
-  }
-
   DEBUG_DMA_PRINT("[DMA] reset addrs\n");
 
   // Guarantee a clean state machine before DMA load:
@@ -147,9 +140,6 @@ static void sampler_do_work(SamplerContext *ctx) {
 
   DEBUG_DMA_PRINT("[DMA] starting RX+TX (tx_len=%d)\n", (int)ctx->dma_tx_len);
 
-  if (!first_iter_timed)
-    t_dma_start = time_us_32();
-
   // 2. Start RX then TX
   dma_channel_start(ctx->dma_rx_chan);
   dma_channel_start(ctx->dma_tx_chan);
@@ -159,13 +149,8 @@ static void sampler_do_work(SamplerContext *ctx) {
   // 3. Wait for RX to complete (blocking for now, to ensure safety)
   dma_channel_wait_for_finish_blocking(ctx->dma_rx_chan);
 
-  if (!first_iter_timed) {
-    t_dma_done = time_us_32();
-    printf("[TIMING] Setup: %lu us, DMA: %lu us\n",
-           (unsigned long)(t_dma_start - t_start),
-           (unsigned long)(t_dma_done - t_dma_start));
-    first_iter_timed = true;
-  }
+  // We rely on the RX DMA channel finishing to know the PIO transaction
+  // is effectively completed (all bytes received).
 
 #ifdef POWERMONITOR_DEBUG_DMA
   DEBUG_DMA_PRINT("[DMA] RX done\n");
@@ -256,9 +241,10 @@ static void sampler_do_work(SamplerContext *ctx) {
     }
   }
 
-  // Ensure PIO finishes the STOP condition on the bus before we allow the next
-  // trigger
-  pio_i2c_wait_idle(ctx->pio, ctx->sm);
+  // Removed pio_i2c_wait_idle: The RX DMA finishes when the 28th byte is
+  // pushed. The PIO immediately processes the STOP condition (takes ~1.2us).
+  // The blocking wait was hitting a 10ms internal timeout because of autopull
+  // interactions.
 }
 
 // Core 1 entry point

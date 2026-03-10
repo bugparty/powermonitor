@@ -69,6 +69,7 @@ target_link_libraries(powermonitor
         hardware_timer
         hardware_pio
         hardware_clocks
+        hardware_dma
         pico_multicore
         )
 

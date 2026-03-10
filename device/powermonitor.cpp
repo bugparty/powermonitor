@@ -245,12 +245,11 @@ static void run_hardware_tests() {
         break;
       }
     }
-    printf("[DBG] DMA init start\n");
-    stdio_flush();
+
+    DEBUG_DMA_PRINT("[DBG] DMA init start\n");
     device::sampler_init_dma(pio, pio_sm, INA228_ADDR);
-    printf("[DBG] DMA init done, tx_len=%d\n",
-           (int)device::g_sampler_ctx.dma_tx_len);
-    stdio_flush();
+    DEBUG_DMA_PRINT("[DBG] DMA init done, tx_len=%d\n",
+                    (int)device::g_sampler_ctx.dma_tx_len);
 
     // We run 100 PIO DMA reads for actual load benchmarking
     // (We also previously executed 100 HW reads)
@@ -259,107 +258,102 @@ static void run_hardware_tests() {
     if (pio_ok) {
       uint32_t simulated_seq = 1;
       for (int i = 0; i < NUM_READS; ++i) {
-        if (i < 3) {
-          printf("[DBG] DMA iter %d start\n", i);
-          stdio_flush();
-        }
+        DEBUG_DMA_PRINT("[DBG] DMA iter %d start\n", i);
         // Simulate an ISR timer tick
         device::g_sampler_ctx.isr_seq = simulated_seq++;
         // Run the sampler iteration (starts DMA, blocks until done, pushes to
         // queue)
         device::sampler_do_work(&device::g_sampler_ctx);
-        if (i < 3) {
-          printf("[DBG] DMA iter %d done\n", i);
-          stdio_flush();
-        }
+        DEBUG_DMA_PRINT("[DBG] DMA iter %d done\n", i);
       }
-    }
-    uint64_t pio_total = time_us_64() - pio_start;
-    printf("[DBG] DMA loop done total=%llu us\n", pio_total);
-    stdio_flush();
+      uint64_t pio_total = time_us_64() - pio_start;
+      DEBUG_DMA_PRINT("[DBG] DMA loop done total=%llu us\n", pio_total);
 
-    // Retrieve the last parsed DMA sample from the queue
-    core::RawSample last_dma_sample;
-    bool has_sample = false;
-    while (!g_shared_ctx.sample_queue.empty()) {
-      has_sample = g_shared_ctx.sample_queue.pop(last_dma_sample);
-    }
+      // Retrieve the last parsed DMA sample from the queue
+      core::RawSample last_dma_sample;
+      bool has_sample = false;
+      while (!g_shared_ctx.sample_queue.empty()) {
+        has_sample = g_shared_ctx.sample_queue.pop(last_dma_sample);
+      }
 
-    dma_channel_unclaim(device::g_sampler_ctx.dma_rx_chan);
-    dma_channel_unclaim(device::g_sampler_ctx.dma_tx_chan);
+      dma_channel_unclaim(device::g_sampler_ctx.dma_rx_chan);
+      dma_channel_unclaim(device::g_sampler_ctx.dma_tx_chan);
 
-    pio_sm_set_enabled(pio, pio_sm, false);
-    pio_remove_program(pio, &i2c_program, offset);
-    pio_sm_unclaim(pio, pio_sm);
-    gpio_set_oeover(I2C_SDA, GPIO_OVERRIDE_NORMAL);
-    gpio_set_oeover(I2C_SCL, GPIO_OVERRIDE_NORMAL);
+      pio_sm_set_enabled(pio, pio_sm, false);
+      pio_remove_program(pio, &i2c_program, offset);
+      pio_sm_unclaim(pio, pio_sm);
+      gpio_set_oeover(I2C_SDA, GPIO_OVERRIDE_NORMAL);
+      gpio_set_oeover(I2C_SCL, GPIO_OVERRIDE_NORMAL);
 
-    // I2C Bus Clear: If the PIO aborted mid-transaction, the INA228 might
-    // be holding SDA low. This will permanently hang the Pico SDK HW I2C.
-    // We bit-bang SCL up to 9 times to clock out any stuck bits.
-    gpio_init(I2C_SDA);
-    gpio_init(I2C_SCL);
-    gpio_set_dir(I2C_SDA, GPIO_IN);
-    gpio_set_dir(I2C_SCL, GPIO_OUT);
-    gpio_put(I2C_SCL, 1);
-    sleep_us(10);
-    for (int i = 0; i < 9; ++i) {
-      if (gpio_get(I2C_SDA))
-        break;
-      gpio_put(I2C_SCL, 0);
+      // I2C Bus Clear: If the PIO aborted mid-transaction, the INA228 might
+      // be holding SDA low. This will permanently hang the Pico SDK HW I2C.
+      // We bit-bang SCL up to 9 times to clock out any stuck bits.
+      gpio_init(I2C_SDA);
+      gpio_init(I2C_SCL);
+      gpio_set_dir(I2C_SDA, GPIO_IN);
+      gpio_set_dir(I2C_SCL, GPIO_OUT);
+      gpio_put(I2C_SCL, 1);
+      sleep_us(10);
+      for (int i = 0; i < 9; ++i) {
+        if (gpio_get(I2C_SDA))
+          break;
+        gpio_put(I2C_SCL, 0);
+        sleep_us(5);
+        gpio_put(I2C_SCL, 1);
+        sleep_us(5);
+      }
+      gpio_set_dir(I2C_SDA, GPIO_OUT);
+      gpio_put(I2C_SDA, 0);
       sleep_us(5);
       gpio_put(I2C_SCL, 1);
       sleep_us(5);
+      gpio_put(I2C_SDA, 1);
+      sleep_us(5);
+      i2c_init(I2C_PORT, 1000 * 1000);
+      gpio_set_function(I2C_SDA, GPIO_FUNC_I2C);
+      gpio_set_function(I2C_SCL, GPIO_FUNC_I2C);
+      gpio_pull_up(I2C_SDA);
+      gpio_pull_up(I2C_SCL);
+
+      if (has_sample) {
+        // Print PIO benchmark results
+        printf("[PIO DMA] reads=%d  total=%llu us  avg=%.2f us\n", NUM_READS,
+               pio_total, (float)pio_total / NUM_READS);
+
+        // Convert raw integers back to floats using INA228 conversion rules
+        float dma_vbus_V = detail::varint2float(last_dma_sample.vbus_raw, 4, 20,
+                                                INA228::VBUS_LSB);
+
+        // Select the correct VSHUNT LSB based on the active ADC range parameter
+        // (ADCRANGE 0 or 1). Hardware defaults to ADCRANGE=0 (+/- 163.84mV p/n)
+        // -> 5uV / LSB.
+        float dma_vshunt_mV =
+            detail::varint2float(last_dma_sample.vshunt_raw, 4, 20,
+                                 g_ctx.adcrange == 1
+                                     ? INA228::VSHUNT_LSB_40MV
+                                     : INA228::VSHUNT_LSB_163MV) *
+            1000.0f;
+
+        float dma_current_A = detail::varint2float(
+            last_dma_sample.current_raw, 4, 20,
+            static_cast<float>(g_ctx.current_lsb_nA) / 1e9f);
+        float dma_dietemp_C = static_cast<float>(last_dma_sample.dietemp_raw) *
+                              INA228::DIETEMP_LSB;
+
+        printf("[PIO 0x03] TEMPCO : 0x0000 (Omitted)\n");
+        printf("[PIO 0x04] VSHUNT : %.6f mV\n", dma_vshunt_mV);
+        printf("[PIO 0x05] VBUS   : %.6f V\n", dma_vbus_V);
+        printf("[PIO 0x06] TEMP   : %.2f C\n", dma_dietemp_C);
+        printf("[PIO 0x07] CURRENT: %.6f A\n", dma_current_A);
+        printf("[PIO 0x08] POWER  : (Omitted)\n");
+        printf("[PIO 0x09] ENERGY : (Omitted)\n");
+        printf("[PIO 0x0A] CHARGE : (Omitted)\n");
+      } else {
+        printf("[PIO DMA] FAILED during benchmark\n");
+      }
+      printf("-----------------------------------------------\n");
+      stdio_flush();
     }
-    gpio_set_dir(I2C_SDA, GPIO_OUT);
-    gpio_put(I2C_SDA, 0);
-    sleep_us(5);
-    gpio_put(I2C_SCL, 1);
-    sleep_us(5);
-    gpio_put(I2C_SDA, 1);
-    sleep_us(5);
-    i2c_init(I2C_PORT, 1000 * 1000);
-    gpio_set_function(I2C_SDA, GPIO_FUNC_I2C);
-    gpio_set_function(I2C_SCL, GPIO_FUNC_I2C);
-    gpio_pull_up(I2C_SDA);
-    gpio_pull_up(I2C_SCL);
-    if (pio_ok && has_sample) {
-      // Print PIO benchmark results
-      printf("[PIO DMA] reads=%d  total=%llu us  avg=%.2f us\n", NUM_READS,
-             pio_total, (float)pio_total / NUM_READS);
-
-      // Convert raw integers back to floats using INA228 conversion rules
-      float dma_vbus_V = detail::varint2float(last_dma_sample.vbus_raw, 4, 20,
-                                              INA228::VBUS_LSB);
-
-      // Select the correct VSHUNT LSB based on the active ADC range parameter
-      // (ADCRANGE 0 or 1). Hardware defaults to ADCRANGE=0 (+/- 163.84mV p/n)
-      // -> 5uV / LSB.
-      float dma_vshunt_mV =
-          detail::varint2float(last_dma_sample.vshunt_raw, 4, 20,
-                               g_ctx.adcrange == 1 ? INA228::VSHUNT_LSB_40MV
-                                                   : INA228::VSHUNT_LSB_163MV) *
-          1000.0f;
-
-      float dma_current_A =
-          detail::varint2float(last_dma_sample.current_raw, 4, 20,
-                               static_cast<float>(g_ctx.current_lsb_nA) / 1e9f);
-      float dma_dietemp_C =
-          static_cast<float>(last_dma_sample.dietemp_raw) * INA228::DIETEMP_LSB;
-
-      printf("[PIO 0x03] TEMPCO : 0x0000 (Omitted)\n");
-      printf("[PIO 0x04] VSHUNT : %.6f mV\n", dma_vshunt_mV);
-      printf("[PIO 0x05] VBUS   : %.6f V\n", dma_vbus_V);
-      printf("[PIO 0x06] TEMP   : %.2f C\n", dma_dietemp_C);
-      printf("[PIO 0x07] CURRENT: %.6f A\n", dma_current_A);
-      printf("[PIO 0x08] POWER  : (Omitted)\n");
-      printf("[PIO 0x09] ENERGY : (Omitted)\n");
-      printf("[PIO 0x0A] CHARGE : (Omitted)\n");
-    } else {
-      printf("[PIO DMA] FAILED during benchmark\n");
-    }
-    printf("-----------------------------------------------\n");
-    stdio_flush();
   } else {
     printf("INA228 context not initialized!\n");
   }

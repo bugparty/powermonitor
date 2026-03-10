@@ -6,12 +6,24 @@
 #include "hardware/timer.h"
 #include "pico/multicore.h"
 #include "pico/stdlib.h"
+#include "pio_i2c.h"
+#include <cstdio>
+#include <pico/stdio.h>
+
+#ifdef POWERMONITOR_DEBUG_DMA
+#define DEBUG_DMA_PRINT(...)                                                   \
+  do {                                                                         \
+    printf(__VA_ARGS__);                                                       \
+    stdio_flush();                                                             \
+  } while (0)
+#else
+#define DEBUG_DMA_PRINT(...) ((void)0)
+#endif
 #include <cstdint>
 
 #include "INA228.hpp"
 #include "core/raw_sample.hpp"
 #include "core/shared_context.hpp"
-#include "pio_i2c.h"
 
 namespace device {
 
@@ -103,11 +115,6 @@ static void sampler_do_work(SamplerContext *ctx) {
   sample.timestamp_unix_us = static_cast<uint64_t>(now) +
                              static_cast<uint64_t>(shared->epoch_offset_us);
 
-  // Debug: print first 3 DMA iterations
-  static int _dbg_dma_cnt = 0;
-  bool _dbg = (_dbg_dma_cnt < 3);
-  _dbg_dma_cnt++;
-
   // Gate reads by conversion-ready (CNVRF) to avoid sampling mid-conversion
   // values from VBUS/VSHUNT/CURRENT registers.
   // However, with DMA, we read DIAG_ALRT first as part of the DMA chain.
@@ -115,10 +122,14 @@ static void sampler_do_work(SamplerContext *ctx) {
   // technically "old", but we still got it. We should discard and not push
   // to queue if CNVRF isn't set, to avoid duplicate sequence data.
 
-  if (_dbg) {
-    printf("[DMA] reset addrs\n");
-    stdio_flush();
+  // Debug: measure timing for the very first iteration to find slowness
+  static bool first_iter_timed = false;
+  uint32_t t_start = 0, t_dma_start = 0, t_dma_done = 0;
+  if (!first_iter_timed) {
+    t_start = time_us_32();
   }
+
+  DEBUG_DMA_PRINT("[DMA] reset addrs\n");
 
   // Guarantee a clean state machine before DMA load:
   // Clears FIFOs, clears errors, and restarts PC at the correct entry point.
@@ -134,38 +145,41 @@ static void sampler_do_work(SamplerContext *ctx) {
   // ADDR+R) = 28 bytes
   dma_channel_set_trans_count(ctx->dma_rx_chan, 28, false);
 
-  if (_dbg) {
-    printf("[DMA] starting RX+TX (tx_len=%d)\n", (int)ctx->dma_tx_len);
-    stdio_flush();
-  }
+  DEBUG_DMA_PRINT("[DMA] starting RX+TX (tx_len=%d)\n", (int)ctx->dma_tx_len);
+
+  if (!first_iter_timed)
+    t_dma_start = time_us_32();
+
   // 2. Start RX then TX
   dma_channel_start(ctx->dma_rx_chan);
   dma_channel_start(ctx->dma_tx_chan);
 
-  if (_dbg) {
-    printf("[DMA] waiting for RX...\n");
-    stdio_flush();
-  }
+  DEBUG_DMA_PRINT("[DMA] waiting for RX...\n");
+
   // 3. Wait for RX to complete (blocking for now, to ensure safety)
   dma_channel_wait_for_finish_blocking(ctx->dma_rx_chan);
 
-  if (_dbg) {
-    printf("[DMA] RX done\n");
-    printf("[DMA] rx_buf: ");
-    for (int i = 0; i < 28; ++i) {
-      // 32-bit words, but data is in lowest 8 bits
-      printf("%02X ", ctx->dma_rx_buf[i] & 0xFF);
-    }
-    printf("\n");
-    stdio_flush();
+  if (!first_iter_timed) {
+    t_dma_done = time_us_32();
+    printf("[TIMING] Setup: %lu us, DMA: %lu us\n",
+           (unsigned long)(t_dma_start - t_start),
+           (unsigned long)(t_dma_done - t_dma_start));
+    first_iter_timed = true;
   }
+
+#ifdef POWERMONITOR_DEBUG_DMA
+  DEBUG_DMA_PRINT("[DMA] RX done\n");
+  DEBUG_DMA_PRINT("[DMA] rx_buf: ");
+  for (int i = 0; i < 28; ++i) {
+    // 32-bit words, but data is in lowest 8 bits
+    printf("%02X ", ctx->dma_rx_buf[i] & 0xFF);
+  }
+  DEBUG_DMA_PRINT("\n");
+#endif
   // Check if any errors occurred on the PIO side (NACK, timeout)
   bool ok = !pio_i2c_check_error(ctx->pio, ctx->sm);
   if (!ok) {
-    if (_dbg) {
-      printf("[DMA] PIO error detected, resuming\n");
-      stdio_flush();
-    }
+    DEBUG_DMA_PRINT("[DMA] PIO error detected, resuming\n");
     pio_i2c_resume_after_error(ctx->pio, ctx->sm);
   }
 

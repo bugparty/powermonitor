@@ -376,25 +376,34 @@ if ($BuildDevice -or $FlashPico) {
             Print-Info "Flashing firmware to Pico..."
             Write-Host ""
             Print-Info "Please ensure your Pico is in BOOTSEL mode (hold BOOTSEL while plugging in)"
-            Write-Host "Waiting 5 seconds..."
-            Start-Sleep -Seconds 5
+            Print-Info "Waiting for RPI-RP2 drive (polling every 0.5s, max 30s)..."
 
-            # Find the RPI-RP2 drive
+            # Poll for RPI-RP2 drive instead of fixed 5s wait
             $PicoDrive = $null
+            $MaxWaitSeconds = 30
+            $PollIntervalSeconds = 0.5
+            $Elapsed = 0
 
-            Get-Volume | Where-Object { $_.FileSystemLabel -eq "RPI-RP2" } | ForEach-Object {
-                $PicoDrive = $_.DriveLetter
+            while ($Elapsed -lt $MaxWaitSeconds) {
+                $PicoDrive = $null
+                Get-Volume | Where-Object { $_.FileSystemLabel -eq "RPI-RP2" } | ForEach-Object {
+                    $PicoDrive = $_.DriveLetter
+                    if ($PicoDrive) {
+                        $PicoDrive = $PicoDrive + ":"
+                    }
+                }
+                if (-not $PicoDrive) {
+                    $drives = Get-WmiObject -Class Win32_LogicalDisk -ErrorAction SilentlyContinue | Where-Object { $_.VolumeName -eq "RPI-RP2" }
+                    foreach ($drive in $drives) {
+                        $PicoDrive = $drive.DeviceID
+                        break
+                    }
+                }
                 if ($PicoDrive) {
-                    $PicoDrive = $PicoDrive + ":"
+                    break
                 }
-            }
-
-            if (-not $PicoDrive) {
-                # Try alternative detection via WMI
-                $drives = Get-WmiObject -Class Win32_LogicalDisk | Where-Object { $_.VolumeName -eq "RPI-RP2" }
-                foreach ($drive in $drives) {
-                    $PicoDrive = $drive.DeviceID
-                }
+                Start-Sleep -Seconds $PollIntervalSeconds
+                $Elapsed += $PollIntervalSeconds
             }
 
             if (-not $PicoDrive) {

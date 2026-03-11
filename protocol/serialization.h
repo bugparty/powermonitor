@@ -82,10 +82,56 @@ inline void pack_s20(int32_t value, uint8_t out[3]) {
     out[2] = static_cast<uint8_t>((raw >> 16) & 0x0F);
 }
 
-// 20-bit unpacking
+// 20-bit unpack helper
 inline uint32_t unpack_u20(const uint8_t buf[3]) {
     return static_cast<uint32_t>(buf[0]) | (static_cast<uint32_t>(buf[1]) << 8U) |
            ((static_cast<uint32_t>(buf[2]) & 0x0F) << 16U);
+}
+
+// 24-bit packing
+inline void pack_u24(uint32_t value, uint8_t out[3]) {
+    out[0] = static_cast<uint8_t>(value & 0xFF);
+    out[1] = static_cast<uint8_t>((value >> 8) & 0xFF);
+    out[2] = static_cast<uint8_t>((value >> 16) & 0xFF);
+}
+
+// 24-bit unpacking
+inline uint32_t unpack_u24(const uint8_t buf[3]) {
+    return static_cast<uint32_t>(buf[0]) | (static_cast<uint32_t>(buf[1]) << 8U) |
+           (static_cast<uint32_t>(buf[2]) << 16U);
+}
+
+// 40-bit packing
+inline void pack_u40(uint64_t value, uint8_t out[5]) {
+    out[0] = static_cast<uint8_t>(value & 0xFF);
+    out[1] = static_cast<uint8_t>((value >> 8) & 0xFF);
+    out[2] = static_cast<uint8_t>((value >> 16) & 0xFF);
+    out[3] = static_cast<uint8_t>((value >> 24) & 0xFF);
+    out[4] = static_cast<uint8_t>((value >> 32) & 0xFF);
+}
+
+inline void pack_s40(int64_t value, uint8_t out[5]) {
+    const uint64_t raw = static_cast<uint64_t>(value) & 0xFFFFFFFFFFULL;
+    out[0] = static_cast<uint8_t>(raw & 0xFF);
+    out[1] = static_cast<uint8_t>((raw >> 8) & 0xFF);
+    out[2] = static_cast<uint8_t>((raw >> 16) & 0xFF);
+    out[3] = static_cast<uint8_t>((raw >> 24) & 0xFF);
+    out[4] = static_cast<uint8_t>((raw >> 32) & 0xFF);
+}
+
+// 40-bit unpacking
+inline uint64_t unpack_u40(const uint8_t buf[5]) {
+    return static_cast<uint64_t>(buf[0]) | (static_cast<uint64_t>(buf[1]) << 8U) |
+           (static_cast<uint64_t>(buf[2]) << 16U) | (static_cast<uint64_t>(buf[3]) << 24U) |
+           (static_cast<uint64_t>(buf[4]) << 32U);
+}
+
+inline int64_t unpack_s40(const uint8_t buf[5]) {
+    uint64_t raw = unpack_u40(buf);
+    if (raw & 0x8000000000ULL) {
+        raw |= 0xFFFFFF0000000000ULL;
+    }
+    return static_cast<int64_t>(raw);
 }
 
 inline int32_t unpack_s20(const uint8_t buf[3]) {

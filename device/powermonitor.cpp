@@ -129,6 +129,9 @@ static void process_streaming_usb_stress() {
     sample.vshunt_raw = kStressVshuntRaw;
     sample.current_raw = kStressCurrentRaw;
     sample.dietemp_raw = kStressDietempRaw;
+    sample.power_raw = 0;
+    sample.energy_raw = 0;
+    sample.charge_raw = 0;
     sample.flags = core::SampleFlags::kCnvrf | core::SampleFlags::kCalValid;
     sample._pad = 0;
     g_handler->send_data_sample_noflush(sample);

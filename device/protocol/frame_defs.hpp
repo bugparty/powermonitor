@@ -96,10 +96,13 @@ struct DataSamplePayload {
     uint8_t vbus20[3];           // VBUS unsigned 20-bit LE-packed
     uint8_t vshunt20[3];         // VSHUNT signed 20-bit LE-packed
     uint8_t current20[3];        // CURRENT signed 20-bit LE-packed
+    uint8_t power24[3];          // POWER unsigned 24-bit LE-packed
     int16_t dietemp16;           // DIE_TEMP signed 16-bit
+    uint8_t energy40[5];         // ENERGY unsigned 40-bit LE-packed
+    uint8_t charge40[5];         // CHARGE signed 40-bit LE-packed
 } __attribute__((packed));
 
-static_assert(sizeof(DataSamplePayload) == 24, "DataSamplePayload must be 24 bytes");
+static_assert(sizeof(DataSamplePayload) == 37, "DataSamplePayload must be 37 bytes");
 
 // CFG_REPORT payload structure
 struct CfgReportPayload {

@@ -99,17 +99,20 @@ public:
     // Use template parameter to choose flush behavior at compile time
     template<bool FlushAfterWrite = true>
     size_t send_data_sample_impl(const core::RawSample& sample) {
-        // Build DATA_SAMPLE payload (24 bytes)
+        // Build DATA_SAMPLE payload (37 bytes)
         protocol::DataSamplePayload payload;
         payload.timestamp_us = sample.timestamp_us;
         payload.timestamp_unix_us = sample.timestamp_unix_us;  // Use value from sampling time
         payload.flags = sample.flags;
 
-        // Pack 20-bit values
+        // Pack values
         core::pack_u20(payload.vbus20, sample.vbus_raw);
         core::pack_s20(payload.vshunt20, sample.vshunt_raw);
         core::pack_s20(payload.current20, sample.current_raw);
+        core::pack_u24(payload.power24, sample.power_raw);
         payload.dietemp16 = sample.dietemp_raw;
+        core::pack_u40(payload.energy40, sample.energy_raw);
+        core::pack_s40(payload.charge40, sample.charge_raw);
 
         // Build and send frame
         size_t len = protocol::build_frame(

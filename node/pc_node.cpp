@@ -214,7 +214,7 @@ void PCNode::handle_text_report(const protocol::Frame &frame) {
 }
 
 void PCNode::handle_data_sample(const protocol::Frame &frame) {
-    if (frame.data.size() < 16) {
+    if (frame.data.size() < 37) {
         return;
     }
     if (!has_data_seq_) {
@@ -228,23 +228,32 @@ void PCNode::handle_data_sample(const protocol::Frame &frame) {
         last_data_seq_ = frame.seq;
     }
 
-    const uint32_t timestamp = protocol::read_u32(frame.data, 0);
-    const uint8_t flags = frame.data[4];
-    const uint8_t *vbus20 = &frame.data[5];
-    const uint8_t *vshunt20 = &frame.data[8];
-    const uint8_t *current20 = &frame.data[11];
-    const int16_t temp_raw = static_cast<int16_t>(protocol::read_u16(frame.data, 14));
+    const uint32_t timestamp = protocol::read_u32(frame.data, 8);
+    const uint8_t flags = frame.data[12];
+    const uint8_t *vbus20 = &frame.data[13];
+    const uint8_t *vshunt20 = &frame.data[16];
+    const uint8_t *current20 = &frame.data[19];
+    const uint8_t *power24 = &frame.data[22];
+    const int16_t temp_raw = static_cast<int16_t>(protocol::read_u16(frame.data, 25));
+    const uint8_t *energy40 = &frame.data[27];
+    const uint8_t *charge40 = &frame.data[32];
 
     const uint32_t vbus_raw = protocol::unpack_u20(vbus20);
     const int32_t vshunt_raw = protocol::unpack_s20(vshunt20);
     const int32_t current_raw = protocol::unpack_s20(current20);
+    const uint32_t power_raw = protocol::unpack_u24(power24);
+    const uint64_t energy_raw = protocol::unpack_u40(energy40);
+    const int64_t charge_raw = protocol::unpack_s40(charge40);
+
     auto sample = protocol::to_engineering(vbus_raw, vshunt_raw, current_raw, temp_raw,
+                                           power_raw, energy_raw, charge_raw,
                                            current_lsb_nA_, adcrange_);
 
     if ((timestamp % 1000000U) < 1000U) {
         std::cout << "DATA ts_us=" << timestamp << " flags=0x" << std::hex
                   << static_cast<int>(flags) << std::dec << " vbus=" << sample.vbus_v
-                  << " current=" << sample.current_a << " temp=" << sample.temp_c << "\n";
+                  << " current=" << sample.current_a << " temp=" << sample.temp_c
+                  << " power=" << sample.power_w << "\n";
     }
 }
 

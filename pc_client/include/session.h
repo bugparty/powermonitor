@@ -45,7 +45,10 @@ public:
         uint32_t vbus_raw = 0;
         int32_t vshunt_raw = 0;
         int32_t current_raw = 0;
+        uint32_t power_raw = 0;
         int16_t temp_raw = 0;
+        uint64_t energy_raw = 0;
+        int64_t charge_raw = 0;
     };
 
     struct RuntimeMeta {

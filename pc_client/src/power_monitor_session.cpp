@@ -728,8 +728,11 @@ void PowerMonitorSession::process_samples_loop() {
 
     while (!stop_requested_.load()) {
         if (sample_queue_->pop_wait(sample)) {
-            // DATA_SAMPLE (24-byte layout): timestamp_unix_us(8) + timestamp_us(4), then flags and packed fields.
-            // Offsets: timestamp_unix_us@0, timestamp_us@8, flags@12, vbus20@13, vshunt20@16, current20@19, dietemp16@22.
+            if (sample.raw_data.size() < 37) continue;
+
+            // DATA_SAMPLE (37-byte layout): timestamp_unix_us(8) + timestamp_us(4), then flags and packed fields.
+            // Offsets: timestamp_unix_us@0, timestamp_us@8, flags@12, vbus20@13, vshunt20@16, current20@19,
+            // power24@22, dietemp16@25, energy40@27, charge40@32
             // See protocol::DataSamplePayload (device/protocol/frame_defs.hpp) for packed field order.
 
             Session::Sample session_sample;
@@ -742,13 +745,19 @@ void PowerMonitorSession::process_samples_loop() {
             const size_t vbus_offset = 13;
             const size_t vshunt_offset = 16;
             const size_t current_offset = 19;
-            const size_t temp_offset = 22;
+            const size_t power_offset = 22;
+            const size_t temp_offset = 25;
+            const size_t energy_offset = 27;
+            const size_t charge_offset = 32;
 
             session_sample.flags = sample.raw_data[flags_offset];
             session_sample.vbus_raw = protocol::unpack_u20(sample.raw_data.data() + vbus_offset);
             session_sample.vshunt_raw = protocol::unpack_s20(sample.raw_data.data() + vshunt_offset);
             session_sample.current_raw = protocol::unpack_s20(sample.raw_data.data() + current_offset);
-            session_sample.temp_raw = unpack_s16(sample.raw_data.data() + temp_offset);
+            session_sample.power_raw = protocol::unpack_u24(sample.raw_data.data() + power_offset);
+            session_sample.temp_raw = protocol::unpack_s16(sample.raw_data.data() + temp_offset);
+            session_sample.energy_raw = protocol::unpack_u40(sample.raw_data.data() + energy_offset);
+            session_sample.charge_raw = protocol::unpack_s40(sample.raw_data.data() + charge_offset);
 
             session_->add_sample(session_sample);
             sample_counter_.fetch_add(1, std::memory_order_relaxed);
@@ -762,33 +771,30 @@ void PowerMonitorSession::process_samples_loop() {
 
     // Drain any remaining samples from the queue before exit.
     while (sample_queue_->pop(sample)) {
-        if (sample.raw_data.size() >= 16) {
-            const bool is_new_format = sample.raw_data.size() >= 24;
-
+        if (sample.raw_data.size() >= 37) {
             Session::Sample session_sample;
             session_sample.seq = sample.seq;
             session_sample.host_timestamp_us = sample.host_timestamp_us;
             session_sample.device_timestamp_us = session_->process_device_timestamp(sample.device_timestamp_us);
             session_sample.device_timestamp_unix_us = sample.device_timestamp_unix_us;
 
-            // DATA_SAMPLE supports two wire layouts while draining queued frames:
-            // - Legacy 16-byte layout: timestamp_us@0, flags@4, vbus20@5, vshunt20@8, current20@11, dietemp16@14.
-            // - Current 24-byte layout: timestamp_unix_us@0 (8-byte Unix prefix), timestamp_us@8,
-            //   flags@12, vbus20@13, vshunt20@16, current20@19, dietemp16@22.
-            // flags_offset and related offsets are selected from is_new_format.
-            // For timestamp semantics and packed-field edge cases, see docs/device/time_sync.md and
-            // protocol::DataSamplePayload in device/protocol/frame_defs.hpp.
-            const size_t flags_offset = is_new_format ? 12 : 4;
-            const size_t vbus_offset = is_new_format ? 13 : 5;
-            const size_t vshunt_offset = is_new_format ? 16 : 8;
-            const size_t current_offset = is_new_format ? 19 : 11;
-            const size_t temp_offset = is_new_format ? 22 : 14;
+            const size_t flags_offset = 12;
+            const size_t vbus_offset = 13;
+            const size_t vshunt_offset = 16;
+            const size_t current_offset = 19;
+            const size_t power_offset = 22;
+            const size_t temp_offset = 25;
+            const size_t energy_offset = 27;
+            const size_t charge_offset = 32;
 
             session_sample.flags = sample.raw_data[flags_offset];
             session_sample.vbus_raw = protocol::unpack_u20(sample.raw_data.data() + vbus_offset);
             session_sample.vshunt_raw = protocol::unpack_s20(sample.raw_data.data() + vshunt_offset);
             session_sample.current_raw = protocol::unpack_s20(sample.raw_data.data() + current_offset);
-            session_sample.temp_raw = unpack_s16(sample.raw_data.data() + temp_offset);
+            session_sample.power_raw = protocol::unpack_u24(sample.raw_data.data() + power_offset);
+            session_sample.temp_raw = protocol::unpack_s16(sample.raw_data.data() + temp_offset);
+            session_sample.energy_raw = protocol::unpack_u40(sample.raw_data.data() + energy_offset);
+            session_sample.charge_raw = protocol::unpack_s40(sample.raw_data.data() + charge_offset);
 
             session_->add_sample(session_sample);
             sample_counter_.fetch_add(1, std::memory_order_relaxed);

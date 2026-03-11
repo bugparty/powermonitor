@@ -60,16 +60,14 @@ struct SamplerContext {
   uint sm;
 
   // DMA Buffers
-  // TX buffer needs to hold instructions for reading all 5 active registers:
-  // DIAG_ALRT (2), VBUS (3), VSHUNT (3), CURRENT (3), DIETEMP (2)
-  // Roughly ~10 words setup per register + 1 word per rx byte = ~70 words.
-  // We'll allocate 128 to be safe.
-  uint16_t dma_tx_buf[128];
+  // TX buffer holds instruction codes for PIO I2C plus the 8-bit data
+  // payloads. It needs to be large enough for all address+register+read
+  // sequences. We'll allocate 256 words (154 needed for 8 registers).
+  uint16_t dma_tx_buf[256];
   uint32_t dma_tx_len;
 
-  // RX buffer holds halfwords from PIO RX FIFO (2+3+3+3+2 = 13 words). We'll
-  // allocate 16.
-  uint32_t dma_rx_buf[16];
+  // RX buffer holds halfwords from PIO RX FIFO. We'll allocate 64.
+  uint32_t dma_rx_buf[64];
 };
 
 // Global sampler context (Core 1 only)
@@ -137,9 +135,9 @@ static void sampler_do_work_dma(SamplerContext *ctx) {
 
   // Also reset transfer counts
   dma_channel_set_trans_count(ctx->dma_tx_chan, ctx->dma_tx_len, false);
-  // Total RX bytes = 13 data bytes + 15 dummy command bytes (ADDR+W, REG,
-  // ADDR+R) = 28 bytes
-  dma_channel_set_trans_count(ctx->dma_rx_chan, 28, false);
+  // Total RX bytes = 26 data bytes + 24 dummy command bytes (ADDR+W, REG,
+  // ADDR+R) = 50 bytes
+  dma_channel_set_trans_count(ctx->dma_rx_chan, 50, false);
 
   DEBUG_DMA_PRINT("[DMA] starting RX+TX (tx_len=%d)\n", (int)ctx->dma_tx_len);
 
@@ -158,9 +156,9 @@ static void sampler_do_work_dma(SamplerContext *ctx) {
 #ifdef POWERMONITOR_DEBUG_DMA
   DEBUG_DMA_PRINT("[DMA] RX done\n");
   DEBUG_DMA_PRINT("[DMA] rx_buf: ");
-  for (int i = 0; i < 28; ++i) {
+  for (int i = 0; i < 50; ++i) {
     // 32-bit words, but data is in lowest 8 bits
-    printf("%02X ", ctx->dma_rx_buf[i] & 0xFF);
+    DEBUG_DMA_PRINT("%02X ", ctx->dma_rx_buf[i] & 0xFF);
   }
   DEBUG_DMA_PRINT("\n");
 #endif
@@ -173,14 +171,17 @@ static void sampler_do_work_dma(SamplerContext *ctx) {
 
   // 4. Parse the RX buffer
   // With Auto-Push enabled, every byte transmitted (ADDR+W, REG, ADDR+R) is
-  // also pushed into the RX FIFO. We have 5 register reads, resulting in 3
-  // dummy pushed bytes per register (15 total). Total: 28 bytes per DMA reading
-  // sequence. Read 0: 0x0B (2 bytes) -> [0]=ADDR+W, [1]=REG, [2]=ADDR+R,
-  // [3..4]=DIAG_ALRT Read 1: 0x05 (3 bytes) -> [5]=ADDR+W, [6]=REG, [7]=ADDR+R,
-  // [8..10]=VBUS Read 2: 0x04 (3 bytes) -> [11]=ADDR+W, [12]=REG, [13]=ADDR+R,
-  // [14..16]=VSHUNT Read 3: 0x07 (3 bytes) -> [17]=ADDR+W, [18]=REG,
-  // [19]=ADDR+R, [20..22]=CURRENT Read 4: 0x06 (2 bytes) -> [23]=ADDR+W,
-  // [24]=REG, [25]=ADDR+R, [26..27]=DIETEMP
+  // also pushed into the RX FIFO. We have 8 register reads, resulting in 3
+  // dummy pushed bytes per register (24 total). Total: 50 bytes per DMA reading
+  // sequence. 
+  // Read 0: 0x0B (2 bytes) -> [0]=ADDR+W, [1]=REG, [2]=ADDR+R, [3..4]=DIAG_ALRT 
+  // Read 1: 0x05 (3 bytes) -> [5]=ADDR+W, [6]=REG, [7]=ADDR+R, [8..10]=VBUS 
+  // Read 2: 0x04 (3 bytes) -> [11]=ADDR+W, [12]=REG, [13]=ADDR+R, [14..16]=VSHUNT 
+  // Read 3: 0x07 (3 bytes) -> [17]=ADDR+W, [18]=REG, [19]=ADDR+R, [20..22]=CURRENT 
+  // Read 4: 0x06 (2 bytes) -> [23]=ADDR+W, [24]=REG, [25]=ADDR+R, [26..27]=DIETEMP
+  // Read 5: 0x08 (3 bytes) -> [28]=ADDR+W, [29]=REG, [30]=ADDR+R, [31..33]=POWER
+  // Read 6: 0x09 (5 bytes) -> [34]=ADDR+W, [35]=REG, [36]=ADDR+R, [37..41]=ENERGY
+  // Read 7: 0x0A (5 bytes) -> [42]=ADDR+W, [43]=REG, [44]=ADDR+R, [45..49]=CHARGE
 
   uint16_t diag_flags = (ctx->dma_rx_buf[3] << 8) | ctx->dma_rx_buf[4];
 
@@ -205,6 +206,12 @@ static void sampler_do_work_dma(SamplerContext *ctx) {
                            (ctx->dma_rx_buf[21] << 8) | ctx->dma_rx_buf[22];
   int16_t temp_raw = (ctx->dma_rx_buf[26] << 8) | ctx->dma_rx_buf[27];
 
+  uint32_t power_reg24 = (ctx->dma_rx_buf[31] << 16) | (ctx->dma_rx_buf[32] << 8) | ctx->dma_rx_buf[33];
+  uint64_t energy_reg40 = ((uint64_t)ctx->dma_rx_buf[37] << 32) | ((uint64_t)ctx->dma_rx_buf[38] << 24) |
+                          ((uint64_t)ctx->dma_rx_buf[39] << 16) | ((uint64_t)ctx->dma_rx_buf[40] << 8) | ctx->dma_rx_buf[41];
+  uint64_t charge_reg40 = ((uint64_t)ctx->dma_rx_buf[45] << 32) | ((uint64_t)ctx->dma_rx_buf[46] << 24) |
+                          ((uint64_t)ctx->dma_rx_buf[47] << 16) | ((uint64_t)ctx->dma_rx_buf[48] << 8) | ctx->dma_rx_buf[49];
+
   uint32_t vbus_raw = (vbus_reg24 >> 4) & 0x0FFFFF;
 
   int32_t vshunt_raw = (vshunt_reg24 >> 4) & 0x0FFFFF;
@@ -215,10 +222,17 @@ static void sampler_do_work_dma(SamplerContext *ctx) {
   if (current_raw & 0x080000)
     current_raw |= 0xFFF00000;
 
+  int64_t charge_raw = charge_reg40;
+  if (charge_raw & 0x8000000000ULL)
+    charge_raw |= 0xFFFFFF0000000000ULL;
+
   sample.vbus_raw = vbus_raw;
   sample.vshunt_raw = vshunt_raw;
   sample.current_raw = current_raw;
   sample.dietemp_raw = temp_raw;
+  sample.power_raw = power_reg24;
+  sample.energy_raw = energy_reg40;
+  sample.charge_raw = charge_raw;
 
   // Build flags from DIAG_ALRT register
   // CNVRF is bit 1, MATHOF is bit 9 in DIAG_ALRT
@@ -325,10 +339,35 @@ static void sampler_do_work_nodma(SamplerContext *ctx) {
     ok = false;
   int16_t temp_raw = (buf[0] << 8) | buf[1];
 
+  // 6. POWER
+  if (ok && !pio_i2c_read_reg(ctx->pio, ctx->sm, ctx->i2c_addr, 0x08, buf, 3))
+    ok = false;
+  uint32_t power_reg24 = (buf[0] << 16) | (buf[1] << 8) | buf[2];
+
+  // 7. ENERGY
+  uint8_t buf5[5] = {0};
+  if (ok && !pio_i2c_read_reg(ctx->pio, ctx->sm, ctx->i2c_addr, 0x09, buf5, 5))
+    ok = false;
+  uint64_t energy_reg40 = ((uint64_t)buf5[0] << 32) | ((uint64_t)buf5[1] << 24) |
+                          ((uint64_t)buf5[2] << 16) | ((uint64_t)buf5[3] << 8) | buf5[4];
+
+  // 8. CHARGE
+  if (ok && !pio_i2c_read_reg(ctx->pio, ctx->sm, ctx->i2c_addr, 0x0A, buf5, 5))
+    ok = false;
+  uint64_t charge_reg40 = ((uint64_t)buf5[0] << 32) | ((uint64_t)buf5[1] << 24) |
+                          ((uint64_t)buf5[2] << 16) | ((uint64_t)buf5[3] << 8) | buf5[4];
+
   sample.vbus_raw = vbus_raw;
   sample.vshunt_raw = vshunt_raw;
   sample.current_raw = current_raw;
   sample.dietemp_raw = temp_raw;
+  sample.power_raw = power_reg24;
+  sample.energy_raw = energy_reg40;
+  
+  int64_t charge_raw = charge_reg40;
+  if (charge_raw & 0x8000000000ULL)
+    charge_raw |= 0xFFFFFF0000000000ULL;
+  sample.charge_raw = charge_raw;
 
   sample.flags = 0;
   if (diag_flags & kDiagCnvrfBit)
@@ -465,10 +504,10 @@ inline void sampler_init_dma(PIO pio, uint sm, uint8_t i2c_addr) {
   g_sampler_ctx.dma_tx_chan = dma_claim_unused_channel(true);
   g_sampler_ctx.dma_rx_chan = dma_claim_unused_channel(true);
 
-  // Build the static command sequence to read 5 registers:
+  // Build the static command sequence to read 8 registers:
   // 0x0B (DIAG_ALRT: 2 bytes), 0x05 (VBUS: 3 bytes), 0x04 (VSHUNT: 3 bytes)
-  // 0x07 (CURRENT: 3 bytes), 0x06 (DIETEMP: 2 bytes)
-  // Total RX bytes = 13 (so 13 words in RX FIFO)
+  // 0x07 (CURRENT: 3 bytes), 0x06 (DIETEMP: 2 bytes), 0x08 (POWER: 3), 0x09 (ENERGY: 5), 0x0A (CHARGE: 5)
+  // Total RX bytes = 26 (so 26 bytes data + 24 command dummy = 50 words in RX FIFO)
   size_t len = 0;
   len += pio_i2c_build_command_sequence(&g_sampler_ctx.dma_tx_buf[len],
                                         i2c_addr, 0x0B, 2);
@@ -480,6 +519,12 @@ inline void sampler_init_dma(PIO pio, uint sm, uint8_t i2c_addr) {
                                         i2c_addr, 0x07, 3);
   len += pio_i2c_build_command_sequence(&g_sampler_ctx.dma_tx_buf[len],
                                         i2c_addr, 0x06, 2);
+  len += pio_i2c_build_command_sequence(&g_sampler_ctx.dma_tx_buf[len],
+                                        i2c_addr, 0x08, 3);
+  len += pio_i2c_build_command_sequence(&g_sampler_ctx.dma_tx_buf[len],
+                                        i2c_addr, 0x09, 5);
+  len += pio_i2c_build_command_sequence(&g_sampler_ctx.dma_tx_buf[len],
+                                        i2c_addr, 0x0A, 5);
   g_sampler_ctx.dma_tx_len = len;
 
   // Configure TX DMA (Memory to PIO TX FIFO)
@@ -504,11 +549,11 @@ inline void sampler_init_dma(PIO pio, uint sm, uint8_t i2c_addr) {
   channel_config_set_write_increment(&c_rx, true);
   channel_config_set_dreq(&c_rx, pio_get_dreq(pio, sm, false));
 
-  // Total RX bytes = 13 (data) + 15 (ADDR+W, REG, ADDR+R echoes) = 28 words
+  // Total RX bytes = 26 (data) + 24 (ADDR+W, REG, ADDR+R echoes) = 50 words
   dma_channel_configure(g_sampler_ctx.dma_rx_chan, &c_rx,
                         g_sampler_ctx.dma_rx_buf, // Dest
                         &pio->rxf[sm],
-                        28,     // 28 bytes to read
+                        50,     // 50 bytes to read
                         false); // Don't start yet
 
   // Enable RX FIFO auto-push for the I2C PIO SM so reads enter the FIFO

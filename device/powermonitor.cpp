@@ -6,8 +6,10 @@
 #include "tusb.h"
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 
 #include "command_handler.hpp"
+#include "core/raw_sample.hpp"
 #include "pico/multicore.h"
 #include "protocol/parser.hpp"
 #include "sampler.hpp"
@@ -322,7 +324,7 @@ static void run_pio_benchmark(int NUM_READS, device::SamplerMode mode,
       float dma_power_W = 0.0f;
       float dma_energy_J = 0.0f;
       float dma_charge_C = 0.0f;
-      
+
       if (slow_ok) {
           float current_lsb = static_cast<float>(g_ctx.current_lsb_nA) / 1e9f;
           dma_power_W = INA228::POWER_COEFF * slow_power * current_lsb;
@@ -335,7 +337,7 @@ static void run_pio_benchmark(int NUM_READS, device::SamplerMode mode,
       printf("[PIO 0x05] VBUS   : %.6f V\n", dma_vbus_V);
       printf("[PIO 0x06] TEMP   : %.2f C\n", dma_dietemp_C);
       printf("[PIO 0x07] CURRENT: %.6f A\n", dma_current_A);
-      
+
       if (slow_ok) {
           printf("[PIO 0x08] POWER  : %.6f W\n", dma_power_W);
           printf("[PIO 0x09] ENERGY : %.6f J\n", dma_energy_J);
@@ -351,12 +353,158 @@ static void run_pio_benchmark(int NUM_READS, device::SamplerMode mode,
   }
 }
 
+static void run_pack_tests() {
+  printf("\n--- Pack function correctness & timing ---\n");
+
+  // Test values
+  const uint32_t u20_vals[] = {0, 1, 0x12345, 0xFFFFF, 0x80000};
+  const int32_t s20_vals[] = {0, 1, -1, 524287, -524288, 0x12345, -0x12345};
+  const uint32_t u24_vals[] = {0, 1, 0x123456, 0xFFFFFF};
+  const uint64_t u40_vals[] = {0, 1, 0x123456789AULL, 0xFFFFFFFFFFULL};
+  const int64_t s40_vals[] = {0, 1, -1, 0x7FFFFFFFFFLL, -0x8000000000LL};
+
+  bool all_ok = true;
+
+  // pack_u20
+  {
+    bool ok = true;
+    for (uint32_t v : u20_vals) {
+      uint8_t buf_orig[3], buf_bswap[3];
+      core::pack_u20(buf_orig, v);
+      core::pack_u20_bswap(buf_bswap, v);
+      if (std::memcmp(buf_orig, buf_bswap, 3) != 0) {
+        printf("pack_u20 FAIL: v=0x%05lX orig=%02X%02X%02X bswap=%02X%02X%02X\n",
+               (unsigned long)v, buf_orig[0], buf_orig[1], buf_orig[2],
+               buf_bswap[0], buf_bswap[1], buf_bswap[2]);
+        ok = false;
+      }
+    }
+    printf("pack_u20: %s\n", ok ? "OK" : "FAIL");
+    all_ok = all_ok && ok;
+  }
+
+  // pack_s20
+  {
+    bool ok = true;
+    for (int32_t v : s20_vals) {
+      uint8_t buf_orig[3], buf_bswap[3];
+      core::pack_s20(buf_orig, v);
+      core::pack_s20_bswap(buf_bswap, v);
+      if (std::memcmp(buf_orig, buf_bswap, 3) != 0) {
+        printf("pack_s20 FAIL: v=%ld orig=%02X%02X%02X bswap=%02X%02X%02X\n",
+               (long)v, buf_orig[0], buf_orig[1], buf_orig[2],
+               buf_bswap[0], buf_bswap[1], buf_bswap[2]);
+        ok = false;
+      }
+    }
+    printf("pack_s20: %s\n", ok ? "OK" : "FAIL");
+    all_ok = all_ok && ok;
+  }
+
+  // pack_u24
+  {
+    bool ok = true;
+    for (uint32_t v : u24_vals) {
+      uint8_t buf_orig[3], buf_bswap[3];
+      core::pack_u24(buf_orig, v);
+      core::pack_u24_bswap(buf_bswap, v);
+      if (std::memcmp(buf_orig, buf_bswap, 3) != 0) {
+        printf("pack_u24 FAIL: v=0x%06lX\n", (unsigned long)v);
+        ok = false;
+      }
+    }
+    printf("pack_u24: %s\n", ok ? "OK" : "FAIL");
+    all_ok = all_ok && ok;
+  }
+
+  // pack_u40
+  {
+    bool ok = true;
+    for (uint64_t v : u40_vals) {
+      uint8_t buf_orig[5], buf_bswap[5];
+      core::pack_u40(buf_orig, v);
+      core::pack_u40_bswap(buf_bswap, v);
+      if (std::memcmp(buf_orig, buf_bswap, 5) != 0) {
+        printf("pack_u40 FAIL: v=0x%010llX\n", (unsigned long long)v);
+        ok = false;
+      }
+    }
+    printf("pack_u40: %s\n", ok ? "OK" : "FAIL");
+    all_ok = all_ok && ok;
+  }
+
+  // pack_s40
+  {
+    bool ok = true;
+    for (int64_t v : s40_vals) {
+      uint8_t buf_orig[5], buf_bswap[5];
+      core::pack_s40(buf_orig, v);
+      core::pack_s40_bswap(buf_bswap, v);
+      if (std::memcmp(buf_orig, buf_bswap, 5) != 0) {
+        printf("pack_s40 FAIL: v=%lld\n", (long long)v);
+        ok = false;
+      }
+    }
+    printf("pack_s40: %s\n", ok ? "OK" : "FAIL");
+    all_ok = all_ok && ok;
+  }
+
+  if (!all_ok) {
+    printf("Pack correctness: FAILED\n");
+    return;
+  }
+  printf("Pack correctness: all PASS\n");
+
+  // Timing benchmark (volatile + sink to prevent dead-code elimination)
+  constexpr int ITERS = 100000;
+  uint64_t t0, t1;
+  volatile uint8_t b[5];
+  volatile uint32_t sink = 0;
+
+  t0 = time_us_64();
+  for (int i = 0; i < ITERS; ++i) {
+    core::pack_u20(const_cast<uint8_t*>(b), 0x12345);
+    core::pack_s20(const_cast<uint8_t*>(b), 0x12345);
+    core::pack_u24(const_cast<uint8_t*>(b), 0x123456);
+    core::pack_u40(const_cast<uint8_t*>(b), 0x123456789AULL);
+    core::pack_s40(const_cast<uint8_t*>(b), 0x123456789ALL);
+    sink ^= b[0] ^ (static_cast<uint32_t>(b[1]) << 8) ^
+            (static_cast<uint32_t>(b[2]) << 16);
+  }
+  t1 = time_us_64();
+  uint64_t us_orig = t1 - t0;
+
+  t0 = time_us_64();
+  for (int i = 0; i < ITERS; ++i) {
+    core::pack_u20_bswap(const_cast<uint8_t*>(b), 0x12345);
+    core::pack_s20_bswap(const_cast<uint8_t*>(b), 0x12345);
+    core::pack_u24_bswap(const_cast<uint8_t*>(b), 0x123456);
+    core::pack_u40_bswap(const_cast<uint8_t*>(b), 0x123456789AULL);
+    core::pack_s40_bswap(const_cast<uint8_t*>(b), 0x123456789ALL);
+    sink ^= b[0] ^ (static_cast<uint32_t>(b[1]) << 8) ^
+            (static_cast<uint32_t>(b[2]) << 16);
+  }
+  t1 = time_us_64();
+  uint64_t us_bswap = t1 - t0;
+
+  printf("Timing (%d iters, orig vs bswap):\n", ITERS);
+  printf("  orig:  %llu us total, %.2f us/iter\n", us_orig,
+         (float)us_orig / ITERS);
+  printf("  bswap: %llu us total, %.2f us/iter\n", us_bswap,
+         (float)us_bswap / ITERS);
+  printf("  (sink=0x%lX, prevents DCE)\n", (unsigned long)sink);
+  printf("-----------------------------------------------\n");
+  stdio_flush();
+}
+
 static void run_hardware_tests() {
   uint64_t now = time_us_64();
   if (now - g_last_test_run_us < 1000000ULL) {
     return; // not yet 1 second
   }
   g_last_test_run_us = now;
+
+  run_pack_tests();
 
   printf("--- INA228 Hardware Self-Test ---\n");
   if (g_ctx.ina228) {

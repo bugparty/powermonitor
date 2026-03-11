@@ -878,16 +878,22 @@ int PowerMonitorSession::run_tui_loop() {
         std::string latest = "No sample yet";
         if (has_latest_sample) {
             const auto cfg = session_->get_config();
+            const double lsb_a = cfg.current_lsb_nA * 1e-9;
             const double vbus_v = latest_sample.vbus_raw * 195.3125e-6;
-            const double current_a = latest_sample.current_raw * (cfg.current_lsb_nA * 1e-9);
+            const double current_a = latest_sample.current_raw * lsb_a;
+            const double power_w = latest_sample.power_raw * lsb_a * 3.2;
+            const double energy_j = latest_sample.energy_raw * lsb_a * 3.2 * 16.0;
+            const double charge_c = latest_sample.charge_raw * lsb_a;
             const double temp_c = latest_sample.temp_raw * 7.8125e-3;
             std::ostringstream oss;
-            oss << "SEQ=" << std::setw(3) << std::setfill('0')
+            oss << "SEQ=" << std::right << std::setw(3) << std::setfill('0')
                 << static_cast<unsigned>(latest_sample.seq) << std::setfill(' ')
-                << "  VBUS=" << std::fixed
-                << std::setprecision(3) << vbus_v << " V"
-                << "  I=" << std::setprecision(4) << current_a << " A"
-                << "  T=" << std::setprecision(2) << temp_c << " C";
+                << " V=" << std::fixed << std::setprecision(3) << vbus_v
+                << " I=" << std::setprecision(4) << current_a
+                << " P=" << std::internal << std::setfill('0') << std::setw(7) << std::setprecision(4) << power_w << " W" << std::setfill(' ')
+                << " E=" << std::internal << std::setfill('0') << std::setw(10) << std::setprecision(4) << energy_j << " J" << std::setfill(' ')
+                << " C= " << std::internal << std::setfill('0') << std::setw(9) << std::setprecision(4) << charge_c << std::setfill(' ')
+                << " T=" << std::left << std::setprecision(1) << temp_c;
             latest = oss.str();
         }
 

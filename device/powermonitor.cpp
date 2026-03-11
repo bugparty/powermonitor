@@ -431,6 +431,7 @@ int main() {
   device::sampler_init_dma(pio, sm, INA228_ADDR);
 
   // Launch Core 1 for sampling
+  printf("Starting high-speed PIO DMA sampling on Core 1...\n");
   device::sampler_launch_core1();
 #endif
 

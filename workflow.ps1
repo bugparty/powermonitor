@@ -84,13 +84,16 @@ $CurrentIsWindows = $false
 
 if ($IsLinux) {
     $CurrentIsLinux = $true
-} elseif ($IsWindows) {
+}
+elseif ($IsWindows) {
     $CurrentIsWindows = $true
-} else {
+}
+else {
     # Fallback for older PowerShell versions or other platforms
     if ($PSVersionTable.Platform -eq "Unix") {
         $CurrentIsLinux = $true
-    } else {
+    }
+    else {
         # Default to Windows behavior if not Unix
         $CurrentIsWindows = $true
     }
@@ -98,7 +101,8 @@ if ($IsLinux) {
 
 if ($CurrentIsLinux) {
     Print-Info "Detected OS: Linux"
-} else {
+}
+else {
     Print-Info "Detected OS: Windows"
 }
 
@@ -141,10 +145,12 @@ if ($GenerateSolution -or $OpenVS) {
     if (Test-Path $SolutionXFile) {
         $FoundSolution = $SolutionXFile
         Print-Success "Solution generated (slnx format): $SolutionXFile"
-    } elseif (Test-Path $SolutionFile) {
+    }
+    elseif (Test-Path $SolutionFile) {
         $FoundSolution = $SolutionFile
         Print-Success "Solution generated: $SolutionFile"
-    } else {
+    }
+    else {
         Print-Error-Custom "Solution file not found at $SolutionFile or $SolutionXFile"
         exit 1
     }
@@ -153,7 +159,8 @@ if ($GenerateSolution -or $OpenVS) {
         Print-Info "Opening solution in Visual Studio..."
         Start-Process -FilePath "devenv.exe" -ArgumentList $FoundSolution
         Print-Success "Visual Studio launched"
-    } else {
+    }
+    else {
         Write-Host ""
         Print-Info "You can now open the solution in Visual Studio:"
         Write-Host "  devenv $FoundSolution"
@@ -170,7 +177,8 @@ if ($BuildDevice -or $FlashPico) {
     if ($BuildDevice -and -not $FlashPico) {
         Print-Info "Building device firmware..."
         Write-Host "======================================"
-    } else {
+    }
+    else {
         Print-Info "Building and flashing device firmware..."
         Write-Host "======================================"
     }
@@ -282,9 +290,17 @@ if ($BuildDevice -or $FlashPico) {
     }
 
     # Configure CMake for device
-    # Always reconfigure when TestMode is specified so the flag is correctly written to the cache
     $DeviceCMakeCache = Join-Path $DeviceBuildDir "CMakeCache.txt"
-    if (-not (Test-Path $DeviceCMakeCache) -or $TestMode) {
+    $NeedReconfigure = -not (Test-Path $DeviceCMakeCache)
+    if (-not $NeedReconfigure) {
+        $CacheContent = Get-Content -Path $DeviceCMakeCache -Raw -ErrorAction SilentlyContinue
+        $IsCachedTest = $CacheContent -match "POWERMONITOR_TEST_MODE:BOOL=ON"
+        if (($TestMode -and -not $IsCachedTest) -or (-not $TestMode -and $IsCachedTest)) {
+            $NeedReconfigure = $true
+        }
+    }
+
+    if ($NeedReconfigure) {
         Print-Info "Configuring device CMake..."
 
         Push-Location $DeviceDir
@@ -295,7 +311,8 @@ if ($BuildDevice -or $FlashPico) {
                 Print-Info "Found Ninja: $NinjaExe"
                 $DeviceCMakeArgs += "-G", "Ninja"
                 $DeviceCMakeArgs += "-DCMAKE_MAKE_PROGRAM=$NinjaExe"
-            } else {
+            }
+            else {
                 Print-Error-Custom "Ninja not found. The Pico SDK uses Ninja as build system."
                 Write-Host "  Option 1: Install Raspberry Pi Pico extension for VS Code (bundles all tools)"
                 Write-Host "  Option 2: choco install ninja"
@@ -306,7 +323,8 @@ if ($BuildDevice -or $FlashPico) {
             if ($TestMode) {
                 Print-Info "Enabling test mode (-DPOWERMONITOR_TEST_MODE=ON)"
                 $DeviceCMakeArgs += "-DPOWERMONITOR_TEST_MODE=ON"
-            } else {
+            }
+            else {
                 $DeviceCMakeArgs += "-DPOWERMONITOR_TEST_MODE=OFF"
             }
 
@@ -321,11 +339,13 @@ if ($BuildDevice -or $FlashPico) {
                 Print-Error-Custom "Device CMake configuration failed"
                 exit 1
             }
-        } finally {
+        }
+        finally {
             Pop-Location
         }
         Print-Success "Device CMake configured"
-    } else {
+    }
+    else {
         Print-Info "Using existing device CMake configuration"
     }
 
@@ -338,7 +358,8 @@ if ($BuildDevice -or $FlashPico) {
             Print-Error-Custom "Device build failed"
             exit 1
         }
-    } finally {
+    }
+    finally {
         Pop-Location
     }
 
@@ -395,19 +416,22 @@ if ($BuildDevice -or $FlashPico) {
                 Print-Success "Firmware flashed successfully!"
                 Write-Host ""
                 Print-Info "The Pico will reboot and start running the new firmware"
-            } catch {
+            }
+            catch {
                 Print-Error-Custom "Failed to copy firmware to Pico: $_"
                 Write-Host ""
                 Print-Info "Make sure the RPI-RP2 drive is still accessible"
                 exit 1
             }
-        } else {
+        }
+        else {
             Write-Host ""
             Print-Info "To flash to Pico:"
             Write-Host "  1. Hold BOOTSEL while plugging in the Pico"
             Write-Host "  2. Copy the .uf2 file to the RPI-RP2 drive"
         }
-    } else {
+    }
+    else {
         Print-Warning "Build completed but .uf2 file not found at expected location"
         Print-Info "Check $DeviceBuildDir for output files"
     }
@@ -447,7 +471,8 @@ if (-not (Test-Path $CMakeCachePath)) {
 
         Print-Info "Using Generator: $Generator -A $Arch"
         $CMakeArgs += "-G", $Generator, "-A", $Arch
-    } else {
+    }
+    else {
         # Linux configuration - let CMake pick default
         Print-Info "Using default generator"
     }
@@ -458,7 +483,8 @@ if (-not (Test-Path $CMakeCachePath)) {
         exit 1
     }
     Print-Success "CMake configured"
-} else {
+}
+else {
     Print-Info "Using existing CMake configuration"
 }
 
@@ -482,7 +508,8 @@ if ($CurrentIsWindows) {
 
     if (Test-Path $TestExecPathDebug) {
         $TestExec = $TestExecPathDebug
-    } else {
+    }
+    else {
         $TestExecPathRelease = Join-Path $BuildDir "pc_sim"
         $TestExecPathRelease = Join-Path $TestExecPathRelease "Release"
         $TestExecPathRelease = Join-Path $TestExecPathRelease "pc_sim_test.exe"
@@ -491,7 +518,8 @@ if ($CurrentIsWindows) {
             $TestExec = $TestExecPathRelease
         }
     }
-} else {
+}
+else {
     # Linux: Look directly in target directory without extension
     # Try typical Makefile output location
     $TestExecPath = Join-Path $BuildDir "pc_sim"
@@ -506,15 +534,16 @@ if (-not $TestExec) {
     # Fallback: search recursively because output directories can be customized
     if ($CurrentIsWindows) {
         $Found = Get-ChildItem -Path $BuildDir -Recurse -Filter "pc_sim_test.exe" -ErrorAction SilentlyContinue |
-            Select-Object -First 1
+        Select-Object -First 1
         if ($Found) {
             $TestExec = $Found.FullName
             Print-Warning "Using discovered test executable: $TestExec"
         }
-    } else {
+    }
+    else {
         $Found = Get-ChildItem -Path $BuildDir -Recurse -Filter "pc_sim_test" -ErrorAction SilentlyContinue |
-            Where-Object { -not $_.PSIsContainer } |
-            Select-Object -First 1
+        Where-Object { -not $_.PSIsContainer } |
+        Select-Object -First 1
         if ($Found) {
             $TestExec = $Found.FullName
             Print-Warning "Using discovered test executable: $TestExec"
@@ -526,7 +555,8 @@ if (-not $TestExec) {
     Print-Error-Custom "Test executable not found"
     if ($CurrentIsWindows) {
         Print-Info "Checked Debug/Release and recursive fallback for pc_sim_test.exe"
-    } else {
+    }
+    else {
         Print-Info "Checked default and recursive fallback for pc_sim_test"
     }
     exit 1
@@ -540,7 +570,8 @@ Write-Host "======================================"
 # Run tests
 if ($Verbose) {
     & $TestExec --gtest_color=yes
-} else {
+}
+else {
     & $TestExec --gtest_color=yes --gtest_brief=1
 }
 
@@ -551,7 +582,8 @@ Write-Host "======================================"
 if ($TestResult -eq 0) {
     Print-Success "All tests passed!"
     exit 0
-} else {
+}
+else {
     Print-Error-Custom "Some tests failed!"
     Write-Host ""
     Print-Info "Tip: Run with -Verbose flag for detailed output"

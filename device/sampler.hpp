@@ -196,13 +196,23 @@ static void sampler_do_work_dma(SamplerContext *ctx) {
     ok = false;
   }
 
-  uint32_t vbus_raw = (ctx->dma_rx_buf[8] << 16) | (ctx->dma_rx_buf[9] << 8) |
-                      ctx->dma_rx_buf[10];
-  int32_t vshunt_raw = (ctx->dma_rx_buf[14] << 16) |
-                       (ctx->dma_rx_buf[15] << 8) | ctx->dma_rx_buf[16];
-  int32_t current_raw = (ctx->dma_rx_buf[20] << 16) |
-                        (ctx->dma_rx_buf[21] << 8) | ctx->dma_rx_buf[22];
+  uint32_t vbus_reg24 = (ctx->dma_rx_buf[8] << 16) | (ctx->dma_rx_buf[9] << 8) |
+                        ctx->dma_rx_buf[10];
+  uint32_t vshunt_reg24 = (ctx->dma_rx_buf[14] << 16) |
+                          (ctx->dma_rx_buf[15] << 8) | ctx->dma_rx_buf[16];
+  uint32_t current_reg24 = (ctx->dma_rx_buf[20] << 16) |
+                           (ctx->dma_rx_buf[21] << 8) | ctx->dma_rx_buf[22];
   int16_t temp_raw = (ctx->dma_rx_buf[26] << 8) | ctx->dma_rx_buf[27];
+
+  uint32_t vbus_raw = (vbus_reg24 >> 4) & 0x0FFFFF;
+
+  int32_t vshunt_raw = (vshunt_reg24 >> 4) & 0x0FFFFF;
+  if (vshunt_raw & 0x080000)
+    vshunt_raw |= 0xFFF00000;
+
+  int32_t current_raw = (current_reg24 >> 4) & 0x0FFFFF;
+  if (current_raw & 0x080000)
+    current_raw |= 0xFFF00000;
 
   sample.vbus_raw = vbus_raw;
   sample.vshunt_raw = vshunt_raw;
@@ -290,17 +300,24 @@ static void sampler_do_work_nodma(SamplerContext *ctx) {
   // 2. VBUS
   if (ok && !pio_i2c_read_reg(ctx->pio, ctx->sm, ctx->i2c_addr, 0x05, buf, 3))
     ok = false;
-  uint32_t vbus_raw = (buf[0] << 16) | (buf[1] << 8) | buf[2];
+  uint32_t vbus_reg24 = (buf[0] << 16) | (buf[1] << 8) | buf[2];
+  uint32_t vbus_raw = (vbus_reg24 >> 4) & 0x0FFFFF;
 
   // 3. VSHUNT
   if (ok && !pio_i2c_read_reg(ctx->pio, ctx->sm, ctx->i2c_addr, 0x04, buf, 3))
     ok = false;
-  int32_t vshunt_raw = (buf[0] << 16) | (buf[1] << 8) | buf[2];
+  uint32_t vshunt_reg24 = (buf[0] << 16) | (buf[1] << 8) | buf[2];
+  int32_t vshunt_raw = (vshunt_reg24 >> 4) & 0x0FFFFF;
+  if (vshunt_raw & 0x080000)
+    vshunt_raw |= 0xFFF00000;
 
   // 4. CURRENT
   if (ok && !pio_i2c_read_reg(ctx->pio, ctx->sm, ctx->i2c_addr, 0x07, buf, 3))
     ok = false;
-  int32_t current_raw = (buf[0] << 16) | (buf[1] << 8) | buf[2];
+  uint32_t current_reg24 = (buf[0] << 16) | (buf[1] << 8) | buf[2];
+  int32_t current_raw = (current_reg24 >> 4) & 0x0FFFFF;
+  if (current_raw & 0x080000)
+    current_raw |= 0xFFF00000;
 
   // 5. DIETEMP
   if (ok && !pio_i2c_read_reg(ctx->pio, ctx->sm, ctx->i2c_addr, 0x06, buf, 2))

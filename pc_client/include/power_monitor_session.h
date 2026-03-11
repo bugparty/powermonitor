@@ -56,8 +56,8 @@ private:
     bool initialize_device();
     bool send_ping();
     bool get_device_config();
-    bool perform_time_sync_once(std::string* detail = nullptr, bool try_lock_command = false,
-                               int64_t* out_offset = nullptr, bool send_adjust = true);
+    bool perform_time_sync_once(std::string* detail = nullptr, int64_t* out_offset = nullptr,
+                                bool send_adjust = true);
     bool run_time_sync_rounds(int rounds);
     bool start_streaming();
     bool stop_streaming();
@@ -66,6 +66,7 @@ private:
                            protocol::Frame* frame, int timeout_ms);
     bool wait_for_message_by_id(uint8_t expected_msgid, protocol::Frame* frame, int timeout_ms);
     void process_async_control_frame(const protocol::Frame& frame);
+    void on_time_sync_request();  // Single entry for EVT_TIME_SYNC_REQUEST: run periodic sync when streaming
     bool send_command_with_retry(uint8_t msgid, const std::vector<uint8_t>& payload,
                                  std::vector<uint8_t>* rsp_data = nullptr,
                                  bool try_lock_command = false);

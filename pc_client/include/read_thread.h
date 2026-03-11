@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <atomic>
 #include <thread>
@@ -23,6 +23,9 @@ struct ThreadStats {
     std::atomic<uint64_t> timeouts{0};
     std::atomic<uint64_t> retries{0};
     std::atomic<uint64_t> io_errors{0};
+    // USB packet receive timing: EMA of inter-packet interval (microseconds)
+    std::atomic<uint64_t> last_packet_time_us{0};
+    std::atomic<uint64_t> ema_interval_us{0};
 };
 
 class ReadThread {
@@ -35,7 +38,7 @@ public:
     ReadThread(const ReadThread&) = delete;
     ReadThread& operator=(const ReadThread&) = delete;
 
-    void start();  // 必须在发送任何命令前启动
+    void start();  // Must be called before sending any commands
     void join();
     bool is_running() const { return running_.load(); }
 

@@ -48,6 +48,12 @@ constexpr uint8_t kMsgTextReport = 0x93;
 constexpr uint8_t kMsgTimeSyncRequest = 0x94;
 constexpr uint16_t kStreamMaskUsbStressMode = 0x8000;
 
+// Time sync: rounds and outlier filter (see docs/device/time_sync.md)
+constexpr int kInitialSyncRounds = 10;
+constexpr int kPeriodicSyncRounds = 3;
+constexpr int64_t kMaxOffsetAfterInitUs = 1000;   // Reject |offset| > 1000 us after init
+constexpr uint64_t kInitPeriodUs = 3000000ULL;    // 3 seconds from sync start before applying filter
+
 uint64_t now_steady_us() {
     const auto now = std::chrono::steady_clock::now().time_since_epoch();
     return static_cast<uint64_t>(
@@ -93,13 +99,13 @@ BOOL WINAPI console_ctrl_handler(DWORD ctrl_type) {
     case CTRL_C_EVENT:
     case CTRL_BREAK_EVENT:
         g_signal_interrupted.store(true);
-        // 立即返回 TRUE，阻止系统的默认处理和异常
+        // Return TRUE immediately to block system default handling
         return TRUE;
     case CTRL_CLOSE_EVENT:
     case CTRL_LOGOFF_EVENT:
     case CTRL_SHUTDOWN_EVENT:
         g_signal_interrupted.store(true);
-        // 给一点时间让主线程响应
+        // Give the main thread a moment to respond
         Sleep(1000);
         return TRUE;
     default:
@@ -120,7 +126,7 @@ PowerMonitorSession::PowerMonitorSession(const Options& options)
     session_ = std::make_unique<Session>();
     stats_ = std::make_unique<ThreadStats>();
 
-    // 设置时间戳溢出初始状态
+    // Set initial timestamp rollover state
     session_->process_device_timestamp(0);
 }
 
@@ -131,7 +137,7 @@ PowerMonitorSession::~PowerMonitorSession() {
 }
 
 int PowerMonitorSession::run() {
-    // 注册信号处理
+    // Register signal handlers
 #ifdef _WIN32
     SetConsoleCtrlHandler(console_ctrl_handler, TRUE);
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
@@ -168,7 +174,7 @@ int PowerMonitorSession::run() {
 
     append_log("Streaming started.");
 
-    // 启动采样处理循环
+    // Start sample processing loop
     std::thread processor([this] { process_samples_loop(); });
 
     int tui_rc = 0;
@@ -196,13 +202,7 @@ int PowerMonitorSession::run() {
             if (response_queue_->pop_wait(async_frame, 50)) {
                 if (async_frame.type == protocol::FrameType::kEvt &&
                     async_frame.msgid == kMsgTimeSyncRequest && streaming_.load()) {
-                    // Run 3 rounds of sync for periodic sync, take the minimum offset
-                    std::string sync_detail;
-                    if (run_time_sync_rounds(3)) {
-                        append_log("Periodic time sync ok (3 rounds)");
-                    } else {
-                        append_log("Periodic time sync failed");
-                    }
+                    on_time_sync_request();
                 } else {
                     process_async_control_frame(async_frame);
                 }
@@ -275,17 +275,17 @@ bool PowerMonitorSession::connect_device() {
 }
 
 bool PowerMonitorSession::initialize_device() {
-    // 启动读取线程（必须在发送任何命令前启动）
+    // Start read thread (must be started before sending any commands)
     read_thread_ = std::make_unique<ReadThread>(
         serial_.get(), sample_queue_.get(), response_queue_.get(),
         &stop_requested_, stats_.get()
     );
     read_thread_->start();
 
-    // 留时间让线程启动和USB CDC接口初始化
+    // Allow time for thread startup and USB CDC init
     std::this_thread::sleep_for(std::chrono::milliseconds(2500));
 
-    // 发送PING
+    // Send PING
     if (!send_ping()) {
         std::cerr << "PING failed" << std::endl;
         return false;
@@ -293,7 +293,7 @@ bool PowerMonitorSession::initialize_device() {
 
     append_log("Device responded to PING");
 
-    // 获取设备配置
+    // Get device config
     if (!get_device_config()) {
         std::cerr << "Failed to get device configuration" << std::endl;
         return false;
@@ -305,11 +305,7 @@ bool PowerMonitorSession::initialize_device() {
     // Device may still be streaming from a previous session, so try to stop it first.
     send_command_with_retry(0x31, {});  // STREAM_STOP (best effort)
 
-    // Set initial epoch offset using TIME_SET with current Unix time
-    // NOTE: Do NOT run TIME_SYNC after TIME_SET - the NTP algorithm assumes both
-    // ends use the same time source (steady_clock), but PC uses steady_clock while
-    // device uses monotonic+epoch_offset. Running TIME_SYNC would corrupt epoch_offset!
-    // Fine-tuning is done via drift analysis of DATA_SAMPLE packets instead.
+    // Set initial epoch with TIME_SET (Unix time), then fine-tune with TIME_SYNC rounds (Unix time on both sides).
     {
         std::vector<uint8_t> time_set_payload;
         // Use system_clock for real Unix time (steady_clock is relative to process start)
@@ -324,13 +320,12 @@ bool PowerMonitorSession::initialize_device() {
             append_log(oss.str());
             // Record sync start time for offset filtering
             sync_start_time_us_ = now_unix_us();
-            // Run TIME_SYNC for fine-tuning using Unix time algorithm
-            if (!run_time_sync_rounds(10)) {
+            if (!run_time_sync_rounds(kInitialSyncRounds)) {
                 std::cerr << "Initial TIME_SYNC failed, continuing with degraded timestamp accuracy" << std::endl;
                 append_log("WARNING: Initial TIME_SYNC failed, device running with uncalibrated timestamps");
                 time_sync_succeeded_ = false;
             } else {
-                append_log("Initial time sync completed (10 rounds)");
+                append_log("Initial time sync completed (" + std::to_string(kInitialSyncRounds) + " rounds)");
                 time_sync_succeeded_ = true;
             }
         } else {
@@ -344,7 +339,7 @@ bool PowerMonitorSession::initialize_device() {
     while (sample_queue_->pop(dropped_sample)) {
     }
 
-    // 开始流
+    // Start stream
     if (!start_streaming()) {
         std::cerr << "Failed to start streaming" << std::endl;
         return false;
@@ -363,9 +358,9 @@ bool PowerMonitorSession::get_device_config() {
         return false;
     }
 
-    // 等待CFG_REPORT (0x91)
+    // Wait for CFG_REPORT (0x91)
     protocol::Frame frame;
-    if (!wait_for_message_by_id(0x91, &frame, 2000)) {  // CFG_REPORT使用独立的SEQ空间
+    if (!wait_for_message_by_id(0x91, &frame, 2000)) {  // CFG_REPORT uses separate SEQ space
         std::cerr << "Timeout waiting for CFG_REPORT" << std::endl;
         return false;
     }
@@ -422,7 +417,7 @@ bool PowerMonitorSession::stop_streaming() {
     return ok;
 }
 
-bool PowerMonitorSession::perform_time_sync_once(std::string* detail, bool try_lock_command, int64_t* out_offset, bool send_adjust) {
+bool PowerMonitorSession::perform_time_sync_once(std::string* detail, int64_t* out_offset, bool send_adjust) {
     if (detail) {
         detail->clear();
     }
@@ -430,13 +425,12 @@ bool PowerMonitorSession::perform_time_sync_once(std::string* detail, bool try_l
         *out_offset = 0;
     }
 
-    // Use system_clock (Unix time) for both T1 and T4
-    // After TIME_SET, device returns T2/T3 in Unix time too
+    // Use system_clock (Unix time) for both T1 and T4; device returns T2/T3 in Unix time after TIME_SET
     std::vector<uint8_t> sync_payload;
     pack_u64_le(sync_payload, now_unix_us());
 
     std::vector<uint8_t> sync_rsp;
-    if (!send_command_with_retry(kMsgTimeSync, sync_payload, &sync_rsp, try_lock_command)) {
+    if (!send_command_with_retry(kMsgTimeSync, sync_payload, &sync_rsp, false)) {
         if (detail) {
             *detail = "TIME_SYNC cmd failed";
         }
@@ -457,36 +451,25 @@ bool PowerMonitorSession::perform_time_sync_once(std::string* detail, bool try_l
     const int64_t delay = signed_diff_u64(T4, T1) - signed_diff_u64(T3, T2);
     const int64_t offset = (signed_diff_u64(T2, T1) + signed_diff_u64(T3, T4)) / 2;
 
-    // After initial 3 seconds, reject large offsets for initial sync to prevent corrupting epoch_offset
-    // But for periodic sync, allow larger offsets (it's just fine-tuning)
-    // The offset check is only for initial sync rounds, not for periodic sync
-    if (try_lock_command) {
-        // This is periodic sync - allow larger offsets
-    } else {
-        // This is initial sync - apply stricter limit after 3 seconds
-        constexpr int64_t kMaxOffsetAfterInitUs = 1000;  // 1000 us
-        constexpr uint64_t kInitPeriodUs = 3000000;  // 3 seconds
-
-        if (sync_start_time_us_ > 0 && (T4 - sync_start_time_us_) > kInitPeriodUs) {
-            if (offset > kMaxOffsetAfterInitUs || offset < -kMaxOffsetAfterInitUs) {
-                if (detail) {
-                    *detail = "offset rejected: " + std::to_string(offset) + "us (max 1000us after 3s)";
-                }
-                return false;
+    // Outlier filter: after kInitPeriodUs from sync start, reject |offset| > kMaxOffsetAfterInitUs
+    if (sync_start_time_us_ > 0 && (T4 - sync_start_time_us_) > kInitPeriodUs) {
+        if (offset > kMaxOffsetAfterInitUs || offset < -kMaxOffsetAfterInitUs) {
+            if (detail) {
+                *detail = "offset rejected: " + std::to_string(offset) + "us (max " +
+                          std::to_string(static_cast<int>(kMaxOffsetAfterInitUs)) + "us after 3s)";
             }
+            return false;
         }
     }
 
-    // Set output offset before potentially skipping send
     if (out_offset) {
         *out_offset = offset;
     }
 
-    // Skip sending TIME_ADJUST if caller will do it (for min offset calculation)
     if (send_adjust) {
         std::vector<uint8_t> adjust_payload;
         pack_s64_le(adjust_payload, -offset);
-        if (!send_command_with_retry(kMsgTimeAdjust, adjust_payload, nullptr, try_lock_command)) {
+        if (!send_command_with_retry(kMsgTimeAdjust, adjust_payload, nullptr, false)) {
             if (detail) {
                 std::ostringstream oss;
                 oss << "TIME_ADJUST failed offset=" << offset << "us"
@@ -516,7 +499,7 @@ bool PowerMonitorSession::run_time_sync_rounds(int rounds) {
         std::string detail;
         int64_t offset = 0;
         // Pass false for send_adjust so we can calculate min offset and send once at the end
-        if (!perform_time_sync_once(&detail, false, &offset, false)) {
+        if (!perform_time_sync_once(&detail, &offset, false)) {
             append_log("Time sync round " + std::to_string(i + 1) + "/" + std::to_string(rounds) + " failed: " + detail);
             return false;
         }
@@ -534,6 +517,17 @@ bool PowerMonitorSession::run_time_sync_rounds(int rounds) {
         }
     }
     return true;
+}
+
+void PowerMonitorSession::on_time_sync_request() {
+    if (!streaming_.load()) {
+        return;
+    }
+    if (run_time_sync_rounds(kPeriodicSyncRounds)) {
+        append_log("Periodic time sync ok (" + std::to_string(kPeriodicSyncRounds) + " rounds)");
+    } else {
+        append_log("Periodic time sync failed");
+    }
 }
 
 bool PowerMonitorSession::send_command_with_retry(uint8_t msgid,
@@ -556,17 +550,17 @@ bool PowerMonitorSession::send_command_with_retry(uint8_t msgid,
             return false;
         }
         try {
-            // 构建帧
+            // Build frame
             std::vector<uint8_t> frame_data = protocol::build_frame(
                 protocol::FrameType::kCmd, 0, cmd_seq_++, msgid, payload
             );
             const uint8_t sent_seq = cmd_seq_ - 1;
 
-            // 发送
+            // Send
             serial_->write(frame_data);
             stats_->tx_counts[msgid].fetch_add(1, std::memory_order_relaxed);
 
-            // 等待响应
+            // Wait for response
             protocol::Frame rsp;
             if (wait_for_response(sent_seq, msgid, &rsp, kTimeoutMs)) {
                 // RSP DATA = [orig_msgid, status, extra...]
@@ -577,7 +571,7 @@ bool PowerMonitorSession::send_command_with_retry(uint8_t msgid,
                     }
                     return true;
                 }
-                // 非OK状态，立即失败（不重试）
+                // Non-OK status, fail immediately (no retry)
                 if (rsp.data.size() >= 2) {
                     std::cerr << "Command failed with status: 0x"
                               << std::hex << static_cast<int>(rsp.data[1]) << std::dec << std::endl;
@@ -585,7 +579,7 @@ bool PowerMonitorSession::send_command_with_retry(uint8_t msgid,
                 return false;
             }
 
-            // 超时，准备重试
+            // Timeout, retry
             std::cerr << "Command timeout, retry " << (retry + 1) << "/" << kMaxRetries << std::endl;
             stats_->timeouts.fetch_add(1, std::memory_order_relaxed);
             stats_->retries.fetch_add(1, std::memory_order_relaxed);
@@ -630,12 +624,12 @@ bool PowerMonitorSession::wait_for_response(uint8_t expected_seq,
                 return true;
             }
 
-            // SEQ不匹配，继续等待（可能是其他响应）
+            // SEQ mismatch, keep waiting (may be other response)
             process_async_control_frame(*frame);
         }
     }
 
-    return false;  // 超时
+    return false;  // Timeout
 }
 
 bool PowerMonitorSession::wait_for_message_by_id(uint8_t expected_msgid,
@@ -657,12 +651,12 @@ bool PowerMonitorSession::wait_for_message_by_id(uint8_t expected_msgid,
             if (frame->msgid == expected_msgid) {
                 return true;
             }
-            // msgid不匹配，继续等待（可能是其他消息）
+            // msgid mismatch, keep waiting (may be other message)
             process_async_control_frame(*frame);
         }
     }
 
-    return false;  // 超时
+    return false;  // Timeout
 }
 
 void PowerMonitorSession::process_async_control_frame(const protocol::Frame& frame) {
@@ -864,6 +858,7 @@ int PowerMonitorSession::run_tui_loop() {
         const uint64_t io_errors = stats_->io_errors.load(std::memory_order_relaxed);
         const uint64_t tx_total = sum_counts(stats_->tx_counts);
         const uint64_t rx_total = sum_counts(stats_->rx_counts);
+        const uint64_t ema_interval_us = stats_->ema_interval_us.load(std::memory_order_relaxed);
 
         Elements log_lines;
         if (logs.empty()) {
@@ -929,6 +924,11 @@ int PowerMonitorSession::run_tui_loop() {
                         " tx=" + std::to_string(tx_total) + " crc_fail=" + std::to_string(crc_fail) +
                         " timeout=" + std::to_string(timeouts) + " io_err=" + std::to_string(io_errors) +
                         " q_overflow=" + std::to_string(queue_overflow)),
+                   text(ema_interval_us > 0
+                        ? ("USB avg latency: " + std::to_string(ema_interval_us / 1000) + "." +
+                           std::to_string(((ema_interval_us % 1000) / 10) / 10) +
+                           std::to_string(((ema_interval_us % 1000) / 10) % 10) + " ms")
+                        : "USB avg latency: — ms"),
                    text(latest),
                    separator(),
                    text("Keys: [t]=toggle stream  [s]=save snapshot  [q]=quit") | dim,
@@ -981,12 +981,7 @@ int PowerMonitorSession::run_tui_loop() {
             if (response_queue_->pop_wait(async_frame, 50)) {
                 if (async_frame.type == protocol::FrameType::kEvt &&
                     async_frame.msgid == kMsgTimeSyncRequest && streaming_.load()) {
-                    // Run 3 rounds of sync for periodic sync, take the minimum offset
-                    if (run_time_sync_rounds(3)) {
-                        append_log("Periodic time sync ok (3 rounds)");
-                    } else {
-                        append_log("Periodic time sync failed");
-                    }
+                    on_time_sync_request();
                 } else {
                     process_async_control_frame(async_frame);
                 }
@@ -1084,6 +1079,7 @@ void PowerMonitorSession::print_statistics(bool inline_mode) const {
     const uint64_t rx_total = sum_counts(stats_->rx_counts);
 
     if (inline_mode) {
+        const uint64_t ema_us = stats_->ema_interval_us.load(std::memory_order_relaxed);
         std::ostringstream oss;
         oss << "Samples:" << std::setw(10) << samples
             << "  CRC_FAIL:" << std::setw(6) << crc_fail
@@ -1092,6 +1088,10 @@ void PowerMonitorSession::print_statistics(bool inline_mode) const {
             << "  Timeouts:" << std::setw(5) << timeouts
             << "  IO_Errors:" << std::setw(4) << io_errors
             << "  QueueOverflow:" << std::setw(4) << queue_overflow;
+        if (ema_us > 0) {
+            oss << "  USB_avg_ms:" << std::fixed << std::setprecision(2)
+                << (static_cast<double>(ema_us) / 1000.0);
+        }
         std::string line = oss.str();
         if (line.size() < last_stats_width_) {
             line.append(last_stats_width_ - line.size(), ' ');

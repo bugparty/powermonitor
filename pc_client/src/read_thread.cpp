@@ -70,6 +70,15 @@ struct ParserState {
     void on_frame(const protocol::Frame& frame, uint64_t receive_time_us) {
         stats->rx_counts[frame.msgid].fetch_add(1, std::memory_order_relaxed);
 
+        // EMA of inter-packet interval (average delay between consecutive USB packets)
+        const uint64_t last = stats->last_packet_time_us.exchange(receive_time_us, std::memory_order_relaxed);
+        if (last != 0) {
+            const uint64_t interval_us = receive_time_us - last;
+            const double ema_old = static_cast<double>(stats->ema_interval_us.load(std::memory_order_relaxed));
+            const double ema_new = 0.9 * ema_old + 0.1 * static_cast<double>(interval_us);
+            stats->ema_interval_us.store(static_cast<uint64_t>(ema_new), std::memory_order_relaxed);
+        }
+
         if (frame.msgid == kMsgDataSample) {  // DATA_SAMPLE
             if (frame.data.size() < 16) {
                 stats->crc_fail.fetch_add(1, std::memory_order_relaxed);
@@ -96,7 +105,7 @@ struct ParserState {
             // Route to control queue; UI/log layer decides how to display it.
             response_q->push(protocol::Frame(frame));
         } else {
-            // 控制帧（RSP, CFG_REPORT等）
+            // Control frames (RSP, CFG_REPORT, etc.)
             response_q->push(protocol::Frame(frame));
         }
     }

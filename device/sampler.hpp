@@ -6,6 +6,7 @@
 #include "hardware/timer.h"
 #include "pico/multicore.h"
 #include "pico/stdlib.h"
+#include <cstdio>
 #include "pio_i2c.h"
 #include <cstdio>
 #include <pico/stdio.h>
@@ -527,6 +528,111 @@ inline void sampler_start() {
 inline void sampler_stop() {
   multicore_fifo_push_blocking(
       static_cast<uint32_t>(core::FifoCmd::kStopStream));
+}
+
+// ====================================================================
+// Slow Registers Reading (Side-Channel for Diagnostics / Benchmarks)
+// Reads POWER (0x08), ENERGY (0x09), CHARGE (0x0A)
+// ====================================================================
+
+// Non-DMA polling version
+static inline bool sampler_read_slow_registers_nodma(SamplerContext *ctx, uint32_t *power, uint64_t *energy, int64_t *charge) {
+  uint8_t buf[5];
+  bool ok = true;
+  
+  if (!pio_i2c_read_reg(ctx->pio, ctx->sm, ctx->i2c_addr, 0x08, buf, 3)) ok = false;
+  else if (power) *power = (buf[0] << 16) | (buf[1] << 8) | buf[2];
+  busy_wait_us_32(5);
+
+  if (!pio_i2c_read_reg(ctx->pio, ctx->sm, ctx->i2c_addr, 0x09, buf, 5)) ok = false;
+  else if (energy) {
+    *energy = ((uint64_t)buf[0] << 32) | ((uint64_t)buf[1] << 24) |
+              ((uint64_t)buf[2] << 16) | ((uint64_t)buf[3] << 8) | buf[4];
+  }
+  busy_wait_us_32(5);
+
+  if (!pio_i2c_read_reg(ctx->pio, ctx->sm, ctx->i2c_addr, 0x0A, buf, 5)) ok = false;
+  else if (charge) {
+    uint64_t c = ((uint64_t)buf[0] << 32) | ((uint64_t)buf[1] << 24) |
+                 ((uint64_t)buf[2] << 16) | ((uint64_t)buf[3] << 8) | buf[4];
+    if (c & 0x8000000000ULL) c |= 0xFFFFFF0000000000ULL; // 40-bit sign extend
+    *charge = (int64_t)c;
+  }
+  return ok;
+}
+
+static inline bool __read_one_dma(SamplerContext *ctx, uint8_t reg, size_t size, uint32_t *rx_buf) {
+  uint16_t tx_buf[32];
+  int tx_len = pio_i2c_build_command_sequence(tx_buf, ctx->i2c_addr, reg, size);
+  int rx_len = 3 + size; // 1 (addrW) + 1 (reg) + 1 (addrR) + size (data)
+
+  pio_i2c_wait_idle(ctx->pio, ctx->sm);
+  pio_sm_clear_fifos(ctx->pio, ctx->sm);
+
+  dma_channel_set_read_addr(ctx->dma_tx_chan, tx_buf, false);
+  dma_channel_set_trans_count(ctx->dma_tx_chan, tx_len, false);
+  dma_channel_set_write_addr(ctx->dma_rx_chan, rx_buf, false);
+  dma_channel_set_trans_count(ctx->dma_rx_chan, rx_len, false);
+
+  pio_i2c_rx_enable(ctx->pio, ctx->sm, true); // Ensure autopush is armed
+  dma_channel_start(ctx->dma_rx_chan);
+  dma_channel_start(ctx->dma_tx_chan);
+
+  uint32_t start = time_us_32();
+  bool timed_out = false;
+  while (dma_channel_is_busy(ctx->dma_rx_chan)) {
+    if (time_us_32() - start > 10000) { // 10ms timeout
+      timed_out = true;
+      break;
+    }
+  }
+
+  bool ok = !timed_out && !pio_i2c_check_error(ctx->pio, ctx->sm);
+  
+  if (timed_out) {
+    uint32_t remain = dma_channel_hw_addr(ctx->dma_rx_chan)->transfer_count;
+    printf("[DMA SlowRead] TIMEOUT on reg 0x%02X! Expected %d bytes, missing %lu bytes.\n", reg, rx_len, remain);
+    dma_channel_abort(ctx->dma_rx_chan);
+    dma_channel_abort(ctx->dma_tx_chan);
+  }
+
+  if (!ok) pio_i2c_resume_after_error(ctx->pio, ctx->sm);
+  return ok;
+}
+
+// DMA version (dynamically repoints DMA channels, then restores)
+static inline bool sampler_read_slow_registers_dma(SamplerContext *ctx, uint32_t *power, uint64_t *energy, int64_t *charge) {
+  uint32_t rx_buf[10]; 
+  bool ok = true;
+
+  if (ok && power) {
+    if (__read_one_dma(ctx, 0x08, 3, rx_buf)) {
+      *power = (rx_buf[3] << 16) | (rx_buf[4] << 8) | rx_buf[5];
+    } else ok = false;
+    busy_wait_us_32(5); // t_BUF bus free time
+  }
+
+  if (ok && energy) {
+    if (__read_one_dma(ctx, 0x09, 5, rx_buf)) {
+      *energy = ((uint64_t)rx_buf[3] << 32) | ((uint64_t)rx_buf[4] << 24) |
+                ((uint64_t)rx_buf[5] << 16) | ((uint64_t)rx_buf[6] << 8) | rx_buf[7];
+    } else ok = false;
+    busy_wait_us_32(5); // t_BUF bus free time
+  }
+
+  if (ok && charge) {
+    if (__read_one_dma(ctx, 0x0A, 5, rx_buf)) {
+      uint64_t c = ((uint64_t)rx_buf[3] << 32) | ((uint64_t)rx_buf[4] << 24) |
+                   ((uint64_t)rx_buf[5] << 16) | ((uint64_t)rx_buf[6] << 8) | rx_buf[7];
+      if (c & 0x8000000000ULL) c |= 0xFFFFFF0000000000ULL;
+      *charge = (int64_t)c;
+    } else ok = false;
+  }
+
+  // Restore is not needed because sampler_do_work_dma 
+  // explicitly resets all read/write addresses on every cycle.
+
+  return ok;
 }
 
 } // namespace device

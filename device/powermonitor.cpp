@@ -240,6 +240,16 @@ static void run_pio_benchmark(int NUM_READS, device::SamplerMode mode,
       has_sample = g_shared_ctx.sample_queue.pop(last_dma_sample);
     }
 
+    uint32_t slow_power = 0;
+    uint64_t slow_energy = 0;
+    int64_t slow_charge = 0;
+    bool slow_ok = false;
+    if (mode == device::SamplerMode::kPioDma) {
+        slow_ok = device::sampler_read_slow_registers_dma(&device::g_sampler_ctx, &slow_power, &slow_energy, &slow_charge);
+    } else {
+        slow_ok = device::sampler_read_slow_registers_nodma(&device::g_sampler_ctx, &slow_power, &slow_energy, &slow_charge);
+    }
+
     if (mode == device::SamplerMode::kPioDma) {
       dma_channel_abort(device::g_sampler_ctx.dma_rx_chan);
       dma_channel_abort(device::g_sampler_ctx.dma_tx_chan);
@@ -304,14 +314,32 @@ static void run_pio_benchmark(int NUM_READS, device::SamplerMode mode,
       float dma_dietemp_C =
           static_cast<float>(last_dma_sample.dietemp_raw) * INA228::DIETEMP_LSB;
 
+      // slow_ok and values populated before PIO teardown
+
+      float dma_power_W = 0.0f;
+      float dma_energy_J = 0.0f;
+      float dma_charge_C = 0.0f;
+      
+      if (slow_ok) {
+          float current_lsb = static_cast<float>(g_ctx.current_lsb_nA) / 1e9f;
+          dma_power_W = INA228::POWER_COEFF * slow_power * current_lsb;
+          dma_energy_J = slow_energy * INA228::ENERGY_COEFF * current_lsb;
+          dma_charge_C = static_cast<float>(slow_charge) * current_lsb;
+      }
+
       printf("[PIO 0x03] TEMPCO : 0x0000 (Omitted)\n");
       printf("[PIO 0x04] VSHUNT : %.6f mV\n", dma_vshunt_mV);
       printf("[PIO 0x05] VBUS   : %.6f V\n", dma_vbus_V);
       printf("[PIO 0x06] TEMP   : %.2f C\n", dma_dietemp_C);
       printf("[PIO 0x07] CURRENT: %.6f A\n", dma_current_A);
-      printf("[PIO 0x08] POWER  : (Omitted)\n");
-      printf("[PIO 0x09] ENERGY : (Omitted)\n");
-      printf("[PIO 0x0A] CHARGE : (Omitted)\n");
+      
+      if (slow_ok) {
+          printf("[PIO 0x08] POWER  : %.6f W\n", dma_power_W);
+          printf("[PIO 0x09] ENERGY : %.6f J\n", dma_energy_J);
+          printf("[PIO 0x0A] CHARGE : %.6f C\n", dma_charge_C);
+      } else {
+          printf("[PIO 0x08-0x0A] (Slow Read Failed)\n");
+      }
     } else {
       printf("[%s] FAILED during benchmark\n", label);
     }

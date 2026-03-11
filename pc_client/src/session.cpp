@@ -68,7 +68,7 @@ void Session::save(const std::string& filepath) const {
 
 uint64_t Session::process_device_timestamp(uint32_t ts_us) {
     if (ts_us < last_device_ts_ && last_device_ts_ - ts_us > 0x80000000) {
-        // 检测到回绕
+        // Rollover detected
         overflow_count_++;
     }
     last_device_ts_ = ts_us;

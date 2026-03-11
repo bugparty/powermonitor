@@ -1,4 +1,4 @@
-﻿#include <stdio.h>
+#include <stdio.h>
 #include "pico/stdlib.h"
 #include "hardware/i2c.h"
 #include "hardware/timer.h"
@@ -26,19 +26,19 @@ bool reserved_addr(uint8_t addr) {
 void i2c_soft_reset(i2c_inst_t *i2c, uint baud) {
     i2c_deinit(i2c);
     sleep_ms(1);
-    i2c_init(i2c, baud);   // 100kHz 起步更稳
+    i2c_init(i2c, baud);   // 100kHz is more stable to start
 }
 
 int safe_i2c_read(i2c_inst_t *i2c, uint8_t addr, uint8_t *buf, size_t len, bool nostop, uint32_t timeout_us) {
     int rc = i2c_read_timeout_us(i2c, addr, buf, len, nostop, timeout_us);
     if (rc == PICO_ERROR_TIMEOUT) {
-        // 读超时（比如对方一直时钟拉伸或总线卡住）
+        // Read timeout (e.g. clock stretch or bus stuck)
         return PICO_ERROR_TIMEOUT;
     } else if (rc == PICO_ERROR_GENERIC) {
-        // NACK（例如地址不存在/设备没应答）
+        // NACK (e.g. address not present or device not responding)
         return PICO_ERROR_GENERIC;
     }
-    // 正常：返回读取的字节数
+    // Success: return number of bytes read
     return rc;
 }
 void i2c_bus_scan(){
@@ -69,8 +69,7 @@ void i2c_bus_scan(){
         else if (ret == PICO_ERROR_GENERIC)
             printf(".");
         else if (ret == PICO_ERROR_TIMEOUT){
-            // 读超时（比如对方一直时钟拉伸或总线卡住）
-            // 这种情况通常是总线有问题，复位I2C总线
+            // Read timeout (e.g. clock stretch or bus stuck); usually bus issue, reset I2C
             i2c_soft_reset(i2c_default, 400*1000);
             printf("T");
         }
@@ -82,7 +81,7 @@ void i2c_bus_scan(){
 }
 #define INA228_ADDR 0x40
 bool ina228_present() {
-    // 这里我们发一个空的数据包到设备地址，若能收到 ACK 就说明它在线
+    // Send empty write to device address; ACK means device is present
     return i2c_write_blocking(I2C_PORT, INA228_ADDR, NULL, 0, false) >= 0;
 }
 int main()

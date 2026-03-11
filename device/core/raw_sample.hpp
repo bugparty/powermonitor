@@ -74,9 +74,9 @@ inline void pack_s40(uint8_t* buf, int64_t value) {
 }
 
 // --- Bswap-based implementations (__builtin_bswap16/32/64) ---
-// 化简计算：用 bswap 后做 16/32-bit 整块 store，减少逐字节 shift+mask+store。
+// Simplify: bswap then 16/32-bit whole-word store to avoid per-byte shift+mask+store.
 
-// 20-bit: bswap32 后 s=0xHHMMLL00，用 bswap16 取高 16 位得 [LL,MM]，再 1 字节存 HH
+// 20-bit: after bswap32 s=0xHHMMLL00; bswap16 on high 16 bits gives [LL,MM], then 1 byte for HH
 inline void pack_u20_bswap(uint8_t* buf, uint32_t value) {
     uint32_t s = __builtin_bswap32(value & 0xFFFFFU);
     *reinterpret_cast<uint16_t*>(buf) = __builtin_bswap16(static_cast<uint16_t>(s >> 16));
@@ -89,14 +89,14 @@ inline void pack_s20_bswap(uint8_t* buf, int32_t value) {
     buf[2] = static_cast<uint8_t>(s >> 8);
 }
 
-// 24-bit: bswap32 后 s=0xLLMMHH00，高 16 位 bswap16 得 [LL,MM] 的 LE，buf[2]=HH
+// 24-bit: after bswap32 s=0xLLMMHH00; bswap16 on high 16 bits gives [LL,MM] in LE, buf[2]=HH
 inline void pack_u24_bswap(uint8_t* buf, uint32_t value) {
     uint32_t s = __builtin_bswap32(value & 0xFFFFFFU);
     *reinterpret_cast<uint16_t*>(buf) = __builtin_bswap16(static_cast<uint16_t>(s >> 16));
     buf[2] = static_cast<uint8_t>(s >> 8);
 }
 
-// 40-bit: 化简为 32-bit store + 1 byte（bswap64 对 LE 无益，用 2 次 store 代替 5 次）
+// 40-bit: 32-bit store + 1 byte (bswap64 not helpful for LE; 2 stores instead of 5)
 inline void pack_u40_bswap(uint8_t* buf, uint64_t value) {
     uint64_t v = value & 0xFFFFFFFFFFULL;
     *reinterpret_cast<uint32_t*>(buf) = static_cast<uint32_t>(v);

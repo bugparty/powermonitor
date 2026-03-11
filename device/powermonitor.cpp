@@ -164,8 +164,9 @@ static void process_streaming_loop() {
 #ifdef POWERMONITOR_TEST_MODE
 static uint64_t g_last_test_run_us = 0;
 
-static void run_pio_benchmark(int NUM_READS) {
-  printf("\n--- Benchmark: HW I2C vs PIO I2C (@1MHz) ---\n");
+static void run_pio_benchmark(int NUM_READS, device::SamplerMode mode,
+                              const char *label) {
+  printf("\n--- Benchmark: %s (@1MHz) ---\n", label);
   // (We'll print HW I2C stats from the caller before calling this)
 
   // === PIO I2C Benchmark ===
@@ -206,12 +207,17 @@ static void run_pio_benchmark(int NUM_READS) {
     }
   }
 
-  DEBUG_DMA_PRINT("[DBG] DMA init start\n");
-  device::sampler_init_dma(pio, pio_sm, INA228_ADDR);
-  DEBUG_DMA_PRINT("[DBG] DMA init done, tx_len=%d\n",
-                  (int)device::g_sampler_ctx.dma_tx_len);
+  device::g_sampler_ctx.mode = mode;
+  device::g_sampler_ctx.pio = pio;
+  device::g_sampler_ctx.sm = pio_sm;
+  if (mode == device::SamplerMode::kPioDma) {
+    DEBUG_DMA_PRINT("[DBG] DMA init start\n");
+    device::sampler_init_dma(pio, pio_sm, INA228_ADDR);
+    DEBUG_DMA_PRINT("[DBG] DMA init done, tx_len=%d\n",
+                    (int)device::g_sampler_ctx.dma_tx_len);
+  }
 
-  // We run 100 PIO DMA reads for actual load benchmarking
+  // We run PIO reads for actual load benchmarking
   bool pio_ok = true;
   uint64_t pio_start = time_us_64();
   if (pio_ok) {
@@ -234,8 +240,12 @@ static void run_pio_benchmark(int NUM_READS) {
       has_sample = g_shared_ctx.sample_queue.pop(last_dma_sample);
     }
 
-    dma_channel_unclaim(device::g_sampler_ctx.dma_rx_chan);
-    dma_channel_unclaim(device::g_sampler_ctx.dma_tx_chan);
+    if (mode == device::SamplerMode::kPioDma) {
+      dma_channel_abort(device::g_sampler_ctx.dma_rx_chan);
+      dma_channel_abort(device::g_sampler_ctx.dma_tx_chan);
+      dma_channel_unclaim(device::g_sampler_ctx.dma_rx_chan);
+      dma_channel_unclaim(device::g_sampler_ctx.dma_tx_chan);
+    }
 
     pio_sm_set_enabled(pio, pio_sm, false);
     pio_remove_program(pio, &i2c_program, offset);
@@ -275,7 +285,7 @@ static void run_pio_benchmark(int NUM_READS) {
 
     if (has_sample) {
       // Print PIO benchmark results
-      printf("[PIO DMA] reads=%d  total=%llu us  avg=%.2f us\n", NUM_READS,
+      printf("[%s] reads=%d  total=%llu us  avg=%.2f us\n", label, NUM_READS,
              pio_total, (float)pio_total / NUM_READS);
 
       // Convert raw integers back to floats using INA228 conversion rules
@@ -303,7 +313,7 @@ static void run_pio_benchmark(int NUM_READS) {
       printf("[PIO 0x09] ENERGY : (Omitted)\n");
       printf("[PIO 0x0A] CHARGE : (Omitted)\n");
     } else {
-      printf("[PIO DMA] FAILED during benchmark\n");
+      printf("[%s] FAILED during benchmark\n", label);
     }
     printf("-----------------------------------------------\n");
     stdio_flush();
@@ -354,8 +364,10 @@ static void run_hardware_tests() {
     printf("[HW  I2C] reads=%d  total=%llu us  avg=%.2f us\n", NUM_READS,
            total_duration_us, avg_duration_us);
 
-    // Run PIO Benchmark directly
-    run_pio_benchmark(NUM_READS);
+    // Run PIO Benchmarks
+    run_pio_benchmark(NUM_READS, device::SamplerMode::kPioNonDma,
+                      "PIO I2C (Non-DMA)");
+    run_pio_benchmark(NUM_READS, device::SamplerMode::kPioDma, "PIO I2C (DMA)");
   } else {
     printf("INA228 context not initialized!\n");
   }
@@ -396,7 +408,7 @@ int main() {
   g_ctx.shared_ctx = &g_shared_ctx;
 
   // Initialize sampler with shared context and INA228 pointer
-  device::sampler_init(&g_shared_ctx, &ina228);
+  device::sampler_init(&g_shared_ctx, &ina228, INA228_ADDR);
 
 #ifndef POWERMONITOR_TEST_MODE
   // Transition from HW I2C to PIO I2C for high-speed sampling

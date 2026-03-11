@@ -27,6 +27,8 @@
 
 namespace device {
 
+enum class SamplerMode { kPioDma, kPioNonDma };
+
 // Sampler context for Core 1
 // Holds pointers to shared resources and local state
 struct SamplerContext {
@@ -34,6 +36,8 @@ struct SamplerContext {
   INA228 *ina228;              // Pointer to INA228 driver
   repeating_timer_t timer;     // Timer handle
   bool timer_active;           // Is timer currently running
+  SamplerMode mode;            // Current sampler mode
+  uint8_t i2c_addr;            // Target I2C address
 
   // ISR -> Worker communication
   volatile uint32_t isr_seq; // Incremented by ISR each tick
@@ -83,8 +87,9 @@ static bool sampler_timer_isr(repeating_timer_t *rt) {
   return true; // Keep timer repeating
 }
 
-// Worker function - does actual I2C reads (called from Core 1 main loop)
-static void sampler_do_work(SamplerContext *ctx) {
+// Worker function - does actual I2C reads with DMA (called from Core 1 main
+// loop)
+static void sampler_do_work_dma(SamplerContext *ctx) {
   constexpr uint16_t kDiagCnvrfBit = (1u << 1);
 
   // Read current ISR sequence
@@ -124,11 +129,8 @@ static void sampler_do_work(SamplerContext *ctx) {
 
   DEBUG_DMA_PRINT("[DMA] reset addrs\n");
 
-  // Guarantee a clean state machine before DMA load:
-  // Clears FIFOs, clears errors, and restarts PC at the correct entry point.
-  pio_i2c_resume_after_error(ctx->pio, ctx->sm);
-
   // 1. Reset DMA write/read addresses
+  pio_sm_clear_fifos(ctx->pio, ctx->sm);
   dma_channel_set_write_addr(ctx->dma_rx_chan, ctx->dma_rx_buf, false);
   dma_channel_set_read_addr(ctx->dma_tx_chan, ctx->dma_tx_buf, false);
 
@@ -247,6 +249,105 @@ static void sampler_do_work(SamplerContext *ctx) {
   // interactions.
 }
 
+static void sampler_do_work_nodma(SamplerContext *ctx) {
+  constexpr uint16_t kDiagCnvrfBit = (1u << 1);
+  uint32_t current_seq = ctx->isr_seq;
+  if (current_seq == ctx->worker_seq) {
+    return;
+  }
+  uint32_t missed = current_seq - ctx->worker_seq - 1;
+  if (missed > 0) {
+    ctx->shared->samples_dropped += missed;
+    ctx->shared->dropped_worker_missed_tick += missed;
+  }
+  ctx->worker_seq = current_seq;
+
+  core::SharedContext *shared = ctx->shared;
+  core::RawSample sample;
+
+  uint32_t now = time_us_32();
+  sample.timestamp_us = now - shared->stream_start_us;
+  sample.timestamp_unix_us = static_cast<uint64_t>(now) +
+                             static_cast<uint64_t>(shared->epoch_offset_us);
+  bool ok = true;
+  uint8_t buf[3] = {0};
+
+  // 1. DIAG_ALRT
+  if (!pio_i2c_read_reg(ctx->pio, ctx->sm, ctx->i2c_addr, 0x0B, buf, 2))
+    ok = false;
+  uint16_t diag_flags = (buf[0] << 8) | buf[1];
+
+#ifndef POWERMONITOR_TEST_MODE
+  if (!(diag_flags & kDiagCnvrfBit)) {
+    shared->dropped_cnvrf_not_ready++;
+    return;
+  }
+#endif
+
+  if (diag_flags == 0xFFFF)
+    ok = false;
+
+  // 2. VBUS
+  if (ok && !pio_i2c_read_reg(ctx->pio, ctx->sm, ctx->i2c_addr, 0x05, buf, 3))
+    ok = false;
+  uint32_t vbus_raw = (buf[0] << 16) | (buf[1] << 8) | buf[2];
+
+  // 3. VSHUNT
+  if (ok && !pio_i2c_read_reg(ctx->pio, ctx->sm, ctx->i2c_addr, 0x04, buf, 3))
+    ok = false;
+  int32_t vshunt_raw = (buf[0] << 16) | (buf[1] << 8) | buf[2];
+
+  // 4. CURRENT
+  if (ok && !pio_i2c_read_reg(ctx->pio, ctx->sm, ctx->i2c_addr, 0x07, buf, 3))
+    ok = false;
+  int32_t current_raw = (buf[0] << 16) | (buf[1] << 8) | buf[2];
+
+  // 5. DIETEMP
+  if (ok && !pio_i2c_read_reg(ctx->pio, ctx->sm, ctx->i2c_addr, 0x06, buf, 2))
+    ok = false;
+  int16_t temp_raw = (buf[0] << 8) | buf[1];
+
+  sample.vbus_raw = vbus_raw;
+  sample.vshunt_raw = vshunt_raw;
+  sample.current_raw = current_raw;
+  sample.dietemp_raw = temp_raw;
+
+  sample.flags = 0;
+  if (diag_flags & kDiagCnvrfBit)
+    sample.flags |= core::SampleFlags::kCnvrf;
+  if (diag_flags & (1 << 9))
+    sample.flags |= core::SampleFlags::kMathOvf;
+  sample.flags |= core::SampleFlags::kCalValid;
+
+  if (!ok) {
+    sample.flags |= core::SampleFlags::kI2cError;
+    shared->i2c_error = true;
+  }
+  sample._pad = 0;
+
+  if (!shared->sample_queue.push(sample)) {
+    shared->samples_dropped++;
+    shared->dropped_queue_full++;
+  } else {
+    shared->samples_produced++;
+    if (ok) {
+      ctx->has_last_sent = true;
+      ctx->last_vbus_raw = sample.vbus_raw;
+      ctx->last_vshunt_raw = sample.vshunt_raw;
+      ctx->last_current_raw = sample.current_raw;
+      ctx->last_sent_time_us = now;
+    }
+  }
+}
+
+static void sampler_do_work(SamplerContext *ctx) {
+  if (ctx->mode == SamplerMode::kPioDma) {
+    sampler_do_work_dma(ctx);
+  } else {
+    sampler_do_work_nodma(ctx);
+  }
+}
+
 // Core 1 entry point
 // Two execution paths:
 //   1. Timer ISR: ultra-short, only seq++ and __sev()
@@ -324,9 +425,12 @@ static void core1_entry() {
 }
 
 // Initialize sampler (call from Core 0 before launching Core 1)
-inline void sampler_init(core::SharedContext *shared, INA228 *ina228) {
+inline void sampler_init(core::SharedContext *shared, INA228 *ina228,
+                         uint8_t i2c_addr) {
   g_sampler_ctx.shared = shared;
   g_sampler_ctx.ina228 = ina228;
+  g_sampler_ctx.i2c_addr = i2c_addr;
+  g_sampler_ctx.mode = SamplerMode::kPioDma;
   g_sampler_ctx.timer_active = false;
   g_sampler_ctx.has_last_sent = false;
   g_sampler_ctx.last_vbus_raw = 0;
@@ -338,6 +442,8 @@ inline void sampler_init(core::SharedContext *shared, INA228 *ina228) {
 // Initialize DMA channels and prebuild the TX buffer
 // Call this from Core 0 before launching Core 1
 inline void sampler_init_dma(PIO pio, uint sm, uint8_t i2c_addr) {
+  g_sampler_ctx.pio = pio;
+  g_sampler_ctx.sm = sm;
   g_sampler_ctx.dma_tx_chan = dma_claim_unused_channel(true);
   g_sampler_ctx.dma_rx_chan = dma_claim_unused_channel(true);
 

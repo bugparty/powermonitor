@@ -19,6 +19,7 @@
 #include <CLI/CLI.hpp>
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/event.hpp>
+#include <ftxui/component/mouse.hpp>
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/dom/elements.hpp>
 #include <serial/serial.h>
@@ -86,6 +87,61 @@ int64_t signed_diff_u64(uint64_t a, uint64_t b) {
     }
     return -static_cast<int64_t>(b - a);
 }
+
+// Scrollable log area: focusable component with scroll_y in [0,1]. Uses
+// focusPositionRelative(0, scroll_y) so yframe shows the correct region.
+class ScrollableLogArea : public ComponentBase {
+public:
+    using LogGetter = std::function<std::deque<std::string>()>;
+    explicit ScrollableLogArea(LogGetter get_logs)
+        : ComponentBase(Components{}), get_logs_(std::move(get_logs)) {}
+
+    Element OnRender() override {
+        std::deque<std::string> logs = get_logs_();
+        Elements log_lines;
+        if (logs.empty()) {
+            log_lines.push_back(text("(no logs yet)"));
+        } else {
+            for (auto it = logs.rbegin(); it != logs.rend(); ++it) {
+                log_lines.push_back(text(*it));
+            }
+        }
+        return vbox(std::move(log_lines))
+             | focusPositionRelative(0.f, scroll_y_)
+             | vscroll_indicator
+             | yframe
+             | size(HEIGHT, LESS_THAN, 15);
+    }
+
+    bool OnEvent(Event event) override {
+        constexpr float step = 0.1f;
+        if (event == Event::PageUp) {
+            scroll_y_ = std::max(0.f, scroll_y_ - step);
+            return true;
+        }
+        if (event == Event::PageDown) {
+            scroll_y_ = std::min(1.f, scroll_y_ + step);
+            return true;
+        }
+        if (event.is_mouse()) {
+            if (event.mouse().button == Mouse::WheelUp) {
+                scroll_y_ = std::max(0.f, scroll_y_ - step);
+                return true;
+            }
+            if (event.mouse().button == Mouse::WheelDown) {
+                scroll_y_ = std::min(1.f, scroll_y_ + step);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool Focusable() const override { return true; }
+
+private:
+    LogGetter get_logs_;
+    float scroll_y_ = 1.f;  // 0 = top, 1 = bottom (newest)
+};
 
 #ifdef _WIN32
 BOOL WINAPI console_ctrl_handler(DWORD ctrl_type) {
@@ -812,7 +868,13 @@ int PowerMonitorSession::run_tui_loop() {
 
     ScreenInteractive screen = ScreenInteractive::TerminalOutput();
 
-    Component renderer = Renderer([&] {
+    auto get_logs = [this]() {
+        std::lock_guard<std::mutex> lock(ui_state_.mutex);
+        return ui_state_.logs;
+    };
+    Component log_component = Make<ScrollableLogArea>(get_logs);
+
+    Component header = Renderer([&] {
         bool connected = false;
         bool initialized = false;
         bool streaming = false;
@@ -829,7 +891,6 @@ int PowerMonitorSession::run_tui_loop() {
         uint16_t stats_queue_depth = 0;
         uint8_t stats_reason_bits = 0;
         uint16_t stats_window_ms = 0;
-        std::deque<std::string> logs;
         {
             std::lock_guard<std::mutex> lock(ui_state_.mutex);
             connected = ui_state_.connected;
@@ -848,7 +909,6 @@ int PowerMonitorSession::run_tui_loop() {
             stats_queue_depth = ui_state_.stats_queue_depth;
             stats_reason_bits = ui_state_.stats_reason_bits;
             stats_window_ms = ui_state_.stats_window_ms;
-            logs = ui_state_.logs;
         }
 
         const uint64_t samples = sample_counter_.load(std::memory_order_relaxed);
@@ -868,16 +928,6 @@ int PowerMonitorSession::run_tui_loop() {
                    std::to_string(((us % 1000) / 10) / 10) +
                    std::to_string(((us % 1000) / 10) % 10);
         };
-
-        Elements log_lines;
-        if (logs.empty()) {
-            log_lines.push_back(text("(no logs yet)"));
-        } else {
-            for (auto it = logs.rbegin(); it != logs.rend(); ++it) {
-                const auto& line = *it;
-                log_lines.push_back(text(line));
-            }
-        }
 
         std::string latest = "No sample yet";
         if (has_latest_sample) {
@@ -952,13 +1002,14 @@ int PowerMonitorSession::run_tui_loop() {
                    }()),
                    text(latest),
                    separator(),
-                   text("Keys: [t]=toggle stream  [s]=save snapshot  [q]=quit") | dim,
+                   text("Keys: [t]=toggle stream  [s]=save snapshot  [q]=quit  Tab=focus logs, PgUp/PgDn/Wheel=scroll") | dim,
                    separator(),
                    text("Logs (newest first):") | bold,
-                   vbox(std::move(log_lines)) | yframe | size(HEIGHT, LESS_THAN, 15),
-               }) |
-               border;
+               });
     });
+
+    Component body = Container::Vertical({header, log_component});
+    Component renderer = Renderer(body, [body] { return body->Render() | border; });
 
     renderer = CatchEvent(renderer, [&](Event event) {
         if (event == Event::Character('q') || event == Event::Character('Q')) {

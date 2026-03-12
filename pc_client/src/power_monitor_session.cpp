@@ -507,14 +507,17 @@ bool PowerMonitorSession::run_time_sync_rounds(int rounds) {
         append_log("Time sync round " + std::to_string(i + 1) + "/" + std::to_string(rounds) + " ok: offset=" + std::to_string(offset) + "us");
     }
 
-    // Apply minimum offset (best result)
-    if (!offsets.empty()) {
+    // Apply minimum offset (best result) unless disabled by --no-apply-time-offset
+    if (!options_.no_apply_time_offset && !offsets.empty()) {
         int64_t min_offset = *std::min_element(offsets.begin(), offsets.end());
         std::vector<uint8_t> adjust_payload;
         pack_s64_le(adjust_payload, -min_offset);
         if (send_command_with_retry(kMsgTimeAdjust, adjust_payload, nullptr, false)) {
             append_log("Applied min offset: " + std::to_string(min_offset) + "us");
         }
+    } else if (options_.no_apply_time_offset && !offsets.empty()) {
+        int64_t min_offset = *std::min_element(offsets.begin(), offsets.end());
+        append_log("Time sync offset (not applied): min=" + std::to_string(min_offset) + "us (--no-apply-time-offset)");
     }
     return true;
 }
@@ -859,6 +862,15 @@ int PowerMonitorSession::run_tui_loop() {
         const uint64_t tx_total = sum_counts(stats_->tx_counts);
         const uint64_t rx_total = sum_counts(stats_->rx_counts);
         const uint64_t ema_interval_us = stats_->ema_interval_us.load(std::memory_order_relaxed);
+        const uint64_t min_interval_us = stats_->min_interval_us.load(std::memory_order_relaxed);
+        const uint64_t max_interval_us = stats_->max_interval_us.load(std::memory_order_relaxed);
+
+        auto format_us_as_ms = [](uint64_t us) -> std::string {
+            if (us == 0 || us == UINT64_MAX) return "—";
+            return std::to_string(us / 1000) + "." +
+                   std::to_string(((us % 1000) / 10) / 10) +
+                   std::to_string(((us % 1000) / 10) % 10);
+        };
 
         Elements log_lines;
         if (logs.empty()) {
@@ -924,11 +936,23 @@ int PowerMonitorSession::run_tui_loop() {
                         " tx=" + std::to_string(tx_total) + " crc_fail=" + std::to_string(crc_fail) +
                         " timeout=" + std::to_string(timeouts) + " io_err=" + std::to_string(io_errors) +
                         " q_overflow=" + std::to_string(queue_overflow)),
-                   text(ema_interval_us > 0
-                        ? ("USB avg latency: " + std::to_string(ema_interval_us / 1000) + "." +
-                           std::to_string(((ema_interval_us % 1000) / 10) / 10) +
-                           std::to_string(((ema_interval_us % 1000) / 10) % 10) + " ms")
-                        : "USB avg latency: — ms"),
+                   text("USB latency  avg: " + (ema_interval_us > 0 ? format_us_as_ms(ema_interval_us) : "—") + " ms  "
+                        "min: " + (min_interval_us != UINT64_MAX ? std::to_string(min_interval_us) : "—") + " us  "
+                        "max: " + format_us_as_ms(max_interval_us) + " ms"),
+                   text([&] {
+                       if (!has_latest_sample) {
+                           return std::string("Last sample age (now - device_ts):      — ms");
+                       }
+                       const uint64_t now_us = now_unix_us();
+                       const uint64_t dev_us = latest_sample.device_timestamp_unix_us;
+                       const int64_t delta_us = static_cast<int64_t>(now_us - dev_us);
+                       const double delta_ms = static_cast<double>(delta_us) / 1000.0;
+                       std::ostringstream oss;
+                       oss << "Last sample age (now - device_ts): "
+                           << std::fixed << std::setprecision(3) << std::setw(10) << std::right
+                           << delta_ms << " ms";
+                       return oss.str();
+                   }()),
                    text(latest),
                    separator(),
                    text("Keys: [t]=toggle stream  [s]=save snapshot  [q]=quit") | dim,
@@ -1080,6 +1104,8 @@ void PowerMonitorSession::print_statistics(bool inline_mode) const {
 
     if (inline_mode) {
         const uint64_t ema_us = stats_->ema_interval_us.load(std::memory_order_relaxed);
+        const uint64_t min_us = stats_->min_interval_us.load(std::memory_order_relaxed);
+        const uint64_t max_us = stats_->max_interval_us.load(std::memory_order_relaxed);
         std::ostringstream oss;
         oss << "Samples:" << std::setw(10) << samples
             << "  CRC_FAIL:" << std::setw(6) << crc_fail
@@ -1088,9 +1114,11 @@ void PowerMonitorSession::print_statistics(bool inline_mode) const {
             << "  Timeouts:" << std::setw(5) << timeouts
             << "  IO_Errors:" << std::setw(4) << io_errors
             << "  QueueOverflow:" << std::setw(4) << queue_overflow;
-        if (ema_us > 0) {
-            oss << "  USB_avg_ms:" << std::fixed << std::setprecision(2)
-                << (static_cast<double>(ema_us) / 1000.0);
+        if (ema_us > 0 || min_us != UINT64_MAX || max_us > 0) {
+            oss << "  USB_ms:";
+            if (ema_us > 0) oss << " avg=" << std::fixed << std::setprecision(2) << (static_cast<double>(ema_us) / 1000.0);
+            if (min_us != UINT64_MAX) oss << " min=" << min_us << "us";
+            if (max_us > 0) oss << " max=" << std::fixed << std::setprecision(2) << (static_cast<double>(max_us) / 1000.0);
         }
         std::string line = oss.str();
         if (line.size() < last_stats_width_) {

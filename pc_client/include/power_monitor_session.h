@@ -34,6 +34,7 @@ public:
         bool usb_stress_mode = false;
         bool verbose = false;
         bool interactive = false;
+        bool no_apply_time_offset = false;  // If true, do not send TIME_ADJUST after sync
         uint32_t duration_s = 0;
         uint64_t duration_us = 0;
         std::string run_label;

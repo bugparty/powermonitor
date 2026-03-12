@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <cstdint>
 #include <thread>
 #include <vector>
 
@@ -23,9 +24,11 @@ struct ThreadStats {
     std::atomic<uint64_t> timeouts{0};
     std::atomic<uint64_t> retries{0};
     std::atomic<uint64_t> io_errors{0};
-    // USB packet receive timing: EMA of inter-packet interval (microseconds)
+    // USB packet receive timing: EMA and min/max of inter-packet interval (microseconds)
     std::atomic<uint64_t> last_packet_time_us{0};
     std::atomic<uint64_t> ema_interval_us{0};
+    std::atomic<uint64_t> min_interval_us{UINT64_MAX};  // not set until first interval
+    std::atomic<uint64_t> max_interval_us{0};          // not set until first interval
 };
 
 class ReadThread {

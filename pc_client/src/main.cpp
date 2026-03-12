@@ -101,6 +101,7 @@ struct ConfigOptions {
     bool config_overridden = false;
     bool verbose = false;
     bool interactive = false;
+    bool no_apply_time_offset = false;
     uint32_t duration_s = 0;
     uint64_t duration_us = 0;
     std::string run_label;
@@ -290,6 +291,7 @@ int main(int argc, char **argv) {
     std::string run_label = options.run_label;
     std::vector<std::string> run_tags = options.run_tags;
     bool list_devices = false;
+    bool no_apply_time_offset = false;
 
     auto opt_output = app.add_option("-o,--output", output_path, "Output JSON file path");
     auto opt_config = app.add_option("-c,--config", config_path, "YAML configuration file");
@@ -315,6 +317,8 @@ int main(int argc, char **argv) {
     app.add_flag("-l,--list-devices", list_devices, "List available Pico USB serial devices");
     app.add_flag("-v,--verbose", options.verbose, "Verbose logging");
     app.add_flag("-i,--interactive", options.interactive, "Interactive mode");
+    app.add_flag("--no-apply-time-offset", no_apply_time_offset,
+                 "Do not send TIME_ADJUST after time sync (measure offset only, do not correct device clock)");
 
     try {
         app.parse(argc, argv);
@@ -397,6 +401,8 @@ int main(int argc, char **argv) {
     if (opt_run_tag->count() > 0) {
         options.run_tags = run_tags;
     }
+
+    options.no_apply_time_offset = no_apply_time_offset;
 
     if (!ensure_output_dir(options.output_path)) {
         return 1;
@@ -508,6 +514,7 @@ int main(int argc, char **argv) {
     session_options.duration_us = options.duration_us;
     session_options.run_label = options.run_label;
     session_options.run_tags = options.run_tags;
+    session_options.no_apply_time_offset = options.no_apply_time_offset;
     session_options.vid_hex = hex_u16(options.vid);
     session_options.pid_hex = hex_u16(options.pid);
 

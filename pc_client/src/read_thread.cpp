@@ -70,13 +70,22 @@ struct ParserState {
     void on_frame(const protocol::Frame& frame, uint64_t receive_time_us) {
         stats->rx_counts[frame.msgid].fetch_add(1, std::memory_order_relaxed);
 
-        // EMA of inter-packet interval (average delay between consecutive USB packets)
+        // EMA and min/max of inter-packet interval (average delay between consecutive USB packets)
         const uint64_t last = stats->last_packet_time_us.exchange(receive_time_us, std::memory_order_relaxed);
         if (last != 0) {
             const uint64_t interval_us = receive_time_us - last;
             const double ema_old = static_cast<double>(stats->ema_interval_us.load(std::memory_order_relaxed));
             const double ema_new = 0.9 * ema_old + 0.1 * static_cast<double>(interval_us);
             stats->ema_interval_us.store(static_cast<uint64_t>(ema_new), std::memory_order_relaxed);
+            // Only update min when interval > 0 (avoid min=0 when two packets land in same microsecond)
+            uint64_t min_u = stats->min_interval_us.load(std::memory_order_relaxed);
+            if (interval_us > 0 && interval_us < min_u) {
+                stats->min_interval_us.store(interval_us, std::memory_order_relaxed);
+            }
+            uint64_t max_u = stats->max_interval_us.load(std::memory_order_relaxed);
+            if (interval_us > max_u) {
+                stats->max_interval_us.store(interval_us, std::memory_order_relaxed);
+            }
         }
 
         if (frame.msgid == kMsgDataSample) {  // DATA_SAMPLE

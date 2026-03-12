@@ -18,8 +18,9 @@ extern uint64_t g_last_frame_recv_time_us;
 
 constexpr uint16_t kStreamMaskUsbStressMode = 0x8000;
 
-// USB CDC write function type
-using UsbWriteFn = void (*)(const uint8_t* data, size_t len);
+// USB CDC write function type. Returns true on success (all bytes written),
+// false on failure/timeout.
+using UsbWriteFn = bool (*)(const uint8_t* data, size_t len);
 
 // Command handler - processes incoming frames and sends responses
 class CommandHandler {
@@ -126,16 +127,22 @@ public:
         );
 
         if (len > 0) {
+            bool ok = false;
             if constexpr (FlushAfterWrite) {
                 if (write_flush_fn_) {
-                    write_flush_fn_(tx_buf_, len);
+                    ok = write_flush_fn_(tx_buf_, len);
                 }
             } else {
                 if (write_noflush_fn_) {
-                    write_noflush_fn_(tx_buf_, len);
+                    ok = write_noflush_fn_(tx_buf_, len);
                 }
             }
-            ctx_.samples_sent++;
+            if (ok) {
+                ctx_.samples_sent++;
+            } else if (ctx_.shared_ctx && !ctx_.usb_stress_mode) {
+                // USB write failed: count as dropped sample in shared stats.
+                ctx_.shared_ctx->samples_dropped++;
+            }
         }
         return len;
     }
@@ -168,8 +175,7 @@ public:
         );
 
         if (len > 0 && write_flush_fn_) {
-            write_flush_fn_(tx_buf_, len);
-            return true;
+            return write_flush_fn_(tx_buf_, len);
         }
         return false;
     }
@@ -187,8 +193,7 @@ public:
         );
 
         if (len > 0 && write_flush_fn_) {
-            write_flush_fn_(tx_buf_, len);
-            return true;
+            return write_flush_fn_(tx_buf_, len);
         }
         return false;
     }
@@ -230,8 +235,8 @@ private:
 
         if (len > 0 && write_flush_fn_) {
             // Capture T3 right before USB write
-            uint64_t t3_mono = time_us_64();
-            uint64_t t3 = t3_mono + static_cast<uint64_t>(ctx_.epoch_offset_us);
+            const uint64_t t3_mono = time_us_64();
+            const uint64_t t3 = t3_mono + static_cast<uint64_t>(ctx_.epoch_offset_us);
 
             // Patch T3 into frame after CRC is calculated
             // Frame layout: SOF(2) + Header(6) + MSGID(1) + orig_msgid(1) + status(1) + t1(8) + t2(8) + t3(8)
@@ -239,7 +244,7 @@ private:
             uint64_t* t3_ptr = reinterpret_cast<uint64_t*>(tx_buf_ + 27);
             *t3_ptr = t3;
 
-            write_flush_fn_(tx_buf_, len);
+            (void)write_flush_fn_(tx_buf_, len);
         }
     }
 
@@ -381,7 +386,7 @@ private:
         );
 
         if (len > 0 && write_flush_fn_) {
-            write_flush_fn_(tx_buf_, len);
+            (void)write_flush_fn_(tx_buf_, len);
         }
     }
 
@@ -460,7 +465,7 @@ private:
         );
 
         if (len > 0 && write_flush_fn_) {
-            write_flush_fn_(tx_buf_, len);
+            (void)write_flush_fn_(tx_buf_, len);
         }
     }
 
@@ -527,8 +532,7 @@ private:
 
         // Use noflush to avoid blocking the main loop
         if (len > 0 && write_noflush_fn_) {
-            write_noflush_fn_(tx_buf_, len);
-            return true;
+            return write_noflush_fn_(tx_buf_, len);
         }
         return false;
     }

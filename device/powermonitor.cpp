@@ -60,22 +60,36 @@ namespace device {
 uint64_t g_last_frame_recv_time_us = 0;
 }
 
-// USB CDC write function
-static void usb_cdc_write(const uint8_t *data, size_t len, bool flush = true) {
+// USB CDC write function with optional flush, backoff and timeout.
+// Returns true if all |len| bytes were written, false on timeout/disconnect.
+template <bool Flush = true>
+inline static bool usb_cdc_write(const uint8_t *data, size_t len,
+                                 uint32_t timeout_us = 200000,  // 200 ms default
+                                 uint32_t backoff_us = 100) {
   if (!data || len == 0 || !tud_cdc_connected())
-    return;
+    return false;
 
-  // Write in chunks if needed
+  const uint64_t start = time_us_64();
+
   size_t remaining = len;
   const uint8_t *ptr = data;
 
   while (remaining > 0) {
+    if (!tud_cdc_connected()) {
+      return false;
+    }
+
+    if (time_us_64() - start > timeout_us) {
+      return false;
+    }
+
     const uint32_t avail = tud_cdc_write_available();
     if (avail == 0) {
       tud_task();
-      if (flush) {
+      if (Flush) {
         tud_cdc_write_flush();
       }
+      sleep_us(backoff_us);
       continue;
     }
 
@@ -86,9 +100,10 @@ static void usb_cdc_write(const uint8_t *data, size_t len, bool flush = true) {
     if (written == 0) {
       // Avoid tight spinning when backend temporarily cannot accept bytes.
       tud_task();
-      if (flush) {
+      if (Flush) {
         tud_cdc_write_flush();
       }
+      sleep_us(backoff_us);
       continue;
     }
 
@@ -96,18 +111,21 @@ static void usb_cdc_write(const uint8_t *data, size_t len, bool flush = true) {
     remaining -= written;
 
     // Flushing once at end reduces USB transaction overhead in chunked writes.
-    if (flush && remaining == 0) {
+    if (Flush && remaining == 0) {
       tud_cdc_write_flush();
     }
   }
+  return true;
 }
 
-static void usb_cdc_write_flush(const uint8_t *data, size_t len) {
-  usb_cdc_write(data, len, true);
+static bool usb_cdc_write_flush(const uint8_t *data, size_t len) {
+  // Control/EVT paths: allow longer blocking timeout.
+  return usb_cdc_write<true>(data, len, 500000);
 }
 
-static void usb_cdc_write_no_flush(const uint8_t *data, size_t len) {
-  usb_cdc_write(data, len, false);
+static bool usb_cdc_write_no_flush(const uint8_t *data, size_t len) {
+  // Data path: shorter timeout, no flush at end.
+  return usb_cdc_write<false>(data, len, 100000);
 }
 
 // Parser callback - called when a complete frame is received
@@ -263,7 +281,7 @@ int main() {
     // Process incoming USB data (always, for fast T2 capture during sync)
     if (tud_cdc_available()) {
       uint8_t buf[64];
-      uint32_t count = tud_cdc_read(buf, sizeof(buf));
+      auto count = tud_cdc_read(buf, sizeof(buf));
       if (count > 0) {
         device::g_last_frame_recv_time_us = time_us_64();
         g_parser.feed(buf, count);
@@ -277,9 +295,13 @@ int main() {
       continue; // Tight loop: no streaming, no stats
     }
 
+    if (!g_ctx.is_streaming()) { // if not streaming, there is no need to process streaming loop
+        continue;
+    }
+
     // Normal path: check 5s timer and maybe send time sync request
     const uint64_t now_us = time_us_64();
-    if (g_ctx.is_streaming() && g_handler &&
+    if (g_handler &&
         (g_last_time_sync_request_us == 0 ||
          now_us - g_last_time_sync_request_us >= kTimeSyncRequestPeriodUs)) {
       if (g_handler->send_time_sync_request()) {

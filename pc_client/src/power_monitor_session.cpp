@@ -14,7 +14,9 @@
 #define NOMINMAX
 #include <windows.h>
 #endif
-
+#include <chrono>
+#include <thread>
+using namespace std::chrono_literals;
 
 #include <CLI/CLI.hpp>
 #include <ftxui/component/component.hpp>
@@ -47,7 +49,7 @@ constexpr uint16_t kStreamMaskUsbStressMode = 0x8000;
 constexpr int kInitialSyncRounds = 10;
 constexpr int kPeriodicSyncRounds = 3;
 constexpr int64_t kMaxOffsetAfterInitUs = 1000;   // Reject |offset| > 1000 us after init
-constexpr uint64_t kInitPeriodUs = 3000000ULL;    // 3 seconds from sync start before applying filter
+constexpr uint64_t kInitPeriodUs = 30000000ULL;    // 3 seconds from sync start before applying filter
 
 uint64_t now_steady_us() {
     const auto now = std::chrono::steady_clock::now().time_since_epoch();
@@ -355,6 +357,11 @@ bool PowerMonitorSession::initialize_device() {
     // Device may still be streaming from a previous session, so try to stop it first.
     send_command_with_retry(protocol::MsgId::kStreamStop, {});
 
+    // Drop any samples that might have arrived before calibration completed.
+    SampleQueue::Sample dropped_sample;
+    while (sample_queue_->pop(dropped_sample)) {
+    }
+
     // Set initial epoch with TIME_SET (Unix time), then fine-tune with TIME_SYNC rounds (Unix time on both sides).
     {
         std::vector<uint8_t> time_set_payload;
@@ -384,10 +391,7 @@ bool PowerMonitorSession::initialize_device() {
         }
     }
 
-    // Drop any samples that might have arrived before calibration completed.
-    SampleQueue::Sample dropped_sample;
-    while (sample_queue_->pop(dropped_sample)) {
-    }
+
 
     // Start stream
     if (!start_streaming()) {
@@ -466,7 +470,19 @@ bool PowerMonitorSession::stop_streaming() {
     append_log(ok ? "STREAM_STOP acknowledged" : "STREAM_STOP failed");
     return ok;
 }
+int64_t choose_offset(int64_t T1, int64_t T2, int64_t T3, int64_t T4) {
+    int64_t forward = T1 - T2;
+    int64_t reverse = T3 - T4;
+    int64_t offset_ntp = ((T1 - T2) + (T4 - T3)) / 2;
+    int64_t asym = llabs(forward - reverse);
 
+    // 阈值可以按你的链路调，先从 2000us 开始
+    if (asym > 2000) {
+        return forward;   // 降级：只信 host->device
+    } else {
+        return offset_ntp; // 对称时用 NTP
+    }
+}
 bool PowerMonitorSession::perform_time_sync_once(std::string* detail, int64_t* out_offset, bool send_adjust) {
     if (detail) {
         detail->clear();
@@ -499,8 +515,7 @@ bool PowerMonitorSession::perform_time_sync_once(std::string* detail, int64_t* o
     const uint64_t T4 = now_unix_us();
 
     const int64_t delay = signed_diff_u64(T4, T1) - signed_diff_u64(T3, T2);
-    const int64_t offset = (signed_diff_u64(T2, T1) + signed_diff_u64(T3, T4)) / 2;
-
+    const int64_t offset = choose_offset(T1, T2, T3, T4);
     // Outlier filter: after kInitPeriodUs from sync start, reject |offset| > kMaxOffsetAfterInitUs
     if (sync_start_time_us_ > 0 && (T4 - sync_start_time_us_) > kInitPeriodUs) {
         if (offset > kMaxOffsetAfterInitUs || offset < -kMaxOffsetAfterInitUs) {
@@ -546,6 +561,7 @@ bool PowerMonitorSession::run_time_sync_rounds(int rounds) {
     }
     std::vector<int64_t> offsets;
     for (int i = 0; i < rounds; ++i) {
+        std::this_thread::sleep_for(5ms);
         std::string detail;
         int64_t offset = 0;
         // Pass false for send_adjust so we can calculate min offset and send once at the end
@@ -555,6 +571,7 @@ bool PowerMonitorSession::run_time_sync_rounds(int rounds) {
         }
         offsets.push_back(offset);
         append_log("Time sync round " + std::to_string(i + 1) + "/" + std::to_string(rounds) + " ok: offset=" + std::to_string(offset) + "us");
+        append_log(detail);
     }
 
     // Apply minimum offset (best result) unless disabled by --no-apply-time-offset

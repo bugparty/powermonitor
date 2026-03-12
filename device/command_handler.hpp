@@ -265,6 +265,7 @@ private:
         }
         const auto* cmd = reinterpret_cast<const protocol::TimeSetPayload*>(frame.data);
         uint64_t now_us = time_us_64();
+        //timestamp_unix_us = static_cast<uint64_t>(now) + shared->epoch_offset_us
         // epoch_offset = unix_time - monotonic_time
         ctx_.epoch_offset_us = static_cast<int64_t>(cmd->unix_time_us) - static_cast<int64_t>(now_us);
         // Sync epoch_offset to shared context for Core 1 to use

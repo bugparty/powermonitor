@@ -40,7 +40,7 @@ if(POWERMONITOR_TEST_MODE)
     add_compile_definitions(POWERMONITOR_TEST_MODE)
 endif()
 
-add_executable(powermonitor powermonitor.cpp INA228.cpp pio_i2c.c
+add_executable(powermonitor powermonitor.cpp hardware_tests.cpp INA228.cpp pio_i2c.c
         INA228.hpp)
 
 # Generate i2c.pio.h from i2c.pio

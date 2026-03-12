@@ -173,11 +173,11 @@ static void sampler_do_work_dma(SamplerContext *ctx) {
   // With Auto-Push enabled, every byte transmitted (ADDR+W, REG, ADDR+R) is
   // also pushed into the RX FIFO. We have 8 register reads, resulting in 3
   // dummy pushed bytes per register (24 total). Total: 50 bytes per DMA reading
-  // sequence. 
-  // Read 0: 0x0B (2 bytes) -> [0]=ADDR+W, [1]=REG, [2]=ADDR+R, [3..4]=DIAG_ALRT 
-  // Read 1: 0x05 (3 bytes) -> [5]=ADDR+W, [6]=REG, [7]=ADDR+R, [8..10]=VBUS 
-  // Read 2: 0x04 (3 bytes) -> [11]=ADDR+W, [12]=REG, [13]=ADDR+R, [14..16]=VSHUNT 
-  // Read 3: 0x07 (3 bytes) -> [17]=ADDR+W, [18]=REG, [19]=ADDR+R, [20..22]=CURRENT 
+  // sequence.
+  // Read 0: 0x0B (2 bytes) -> [0]=ADDR+W, [1]=REG, [2]=ADDR+R, [3..4]=DIAG_ALRT
+  // Read 1: 0x05 (3 bytes) -> [5]=ADDR+W, [6]=REG, [7]=ADDR+R, [8..10]=VBUS
+  // Read 2: 0x04 (3 bytes) -> [11]=ADDR+W, [12]=REG, [13]=ADDR+R, [14..16]=VSHUNT
+  // Read 3: 0x07 (3 bytes) -> [17]=ADDR+W, [18]=REG, [19]=ADDR+R, [20..22]=CURRENT
   // Read 4: 0x06 (2 bytes) -> [23]=ADDR+W, [24]=REG, [25]=ADDR+R, [26..27]=DIETEMP
   // Read 5: 0x08 (3 bytes) -> [28]=ADDR+W, [29]=REG, [30]=ADDR+R, [31..33]=POWER
   // Read 6: 0x09 (5 bytes) -> [34]=ADDR+W, [35]=REG, [36]=ADDR+R, [37..41]=ENERGY
@@ -290,10 +290,7 @@ static void sampler_do_work_nodma(SamplerContext *ctx) {
   core::SharedContext *shared = ctx->shared;
   core::RawSample sample;
 
-  uint32_t now = time_us_32();
-  sample.timestamp_us = now - shared->stream_start_us;
-  sample.timestamp_unix_us = static_cast<uint64_t>(now) +
-                             static_cast<uint64_t>(shared->epoch_offset_us);
+
   bool ok = true;
   uint8_t buf[3] = {0};
 
@@ -357,13 +354,17 @@ static void sampler_do_work_nodma(SamplerContext *ctx) {
   uint64_t charge_reg40 = ((uint64_t)buf5[0] << 32) | ((uint64_t)buf5[1] << 24) |
                           ((uint64_t)buf5[2] << 16) | ((uint64_t)buf5[3] << 8) | buf5[4];
 
+    uint32_t now = time_us_32();
+    sample.timestamp_us = now - shared->stream_start_us;
+    sample.timestamp_unix_us = static_cast<uint64_t>(now) +
+                        static_cast<uint64_t>(shared->epoch_offset_us);
   sample.vbus_raw = vbus_raw;
   sample.vshunt_raw = vshunt_raw;
   sample.current_raw = current_raw;
   sample.dietemp_raw = temp_raw;
   sample.power_raw = power_reg24;
   sample.energy_raw = energy_reg40;
-  
+
   int64_t charge_raw = charge_reg40;
   if (charge_raw & 0x8000000000ULL)
     charge_raw |= 0xFFFFFF0000000000ULL;
@@ -584,7 +585,7 @@ inline void sampler_stop() {
 static inline bool sampler_read_slow_registers_nodma(SamplerContext *ctx, uint32_t *power, uint64_t *energy, int64_t *charge) {
   uint8_t buf[5];
   bool ok = true;
-  
+
   if (!pio_i2c_read_reg(ctx->pio, ctx->sm, ctx->i2c_addr, 0x08, buf, 3)) ok = false;
   else if (power) *power = (buf[0] << 16) | (buf[1] << 8) | buf[2];
   busy_wait_us_32(5);
@@ -633,7 +634,7 @@ static inline bool __read_one_dma(SamplerContext *ctx, uint8_t reg, size_t size,
   }
 
   bool ok = !timed_out && !pio_i2c_check_error(ctx->pio, ctx->sm);
-  
+
   if (timed_out) {
     uint32_t remain = dma_channel_hw_addr(ctx->dma_rx_chan)->transfer_count;
     printf("[DMA SlowRead] TIMEOUT on reg 0x%02X! Expected %d bytes, missing %lu bytes.\n", reg, rx_len, remain);
@@ -647,7 +648,7 @@ static inline bool __read_one_dma(SamplerContext *ctx, uint8_t reg, size_t size,
 
 // DMA version (dynamically repoints DMA channels, then restores)
 static inline bool sampler_read_slow_registers_dma(SamplerContext *ctx, uint32_t *power, uint64_t *energy, int64_t *charge) {
-  uint32_t rx_buf[10]; 
+  uint32_t rx_buf[10];
   bool ok = true;
 
   if (ok && power) {
@@ -674,7 +675,7 @@ static inline bool sampler_read_slow_registers_dma(SamplerContext *ctx, uint32_t
     } else ok = false;
   }
 
-  // Restore is not needed because sampler_do_work_dma 
+  // Restore is not needed because sampler_do_work_dma
   // explicitly resets all read/write addresses on every cycle.
 
   return ok;

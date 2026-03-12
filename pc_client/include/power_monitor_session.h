@@ -63,12 +63,12 @@ private:
     bool start_streaming();
     bool stop_streaming();
 
-    bool wait_for_response(uint8_t expected_seq, uint8_t expected_msgid,
+    bool wait_for_response(uint8_t expected_seq, protocol::MsgId expected_msgid,
                            protocol::Frame* frame, int timeout_ms);
-    bool wait_for_message_by_id(uint8_t expected_msgid, protocol::Frame* frame, int timeout_ms);
+    bool wait_for_message_by_id(protocol::MsgId expected_msgid, protocol::Frame* frame, int timeout_ms);
     void process_async_control_frame(const protocol::Frame& frame);
     void on_time_sync_request();  // Single entry for EVT_TIME_SYNC_REQUEST: run periodic sync when streaming
-    bool send_command_with_retry(uint8_t msgid, const std::vector<uint8_t>& payload,
+    bool send_command_with_retry(protocol::MsgId msgid, const std::vector<uint8_t>& payload,
                                  std::vector<uint8_t>* rsp_data = nullptr,
                                  bool try_lock_command = false);
 

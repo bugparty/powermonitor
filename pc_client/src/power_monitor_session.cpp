@@ -40,12 +40,6 @@ using namespace ftxui;
 namespace {
 std::atomic<bool> g_signal_interrupted{false};
 
-constexpr uint8_t kMsgTimeSync = 0x05;
-constexpr uint8_t kMsgTimeAdjust = 0x06;
-constexpr uint8_t kMsgTimeSet = 0x07;
-constexpr uint8_t kMsgStatsReport = 0x92;
-constexpr uint8_t kMsgTextReport = 0x93;
-constexpr uint8_t kMsgTimeSyncRequest = 0x94;
 constexpr uint16_t kStreamMaskUsbStressMode = 0x8000;
 
 // Time sync: rounds and outlier filter (see docs/device/time_sync.md)
@@ -201,7 +195,7 @@ int PowerMonitorSession::run() {
             protocol::Frame async_frame;
             if (response_queue_->pop_wait(async_frame, 50)) {
                 if (async_frame.type == protocol::FrameType::kEvt &&
-                    async_frame.msgid == kMsgTimeSyncRequest && streaming_.load()) {
+                    async_frame.msgid == static_cast<uint8_t>(protocol::MsgId::kTimeSyncRequest) && streaming_.load()) {
                     on_time_sync_request();
                 } else {
                     process_async_control_frame(async_frame);
@@ -283,7 +277,7 @@ bool PowerMonitorSession::initialize_device() {
     read_thread_->start();
 
     // Allow time for thread startup and USB CDC init
-    std::this_thread::sleep_for(std::chrono::milliseconds(2500));
+    //std::this_thread::sleep_for(std::chrono::milliseconds(2500));
 
     // Send PING
     if (!send_ping()) {
@@ -303,7 +297,7 @@ bool PowerMonitorSession::initialize_device() {
 
     // Ensure initial calibration runs before any data collection.
     // Device may still be streaming from a previous session, so try to stop it first.
-    send_command_with_retry(0x31, {});  // STREAM_STOP (best effort)
+    send_command_with_retry(protocol::MsgId::kStreamStop, {});
 
     // Set initial epoch with TIME_SET (Unix time), then fine-tune with TIME_SYNC rounds (Unix time on both sides).
     {
@@ -313,7 +307,7 @@ bool PowerMonitorSession::initialize_device() {
         uint64_t unix_time_us = static_cast<uint64_t>(
             std::chrono::duration_cast<std::chrono::microseconds>(now).count());
         pack_u64_le(time_set_payload, unix_time_us);
-        if (send_command_with_retry(kMsgTimeSet, time_set_payload, nullptr, true)) {
+        if (send_command_with_retry(protocol::MsgId::kTimeSet, time_set_payload, nullptr, true)) {
             // Log with actual time value for debugging
             std::ostringstream oss;
             oss << "TIME_SET succeeded: unix_time_us=" << unix_time_us;
@@ -349,18 +343,18 @@ bool PowerMonitorSession::initialize_device() {
 }
 
 bool PowerMonitorSession::send_ping() {
-    return send_command_with_retry(0x01, {});
+    return send_command_with_retry(protocol::MsgId::kPing, {});
 }
 
 bool PowerMonitorSession::get_device_config() {
     std::vector<uint8_t> rsp_data;
-    if (!send_command_with_retry(0x11, {}, &rsp_data)) {  // GET_CFG
+    if (!send_command_with_retry(protocol::MsgId::kGetCfg, {}, &rsp_data)) {
         return false;
     }
 
     // Wait for CFG_REPORT (0x91)
     protocol::Frame frame;
-    if (!wait_for_message_by_id(0x91, &frame, 2000)) {  // CFG_REPORT uses separate SEQ space
+    if (!wait_for_message_by_id(protocol::MsgId::kCfgReport, &frame, 2000)) {
         std::cerr << "Timeout waiting for CFG_REPORT" << std::endl;
         return false;
     }
@@ -394,7 +388,7 @@ bool PowerMonitorSession::start_streaming() {
     }
     pack_u16(payload.data() + 2, stream_mask);
 
-    const bool ok = send_command_with_retry(0x30, payload);  // STREAM_START
+    const bool ok = send_command_with_retry(protocol::MsgId::kStreamStart, payload);
     streaming_.store(ok);
     {
         std::lock_guard<std::mutex> lock(ui_state_.mutex);
@@ -407,7 +401,7 @@ bool PowerMonitorSession::start_streaming() {
 }
 
 bool PowerMonitorSession::stop_streaming() {
-    const bool ok = send_command_with_retry(0x31, {});  // STREAM_STOP
+    const bool ok = send_command_with_retry(protocol::MsgId::kStreamStop, {});
     streaming_.store(false);
     {
         std::lock_guard<std::mutex> lock(ui_state_.mutex);
@@ -430,7 +424,7 @@ bool PowerMonitorSession::perform_time_sync_once(std::string* detail, int64_t* o
     pack_u64_le(sync_payload, now_unix_us());
 
     std::vector<uint8_t> sync_rsp;
-    if (!send_command_with_retry(kMsgTimeSync, sync_payload, &sync_rsp, false)) {
+    if (!send_command_with_retry(protocol::MsgId::kTimeSync, sync_payload, &sync_rsp, false)) {
         if (detail) {
             *detail = "TIME_SYNC cmd failed";
         }
@@ -469,7 +463,7 @@ bool PowerMonitorSession::perform_time_sync_once(std::string* detail, int64_t* o
     if (send_adjust) {
         std::vector<uint8_t> adjust_payload;
         pack_s64_le(adjust_payload, -offset);
-        if (!send_command_with_retry(kMsgTimeAdjust, adjust_payload, nullptr, false)) {
+        if (!send_command_with_retry(protocol::MsgId::kTimeAdjust, adjust_payload, nullptr, false)) {
             if (detail) {
                 std::ostringstream oss;
                 oss << "TIME_ADJUST failed offset=" << offset << "us"
@@ -512,7 +506,7 @@ bool PowerMonitorSession::run_time_sync_rounds(int rounds) {
         int64_t min_offset = *std::min_element(offsets.begin(), offsets.end());
         std::vector<uint8_t> adjust_payload;
         pack_s64_le(adjust_payload, -min_offset);
-        if (send_command_with_retry(kMsgTimeAdjust, adjust_payload, nullptr, false)) {
+        if (send_command_with_retry(protocol::MsgId::kTimeAdjust, adjust_payload, nullptr, false)) {
             append_log("Applied min offset: " + std::to_string(min_offset) + "us");
         }
     } else if (options_.no_apply_time_offset && !offsets.empty()) {
@@ -533,10 +527,11 @@ void PowerMonitorSession::on_time_sync_request() {
     }
 }
 
-bool PowerMonitorSession::send_command_with_retry(uint8_t msgid,
+bool PowerMonitorSession::send_command_with_retry(protocol::MsgId msgid,
                                                    const std::vector<uint8_t>& payload,
                                                    std::vector<uint8_t>* rsp_data,
                                                    bool try_lock_command) {
+    const uint8_t msgid_u8 = static_cast<uint8_t>(msgid);
     std::unique_lock<std::mutex> lock(command_mutex_, std::defer_lock);
     if (try_lock_command) {
         if (!lock.try_lock()) {
@@ -555,13 +550,13 @@ bool PowerMonitorSession::send_command_with_retry(uint8_t msgid,
         try {
             // Build frame
             std::vector<uint8_t> frame_data = protocol::build_frame(
-                protocol::FrameType::kCmd, 0, cmd_seq_++, msgid, payload
+                protocol::FrameType::kCmd, 0, cmd_seq_++, msgid_u8, payload
             );
             const uint8_t sent_seq = cmd_seq_ - 1;
 
             // Send
             serial_->write(frame_data);
-            stats_->tx_counts[msgid].fetch_add(1, std::memory_order_relaxed);
+            stats_->tx_counts[msgid_u8].fetch_add(1, std::memory_order_relaxed);
 
             // Wait for response
             protocol::Frame rsp;
@@ -597,9 +592,10 @@ bool PowerMonitorSession::send_command_with_retry(uint8_t msgid,
 }
 
 bool PowerMonitorSession::wait_for_response(uint8_t expected_seq,
-                                             uint8_t expected_msgid,
+                                             protocol::MsgId expected_msgid,
                                              protocol::Frame* frame,
                                              int timeout_ms) {
+    const uint8_t expected_msgid_u8 = static_cast<uint8_t>(expected_msgid);
     auto deadline = std::chrono::steady_clock::now() +
                     std::chrono::milliseconds(timeout_ms);
 
@@ -620,7 +616,7 @@ bool PowerMonitorSession::wait_for_response(uint8_t expected_seq,
             }
 
             if (frame->seq == expected_seq) {
-                if (frame->data.size() < 2 || frame->data[0] != expected_msgid) {
+                if (frame->data.size() < 2 || frame->data[0] != expected_msgid_u8) {
                     process_async_control_frame(*frame);
                     continue;
                 }
@@ -635,9 +631,10 @@ bool PowerMonitorSession::wait_for_response(uint8_t expected_seq,
     return false;  // Timeout
 }
 
-bool PowerMonitorSession::wait_for_message_by_id(uint8_t expected_msgid,
+bool PowerMonitorSession::wait_for_message_by_id(protocol::MsgId expected_msgid,
                                                   protocol::Frame* frame,
                                                   int timeout_ms) {
+    const uint8_t expected_msgid_u8 = static_cast<uint8_t>(expected_msgid);
     auto deadline = std::chrono::steady_clock::now() +
                     std::chrono::milliseconds(timeout_ms);
 
@@ -651,7 +648,7 @@ bool PowerMonitorSession::wait_for_message_by_id(uint8_t expected_msgid,
         remaining_ms = std::max(remaining_ms, 0);
 
         if (response_queue_->pop_wait(*frame, remaining_ms)) {
-            if (frame->msgid == expected_msgid) {
+            if (frame->msgid == expected_msgid_u8) {
                 return true;
             }
             // msgid mismatch, keep waiting (may be other message)
@@ -663,18 +660,18 @@ bool PowerMonitorSession::wait_for_message_by_id(uint8_t expected_msgid,
 }
 
 void PowerMonitorSession::process_async_control_frame(const protocol::Frame& frame) {
-    if (frame.type == protocol::FrameType::kEvt && frame.msgid == kMsgTextReport) {
+    if (frame.type == protocol::FrameType::kEvt && frame.msgid == static_cast<uint8_t>(protocol::MsgId::kTextReport)) {
         const std::string text(frame.data.begin(), frame.data.end());
         append_log("TEXT_REPORT len=" + std::to_string(frame.data.size()) + " text=\"" + text + "\"");
         return;
     }
 
-    if (frame.type == protocol::FrameType::kEvt && frame.msgid == kMsgTimeSyncRequest) {
+    if (frame.type == protocol::FrameType::kEvt && frame.msgid == static_cast<uint8_t>(protocol::MsgId::kTimeSyncRequest)) {
         append_log("EVT_TIME_SYNC_REQUEST (sync triggered by caller)");
         return;
     }
 
-    if (frame.msgid != kMsgStatsReport) {
+    if (frame.msgid != static_cast<uint8_t>(protocol::MsgId::kStatsReport)) {
         return;
     }
     if (frame.data.size() < 31) {
@@ -997,14 +994,14 @@ int PowerMonitorSession::run_tui_loop() {
 
             // Drain STATS_REPORT so UI updates in near real-time
             protocol::Frame async_frame;
-            while (response_queue_->pop_by_msgid(async_frame, kMsgStatsReport)) {
+            while (response_queue_->pop_by_msgid(async_frame, static_cast<uint8_t>(protocol::MsgId::kStatsReport))) {
                 process_async_control_frame(async_frame);
             }
 
             // Wait up to 50ms for any frame; wake immediately on device TIME_SYNC_REQUEST
             if (response_queue_->pop_wait(async_frame, 50)) {
                 if (async_frame.type == protocol::FrameType::kEvt &&
-                    async_frame.msgid == kMsgTimeSyncRequest && streaming_.load()) {
+                    async_frame.msgid == static_cast<uint8_t>(protocol::MsgId::kTimeSyncRequest) && streaming_.load()) {
                     on_time_sync_request();
                 } else {
                     process_async_control_frame(async_frame);

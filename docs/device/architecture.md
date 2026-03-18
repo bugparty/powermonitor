@@ -97,7 +97,7 @@ static void core1_entry() {
         if (multicore_fifo_rvalid()) {
             uint32_t cmd_raw = multicore_fifo_pop_blocking();
             __dmb();  // Memory barrier
-            
+
             core::FifoCmd cmd = static_cast<core::FifoCmd>(cmd_raw);
             switch (cmd) {
             case core::FifoCmd::kStartStream:
@@ -111,12 +111,12 @@ static void core1_entry() {
                 break;
             }
         }
-        
+
         // Do I2C reads when ISR signals new tick
         if (timer_active) {
             sampler_do_work(&g_sampler_ctx);
         }
-        
+
         // Low-power sleep (woken by __sev() from ISR or FIFO)
         __wfe();
     }
@@ -129,24 +129,24 @@ static void sampler_do_work(SamplerContext* ctx) {
     if (current_seq == ctx->worker_seq) {
         return;  // Nothing new to process
     }
-    
+
     // Update missed ticks count
     uint32_t missed = current_seq - ctx->worker_seq - 1;
     if (missed > 0) {
         ctx->shared->samples_dropped += missed;
     }
     ctx->worker_seq = current_seq;
-    
+
     // Read sensor data via I2C
     RawSample sample;
     bool ok = ctx->ina228->read_vbus_raw(sample.vbus_raw);
     ok &= ctx->ina228->read_vshunt_raw(sample.vshunt_raw);
     // ... read other channels
-    
+
     // Push to SPSC queue for Core 0
     ctx->shared->sample_queue.push(sample);
 }
-```
+
 void core1_entry() {
     // Core 1 runs the sampling timer
     repeating_timer_t timer;
@@ -160,7 +160,8 @@ void core1_entry() {
 
 ## File Structure
 
-```
+
+```text
 device/
 ├── protocol/                  # Protocol layer (Phase 1)
 │   ├── crc16.hpp
@@ -256,16 +257,16 @@ sequenceDiagram
 
     PC->>C0: CMD: STREAM_START(period, mask)
     C0->>Ctx: stream_period_us = period
-    Note C0: __dmb() memory barrier
+    Note over C0: __dmb() memory barrier
     C0->>FIFO: push(kStartStream)
     C0->>PC: RSP(OK)
 
     FIFO-->>C1_Worker: pop() -> kStartStream
-    Note C1_Worker: __dmb() memory barrier
+    Note over C1_Worker: __dmb() memory barrier
     C1_Worker->>Ctx: read config
     C1_Worker->>C1_Worker: add_repeating_timer()
 
-    loop Every `period_us`
+    loop Every period_us
         C1_ISR->>C1_ISR: Timer fires
         C1_ISR-->>C1_Worker: __sev()
         C1_Worker->>C1_Worker: Wakes from __wfe()

@@ -49,7 +49,7 @@ struct SamplerContext {
   uint32_t last_vbus_raw;
   int32_t last_vshunt_raw;
   int32_t last_current_raw;
-  uint32_t last_sent_time_us;
+  uint64_t last_sent_time_us;
 
   // DMA channels
   int dma_tx_chan;
@@ -264,7 +264,7 @@ static void sampler_do_work_dma(SamplerContext *ctx) {
       ctx->last_vbus_raw = sample.vbus_raw;
       ctx->last_vshunt_raw = sample.vshunt_raw;
       ctx->last_current_raw = sample.current_raw;
-      ctx->last_sent_time_us = now;
+      ctx->last_sent_time_us = now64;
     }
   }
 
@@ -393,7 +393,7 @@ static void sampler_do_work_nodma(SamplerContext *ctx) {
       ctx->last_vbus_raw = sample.vbus_raw;
       ctx->last_vshunt_raw = sample.vshunt_raw;
       ctx->last_current_raw = sample.current_raw;
-      ctx->last_sent_time_us = now;
+      ctx->last_sent_time_us = now64;
     }
   }
 }

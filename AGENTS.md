@@ -39,7 +39,7 @@ Practical handbook for AI agents working in this repo. Keep outputs (docs, comme
 ## Code Style (C++17/20)
 - Formatting: 4-space indent (see .editorconfig); LF; trim trailing whitespace; final newline required.
 - Includes: standard headers first, then third-party, then local (relative) headers. Use angled for system/third-party, quotes for project headers. Avoid unused includes.
-- Names: snake_case for variables/functions; PascalCase for types/classes; ALL_CAPS for macros/const globals only when truly constant; avoid abbreviations unless well-known (CRC, LSB, SEQ). Align with protocol names from docs.
+- Names: snake_case for variables/functions; PascalCase for types/classes; kCamelCase for constants (`kSof0`, `kProtoVersion`); trailing underscore for private members (`parser_`, `endpoint_`); ALL_CAPS for macros only. Avoid abbreviations unless well-known (CRC, LSB, SEQ). Align with protocol names from docs.
 - Types: prefer fixed-width ints (`uint8_t`, `int32_t`, `uint16_t`) for protocol payloads; use `size_t` for sizes; use `auto` when type is obvious from initializer but avoid for integral protocol fields where width matters.
 - Const-correctness: mark inputs `const` and pass by reference (`const T&`) for non-trivial types; prefer `std::array` or `std::span` for fixed buffers.
 - Error handling: return status enums/structs; avoid exceptions in hot paths; validate lengths and bounds before reads; CRC failure → drop silently per protocol (no logging storm). Use early returns for invalid frames.

@@ -85,21 +85,24 @@ struct Frame {
     uint16_t data_len;     // Actual data length (len - 1)
 };
 
-// DATA_SAMPLE payload structure (24 bytes, packed).
-// Field order is the wire/protocol order: timestamp_unix_us (8), timestamp_us (4),
+// DATA_SAMPLE payload structure (41 bytes, packed).
+// Field order is the wire/protocol order: timestamp_unix_us (8), timestamp_us (8),
 // flags (1), vbus20[3], vshunt20[3], current20[3], then dietemp16 (int16_t) last.
 // Because this struct is packed, do not apply manual alignment-based reordering.
 struct DataSamplePayload {
     uint64_t timestamp_unix_us;  // Absolute Unix timestamp in microseconds
-    uint32_t timestamp_us;        // Relative timestamp since STREAM_START
+    uint64_t timestamp_us;       // Relative timestamp since STREAM_START (64-bit)
     uint8_t flags;               // Bit0: CNVRF, Bit1: ALERT, Bit2: CAL_VALID, Bit3: OVF
     uint8_t vbus20[3];           // VBUS unsigned 20-bit LE-packed
     uint8_t vshunt20[3];         // VSHUNT signed 20-bit LE-packed
     uint8_t current20[3];        // CURRENT signed 20-bit LE-packed
+    uint8_t power24[3];          // POWER unsigned 24-bit LE-packed
     int16_t dietemp16;           // DIE_TEMP signed 16-bit
+    uint8_t energy40[5];         // ENERGY unsigned 40-bit LE-packed
+    uint8_t charge40[5];         // CHARGE signed 40-bit LE-packed
 } __attribute__((packed));
 
-static_assert(sizeof(DataSamplePayload) == 24, "DataSamplePayload must be 24 bytes");
+static_assert(sizeof(DataSamplePayload) == 41, "DataSamplePayload must be 41 bytes");
 
 // CFG_REPORT payload structure
 struct CfgReportPayload {

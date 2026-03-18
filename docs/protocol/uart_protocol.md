@@ -219,6 +219,7 @@ DATA Packet Loss Handling:
 
 ```c
 struct DataSample {
+    uint64_t timestamp_unix_us; // Absolute timestamp (microseconds) synced from PC via TIME_SET
     uint32_t timestamp_us;   // Relative timestamp (microseconds), see explanation below
 
     uint8_t  flags;          // Status flags:
@@ -230,9 +231,12 @@ struct DataSample {
     uint8_t  vbus20[3];      // VBUS unsigned 20-bit LE-packed
     uint8_t  vshunt20[3];    // VSHUNT signed 20-bit LE-packed
     uint8_t  current20[3];   // CURRENT signed 20-bit LE-packed
+    uint8_t  power24[3];     // POWER unsigned 24-bit LE-packed
     int16_t  dietemp16;      // DIE_TEMP signed 16-bit
+    uint8_t  energy40[5];    // ENERGY unsigned 40-bit LE-packed
+    uint8_t  charge40[5];    // CHARGE signed 40-bit LE-packed
 
-} __attribute__((packed));   // Total length: 4 + 1 + 3 + 3 + 3 + 2 = 16 bytes
+} __attribute__((packed));   // Total length: 8 + 4 + 1 + 3 + 3 + 3 + 3 + 2 + 5 + 5 = 37 bytes
 ```
 
 **timestamp_us Description**:
@@ -263,6 +267,16 @@ void on_data_sample(uint32_t ts_us) {
     uint64_t absolute_us = (overflow_count << 32) + ts_us;
 }
 ```
+
+**Conversion to Engineering Units:**
+- **VBUS**: `vbus_v = vbus_raw * 195.3125e-6`
+- **VSHUNT**: `vshunt_v = vshunt_raw * (adcrange ? 78.125e-9 : 312.5e-9)`
+- **CURRENT**: `current_a = current_raw * (current_lsb_nA * 1e-9)`
+- **POWER**: `power_w = power_raw * (current_lsb_nA * 1e-9) * 3.2`
+- **DIE_TEMP**: `temp_c = temp_raw * 7.8125e-3`
+- **ENERGY**: `energy_j = energy_raw * (current_lsb_nA * 1e-9) * 3.2 * 16.0`
+- **CHARGE**: `charge_c = charge_raw * (current_lsb_nA * 1e-9)`
+
 
 > **Design Notes**: Benefits of using relative timestamp vs absolute timestamp:
 >

@@ -1,13 +1,21 @@
-export type MetricKey = "voltage" | "current" | "power";
+export type MetricKey = "voltage" | "current" | "power" | "temp" | "vshunt" | "charge" | "energy";
 
 export type DownsampleMode = "none" | "min-max" | "lttb";
 
+export type SourceId = "legacy" | "pico" | "onboard_cpp" | string;
+
 export interface Point {
+    sourceId: SourceId;
+    sourceLabel: string;
     seq: number;
     timeUs: number;
-    voltage: number;
-    current: number;
+    voltage: number | null;
+    current: number | null;
     power: number;
+    temp: number | null;
+    vshunt: number | null;
+    charge: number | null;
+    energy: number | null;
 }
 
 export interface ParsedMeta {
@@ -21,6 +29,12 @@ export interface ParsedMeta {
 
 export interface ParsedPayload {
     meta: ParsedMeta;
+    series: Series[];
+}
+
+export interface Series {
+    id: SourceId;
+    label: string;
     points: Point[];
 }
 

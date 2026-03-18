@@ -10,7 +10,8 @@ param(
     [switch]$GenerateSolution,
     [switch]$OpenVS,
     [switch]$BuildDevice,
-    [switch]$FlashPico
+    [switch]$FlashPico,
+    [switch]$TestMode
 )
 
 # Exit on error
@@ -62,6 +63,7 @@ if ($Help) {
     Write-Host "  -OpenVS          Generate solution and open in Visual Studio"
     Write-Host "  -BuildDevice     Build device firmware (requires PICO_SDK_PATH)"
     Write-Host "  -FlashPico      Flash device firmware to Pico (requires PICO_SDK_PATH, Windows only)"
+    Write-Host "  -TestMode        Build device firmware in test mode (use with -BuildDevice or -FlashPico)"
     Write-Host "  -Help            Show this help message"
     Write-Host ""
     Write-Host "Examples:"
@@ -72,6 +74,7 @@ if ($Help) {
     Write-Host "  .\workflow.ps1 -OpenVS        # Generate and open in Visual Studio"
     Write-Host "  .\workflow.ps1 -BuildDevice   # Build device firmware"
     Write-Host "  .\workflow.ps1 -FlashPico    # Build and flash device firmware"
+    Write-Host "  .\workflow.ps1 -BuildDevice -TestMode # Build device firmware in test mode"
     exit 0
 }
 
@@ -81,13 +84,16 @@ $CurrentIsWindows = $false
 
 if ($IsLinux) {
     $CurrentIsLinux = $true
-} elseif ($IsWindows) {
+}
+elseif ($IsWindows) {
     $CurrentIsWindows = $true
-} else {
+}
+else {
     # Fallback for older PowerShell versions or other platforms
     if ($PSVersionTable.Platform -eq "Unix") {
         $CurrentIsLinux = $true
-    } else {
+    }
+    else {
         # Default to Windows behavior if not Unix
         $CurrentIsWindows = $true
     }
@@ -95,7 +101,8 @@ if ($IsLinux) {
 
 if ($CurrentIsLinux) {
     Print-Info "Detected OS: Linux"
-} else {
+}
+else {
     Print-Info "Detected OS: Windows"
 }
 
@@ -138,10 +145,12 @@ if ($GenerateSolution -or $OpenVS) {
     if (Test-Path $SolutionXFile) {
         $FoundSolution = $SolutionXFile
         Print-Success "Solution generated (slnx format): $SolutionXFile"
-    } elseif (Test-Path $SolutionFile) {
+    }
+    elseif (Test-Path $SolutionFile) {
         $FoundSolution = $SolutionFile
         Print-Success "Solution generated: $SolutionFile"
-    } else {
+    }
+    else {
         Print-Error-Custom "Solution file not found at $SolutionFile or $SolutionXFile"
         exit 1
     }
@@ -150,7 +159,8 @@ if ($GenerateSolution -or $OpenVS) {
         Print-Info "Opening solution in Visual Studio..."
         Start-Process -FilePath "devenv.exe" -ArgumentList $FoundSolution
         Print-Success "Visual Studio launched"
-    } else {
+    }
+    else {
         Write-Host ""
         Print-Info "You can now open the solution in Visual Studio:"
         Write-Host "  devenv $FoundSolution"
@@ -167,7 +177,8 @@ if ($BuildDevice -or $FlashPico) {
     if ($BuildDevice -and -not $FlashPico) {
         Print-Info "Building device firmware..."
         Write-Host "======================================"
-    } else {
+    }
+    else {
         Print-Info "Building and flashing device firmware..."
         Write-Host "======================================"
     }
@@ -280,7 +291,16 @@ if ($BuildDevice -or $FlashPico) {
 
     # Configure CMake for device
     $DeviceCMakeCache = Join-Path $DeviceBuildDir "CMakeCache.txt"
-    if (-not (Test-Path $DeviceCMakeCache)) {
+    $NeedReconfigure = -not (Test-Path $DeviceCMakeCache)
+    if (-not $NeedReconfigure) {
+        $CacheContent = Get-Content -Path $DeviceCMakeCache -Raw -ErrorAction SilentlyContinue
+        $IsCachedTest = $CacheContent -match "POWERMONITOR_TEST_MODE:BOOL=ON"
+        if (($TestMode -and -not $IsCachedTest) -or (-not $TestMode -and $IsCachedTest)) {
+            $NeedReconfigure = $true
+        }
+    }
+
+    if ($NeedReconfigure) {
         Print-Info "Configuring device CMake..."
 
         Push-Location $DeviceDir
@@ -291,12 +311,21 @@ if ($BuildDevice -or $FlashPico) {
                 Print-Info "Found Ninja: $NinjaExe"
                 $DeviceCMakeArgs += "-G", "Ninja"
                 $DeviceCMakeArgs += "-DCMAKE_MAKE_PROGRAM=$NinjaExe"
-            } else {
+            }
+            else {
                 Print-Error-Custom "Ninja not found. The Pico SDK uses Ninja as build system."
                 Write-Host "  Option 1: Install Raspberry Pi Pico extension for VS Code (bundles all tools)"
                 Write-Host "  Option 2: choco install ninja"
                 Write-Host "  Option 3: scoop install ninja"
                 exit 1
+            }
+
+            if ($TestMode) {
+                Print-Info "Enabling test mode (-DPOWERMONITOR_TEST_MODE=ON)"
+                $DeviceCMakeArgs += "-DPOWERMONITOR_TEST_MODE=ON"
+            }
+            else {
+                $DeviceCMakeArgs += "-DPOWERMONITOR_TEST_MODE=OFF"
             }
 
             # Add ARM toolchain to PATH if found
@@ -310,11 +339,13 @@ if ($BuildDevice -or $FlashPico) {
                 Print-Error-Custom "Device CMake configuration failed"
                 exit 1
             }
-        } finally {
+        }
+        finally {
             Pop-Location
         }
         Print-Success "Device CMake configured"
-    } else {
+    }
+    else {
         Print-Info "Using existing device CMake configuration"
     }
 
@@ -327,7 +358,8 @@ if ($BuildDevice -or $FlashPico) {
             Print-Error-Custom "Device build failed"
             exit 1
         }
-    } finally {
+    }
+    finally {
         Pop-Location
     }
 
@@ -344,25 +376,34 @@ if ($BuildDevice -or $FlashPico) {
             Print-Info "Flashing firmware to Pico..."
             Write-Host ""
             Print-Info "Please ensure your Pico is in BOOTSEL mode (hold BOOTSEL while plugging in)"
-            Write-Host "Waiting 5 seconds..."
-            Start-Sleep -Seconds 5
+            Print-Info "Waiting for RPI-RP2 drive (polling every 0.5s, max 30s)..."
 
-            # Find the RPI-RP2 drive
+            # Poll for RPI-RP2 drive instead of fixed 5s wait
             $PicoDrive = $null
+            $MaxWaitSeconds = 30
+            $PollIntervalSeconds = 0.5
+            $Elapsed = 0
 
-            Get-Volume | Where-Object { $_.FileSystemLabel -eq "RPI-RP2" } | ForEach-Object {
-                $PicoDrive = $_.DriveLetter
+            while ($Elapsed -lt $MaxWaitSeconds) {
+                $PicoDrive = $null
+                Get-Volume | Where-Object { $_.FileSystemLabel -eq "RPI-RP2" } | ForEach-Object {
+                    $PicoDrive = $_.DriveLetter
+                    if ($PicoDrive) {
+                        $PicoDrive = $PicoDrive + ":"
+                    }
+                }
+                if (-not $PicoDrive) {
+                    $drives = Get-WmiObject -Class Win32_LogicalDisk -ErrorAction SilentlyContinue | Where-Object { $_.VolumeName -eq "RPI-RP2" }
+                    foreach ($drive in $drives) {
+                        $PicoDrive = $drive.DeviceID
+                        break
+                    }
+                }
                 if ($PicoDrive) {
-                    $PicoDrive = $PicoDrive + ":"
+                    break
                 }
-            }
-
-            if (-not $PicoDrive) {
-                # Try alternative detection via WMI
-                $drives = Get-WmiObject -Class Win32_LogicalDisk | Where-Object { $_.VolumeName -eq "RPI-RP2" }
-                foreach ($drive in $drives) {
-                    $PicoDrive = $drive.DeviceID
-                }
+                Start-Sleep -Seconds $PollIntervalSeconds
+                $Elapsed += $PollIntervalSeconds
             }
 
             if (-not $PicoDrive) {
@@ -384,19 +425,22 @@ if ($BuildDevice -or $FlashPico) {
                 Print-Success "Firmware flashed successfully!"
                 Write-Host ""
                 Print-Info "The Pico will reboot and start running the new firmware"
-            } catch {
+            }
+            catch {
                 Print-Error-Custom "Failed to copy firmware to Pico: $_"
                 Write-Host ""
                 Print-Info "Make sure the RPI-RP2 drive is still accessible"
                 exit 1
             }
-        } else {
+        }
+        else {
             Write-Host ""
             Print-Info "To flash to Pico:"
             Write-Host "  1. Hold BOOTSEL while plugging in the Pico"
             Write-Host "  2. Copy the .uf2 file to the RPI-RP2 drive"
         }
-    } else {
+    }
+    else {
         Print-Warning "Build completed but .uf2 file not found at expected location"
         Print-Info "Check $DeviceBuildDir for output files"
     }
@@ -436,7 +480,8 @@ if (-not (Test-Path $CMakeCachePath)) {
 
         Print-Info "Using Generator: $Generator -A $Arch"
         $CMakeArgs += "-G", $Generator, "-A", $Arch
-    } else {
+    }
+    else {
         # Linux configuration - let CMake pick default
         Print-Info "Using default generator"
     }
@@ -447,7 +492,8 @@ if (-not (Test-Path $CMakeCachePath)) {
         exit 1
     }
     Print-Success "CMake configured"
-} else {
+}
+else {
     Print-Info "Using existing CMake configuration"
 }
 
@@ -471,7 +517,8 @@ if ($CurrentIsWindows) {
 
     if (Test-Path $TestExecPathDebug) {
         $TestExec = $TestExecPathDebug
-    } else {
+    }
+    else {
         $TestExecPathRelease = Join-Path $BuildDir "pc_sim"
         $TestExecPathRelease = Join-Path $TestExecPathRelease "Release"
         $TestExecPathRelease = Join-Path $TestExecPathRelease "pc_sim_test.exe"
@@ -480,7 +527,8 @@ if ($CurrentIsWindows) {
             $TestExec = $TestExecPathRelease
         }
     }
-} else {
+}
+else {
     # Linux: Look directly in target directory without extension
     # Try typical Makefile output location
     $TestExecPath = Join-Path $BuildDir "pc_sim"
@@ -495,15 +543,16 @@ if (-not $TestExec) {
     # Fallback: search recursively because output directories can be customized
     if ($CurrentIsWindows) {
         $Found = Get-ChildItem -Path $BuildDir -Recurse -Filter "pc_sim_test.exe" -ErrorAction SilentlyContinue |
-            Select-Object -First 1
+        Select-Object -First 1
         if ($Found) {
             $TestExec = $Found.FullName
             Print-Warning "Using discovered test executable: $TestExec"
         }
-    } else {
+    }
+    else {
         $Found = Get-ChildItem -Path $BuildDir -Recurse -Filter "pc_sim_test" -ErrorAction SilentlyContinue |
-            Where-Object { -not $_.PSIsContainer } |
-            Select-Object -First 1
+        Where-Object { -not $_.PSIsContainer } |
+        Select-Object -First 1
         if ($Found) {
             $TestExec = $Found.FullName
             Print-Warning "Using discovered test executable: $TestExec"
@@ -515,7 +564,8 @@ if (-not $TestExec) {
     Print-Error-Custom "Test executable not found"
     if ($CurrentIsWindows) {
         Print-Info "Checked Debug/Release and recursive fallback for pc_sim_test.exe"
-    } else {
+    }
+    else {
         Print-Info "Checked default and recursive fallback for pc_sim_test"
     }
     exit 1
@@ -529,7 +579,8 @@ Write-Host "======================================"
 # Run tests
 if ($Verbose) {
     & $TestExec --gtest_color=yes
-} else {
+}
+else {
     & $TestExec --gtest_color=yes --gtest_brief=1
 }
 
@@ -540,7 +591,8 @@ Write-Host "======================================"
 if ($TestResult -eq 0) {
     Print-Success "All tests passed!"
     exit 0
-} else {
+}
+else {
     Print-Error-Custom "Some tests failed!"
     Write-Host ""
     Print-Info "Tip: Run with -Verbose flag for detailed output"

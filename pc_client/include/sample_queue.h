@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <atomic>
 #include <condition_variable>
@@ -15,9 +15,10 @@ public:
     struct Sample {
         uint32_t seq = 0;
         uint64_t host_timestamp_us = 0;
+        uint64_t host_timestamp_unix_us = 0;
         std::vector<uint8_t> raw_data;
-        uint32_t device_timestamp_us = 0;
-        uint64_t device_timestamp_unix_us = 0;  // 新增：绝对时间戳
+        uint64_t device_timestamp_us = 0;
+        uint64_t device_timestamp_unix_us = 0;  // Absolute timestamp (Unix us)
     };
 
     SampleQueue() = default;
@@ -38,7 +39,7 @@ private:
     mutable std::mutex mutex_;
     std::condition_variable cv_;
     std::atomic<bool> stop_requested_{false};
-    size_t max_size_ = 1000000;  // 默认100万条采样缓冲
+    size_t max_size_ = 1000000;  // Default 1M sample buffer
 };
 
 }  // namespace client

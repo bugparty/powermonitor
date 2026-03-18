@@ -50,7 +50,9 @@ After TIME_SET, the NTP-style TIME_SYNC works correctly if PC also uses Unix tim
 2. **Device** responds with T2, T3 (both are Unix time = monotonic + epoch_offset)
 3. **PC** calculates using Unix time algorithm:
    - delay = (T4 - T1) - (T3 - T2)
-   - offset = (T2 - T1 + T3 - T4) / 2
+   - forward_offset = T1 - T2  (host→device path only)
+   - ntp_offset = (T2 - T1 + T3 - T4) / 2  (symmetric NTP)
+   - **offset = `choose_offset(T1,T2,T3,T4)`** — see [Asymmetry-Aware Offset Selection](#asymmetry-aware-offset-selection) below
 4. **PC** sends `TIME_ADJUST(-offset)` to correct drift
 
 ```
@@ -71,7 +73,7 @@ Example:
 4. **Master** receives the reply at timestamp T4 (locally calculated)
 5. **Master** calculates:
    - Network delay: `delay = (T4 - T1) - (T3 - T2)`
-   - Clock offset: `offset = ((T2 - T1) + (T3 - T4)) / 2`
+   - Clock offset: see [Asymmetry-Aware Offset Selection](#asymmetry-aware-offset-selection)
 6. **Master** sends a Time Sync Command with the negative offset
 7. **Slave** adjusts its clock by adding the received offset
 
@@ -103,6 +105,29 @@ sequenceDiagram
     
     Note over S: Adjust clock offset
 ```
+
+## Asymmetry-Aware Offset Selection
+
+USB serial links can be asymmetric: the host→device path delay may differ significantly from the device→host path. Standard NTP averages both paths, which introduces error when they are unequal.
+
+The PC implements `choose_offset(T1, T2, T3, T4)` in `pc_client/src/power_monitor_session.cpp`:
+
+```
+forward_offset = T1 - T2          // host→device path only
+ntp_offset     = (T2-T1 + T3-T4) / 2  // standard NTP average
+asymmetry      = |forward_offset - reverse_offset|
+                 where reverse_offset = T3 - T4
+
+if asymmetry > kAsymmetryThresholdUs (2000 µs):
+    use forward_offset   // asymmetric link: trust only host→device
+else:
+    use ntp_offset       // symmetric link: use full NTP average
+```
+
+**Rationale:**
+- When `|forward - reverse| > 2000 µs`, the return path is clearly delayed (e.g. by device processing, USB scheduling) and averaging it in would bias the result.
+- Falling back to `forward_offset` (T1 - T2) keeps the estimate conservative: it only relies on the host-to-device direction where jitter is lower.
+- The threshold `kAsymmetryThresholdUs = 2000` is tunable per link in the source.
 
 ## Special Commands
 
@@ -207,7 +232,7 @@ To improve sync accuracy and filter out outliers, the PC performs multiple sync 
 - Runs 10 rounds of TIME_SYNC
 - Collects all valid offsets
 - Applies the **minimum offset** at the end
-- After 3 seconds from sync start, rejects any offset >1000μs (outlier filtering)
+- After 30 seconds from sync start, rejects any offset >1000μs (outlier filtering)
 
 **Periodic Sync (every 2 minutes):**
 - Runs 3 rounds of TIME_SYNC

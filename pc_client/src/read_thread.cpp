@@ -55,6 +55,12 @@ namespace {
 constexpr uint8_t kMsgDataSample = 0x80;
 constexpr uint8_t kMsgTextReport = 0x93;
 
+uint64_t now_unix_us_local() {
+    auto now = std::chrono::system_clock::now().time_since_epoch();
+    return static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::microseconds>(now).count());
+}
+
 struct ParserState {
     protocol::Parser parser;
     ResponseQueue* response_q = nullptr;
@@ -94,8 +100,8 @@ struct ParserState {
                 return;
             }
 
-            // Only support new 24-byte format: timestamp_unix_us(8) + timestamp_us(4) + flags(1) + vbus20(3) + vshunt20(3) + current20(3) + dietemp16(2)
-            if (frame.data.size() < 24) {
+            // Only support new 28-byte format: timestamp_unix_us(8) + timestamp_us(8) + flags(1) + vbus20(3) + vshunt20(3) + current20(3) + dietemp16(2)
+            if (frame.data.size() < 28) {
                 stats->crc_fail.fetch_add(1, std::memory_order_relaxed);
                 return;
             }
@@ -103,8 +109,9 @@ struct ParserState {
             SampleQueue::Sample sample;
             sample.seq = frame.seq;
             sample.host_timestamp_us = receive_time_us;
+            sample.host_timestamp_unix_us = now_unix_us_local();
             sample.device_timestamp_unix_us = unpack_u64(frame.data.data());
-            sample.device_timestamp_us = unpack_u32(frame.data.data() + 8);
+            sample.device_timestamp_us = unpack_u64(frame.data.data() + 8);
             sample.raw_data = frame.data;
 
             if (!sample_q->push(std::move(sample))) {

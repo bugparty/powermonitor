@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "protocol/frame_builder.h"
+#include "sample_queue.h"
 #include "session.h"
 
 namespace serial {
@@ -17,7 +18,6 @@ class Serial;
 namespace powermonitor {
 namespace client {
 
-class SampleQueue;
 class ResponseQueue;
 class ReadThread;
 class Session;
@@ -34,6 +34,7 @@ public:
         bool usb_stress_mode = false;
         bool verbose = false;
         bool interactive = false;
+        bool debug_time_sync = false;
         bool no_apply_time_offset = false;  // If true, do not send TIME_ADJUST after sync
         uint32_t duration_s = 0;
         uint64_t duration_us = 0;
@@ -78,6 +79,8 @@ private:
     void append_log(const std::string& message);
     void print_statistics(bool inline_mode = false) const;
     void save_and_exit();
+    void emit_time_sync_debug(const std::string& message);
+    void maybe_debug_time_sync_sample(const SampleQueue::Sample& sample);
 
     struct UiState {
         mutable std::mutex mutex;
@@ -119,6 +122,7 @@ private:
      uint8_t cmd_seq_ = 0;
      uint64_t sync_start_time_us_ = 0;  // Set when first TIME_SET succeeds
      bool time_sync_succeeded_ = false;  // Tracks if TIME_SYNC completed successfully
+     std::atomic<int> debug_time_sync_samples_remaining_{0};
      std::mutex command_mutex_;
      mutable size_t last_stats_width_ = 0;
      UiState ui_state_;

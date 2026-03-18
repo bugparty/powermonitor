@@ -420,7 +420,7 @@ private:
             cmd->channel_mask & static_cast<uint16_t>(~kStreamMaskUsbStressMode));
 
         // Start streaming with given parameters
-        ctx_.start_streaming(cmd->period_us, channel_mask, time_us_32());
+        ctx_.start_streaming(cmd->period_us, channel_mask, time_us_64());
         ctx_.usb_stress_mode = usb_stress_mode;
         last_stats_report_us_ = time_us_64();
 

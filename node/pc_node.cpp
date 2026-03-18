@@ -152,15 +152,18 @@ void PCNode::handle_rsp(const protocol::Frame &frame, uint64_t receive_time_us) 
     const uint8_t status = frame.data[1];
     auto it = pending_.find(frame.seq);
     if (it == pending_.end()) {
+        ++orphan_rsp_count_;  // Late or duplicate RSP — no matching pending command
         return;
     }
     if (it->second.msgid != orig_msgid) {
+        ++orphan_rsp_count_;  // orig_msgid mismatch — seq collision or protocol error
         return;
     }
     pending_.erase(it);
     std::cout << "RSP msgid=0x" << std::hex << static_cast<int>(orig_msgid)
               << " status=0x" << static_cast<int>(status) << std::dec << "\n";
     if (status != kStatusOk) {
+        ++error_rsp_count_;
         return;
     }
 
@@ -214,7 +217,8 @@ void PCNode::handle_text_report(const protocol::Frame &frame) {
 }
 
 void PCNode::handle_data_sample(const protocol::Frame &frame) {
-    if (frame.data.size() < 37) {
+    if (frame.data.size() < 41) {
+        ++truncated_data_count_;
         return;
     }
     if (!has_data_seq_) {
@@ -228,15 +232,16 @@ void PCNode::handle_data_sample(const protocol::Frame &frame) {
         last_data_seq_ = frame.seq;
     }
 
-    const uint32_t timestamp = protocol::read_u32(frame.data, 8);
-    const uint8_t flags = frame.data[12];
-    const uint8_t *vbus20 = &frame.data[13];
-    const uint8_t *vshunt20 = &frame.data[16];
-    const uint8_t *current20 = &frame.data[19];
-    const uint8_t *power24 = &frame.data[22];
-    const int16_t temp_raw = static_cast<int16_t>(protocol::read_u16(frame.data, 25));
-    const uint8_t *energy40 = &frame.data[27];
-    const uint8_t *charge40 = &frame.data[32];
+    // Wire layout (41 bytes): timestamp_unix_us(8) + timestamp_us(8) + flags(1) + ...
+    const uint64_t timestamp = protocol::read_u64(frame.data, 8);
+    const uint8_t flags = frame.data[16];
+    const uint8_t *vbus20 = &frame.data[17];
+    const uint8_t *vshunt20 = &frame.data[20];
+    const uint8_t *current20 = &frame.data[23];
+    const uint8_t *power24 = &frame.data[26];
+    const int16_t temp_raw = static_cast<int16_t>(protocol::read_u16(frame.data, 29));
+    const uint8_t *energy40 = &frame.data[31];
+    const uint8_t *charge40 = &frame.data[36];
 
     const uint32_t vbus_raw = protocol::unpack_u20(vbus20);
     const int32_t vshunt_raw = protocol::unpack_s20(vshunt20);
@@ -249,7 +254,9 @@ void PCNode::handle_data_sample(const protocol::Frame &frame) {
                                            power_raw, energy_raw, charge_raw,
                                            current_lsb_nA_, adcrange_);
 
-    if ((timestamp % 1000000U) < 1000U) {
+    last_timestamp_us_ = timestamp;
+
+    if ((timestamp % 1000000ULL) < 1000ULL) {
         std::cout << "DATA ts_us=" << timestamp << " flags=0x" << std::hex
                   << static_cast<int>(flags) << std::dec << " vbus=" << sample.vbus_v
                   << " current=" << sample.current_a << " temp=" << sample.temp_c

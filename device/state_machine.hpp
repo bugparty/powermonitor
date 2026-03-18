@@ -31,7 +31,7 @@ struct DeviceContext {
     // Streaming configuration
     uint16_t stream_period_us = 1000;   // Default 1kHz
     uint16_t stream_mask = 0x000F;      // All channels enabled
-    uint32_t stream_start_us = 0;       // Timestamp when streaming started
+    uint64_t stream_start_us = 0;       // Timestamp when streaming started
     bool usb_stress_mode = false;       // Continuous fixed-sample streaming for USB throughput test
 
     // INA228 configuration (from SET_CFG)
@@ -63,7 +63,7 @@ struct DeviceContext {
     }
 
     // Start streaming and update shared context for sampler core
-    void start_streaming(uint16_t period_us, uint16_t mask, uint32_t now_us) {
+    void start_streaming(uint16_t period_us, uint16_t mask, uint64_t now_us) {
         stream_period_us = period_us;
         stream_mask = mask;
         stream_start_us = now_us;

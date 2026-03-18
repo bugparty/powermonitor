@@ -128,9 +128,12 @@ static bool usb_cdc_write_no_flush(const uint8_t *data, size_t len) {
   return usb_cdc_write<false>(data, len, 100000);
 }
 
-// Parser callback - called when a complete frame is received
+// Parser callback - called when a complete frame is received.
+// T2 is captured here, immediately after CRC verification and before
+// handle_frame(), so it reflects precisely when this specific frame completed.
 static void on_frame_received(const protocol::Frame &frame, void *user_data) {
   (void)user_data;
+  device::g_last_frame_recv_time_us = time_us_64();
   if (g_handler) {
     g_handler->handle_frame(frame);
   }
@@ -144,8 +147,7 @@ static void process_streaming_usb_stress() {
 
   for (uint8_t i = 0; i < kStressBurstFramesPerLoop; ++i) {
     core::RawSample sample{};
-    sample.timestamp_us =
-        static_cast<uint32_t>(time_us_64() - g_ctx.stream_start_us);
+    sample.timestamp_us = time_us_64() - g_ctx.stream_start_us;
     sample.vbus_raw = kStressVbusRaw;
     sample.vshunt_raw = kStressVshuntRaw;
     sample.current_raw = kStressCurrentRaw;
@@ -278,12 +280,11 @@ int main() {
         g_boot_text_sent = true;
       }
     }
-    // Process incoming USB data (always, for fast T2 capture during sync)
+    // Process incoming USB data
     if (tud_cdc_available()) {
       uint8_t buf[64];
       auto count = tud_cdc_read(buf, sizeof(buf));
       if (count > 0) {
-        device::g_last_frame_recv_time_us = time_us_64();
         g_parser.feed(buf, count);
       }
     }

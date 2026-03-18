@@ -14,9 +14,6 @@
 #define NOMINMAX
 #include <windows.h>
 #endif
-#include <chrono>
-#include <thread>
-using namespace std::chrono_literals;
 
 #include <CLI/CLI.hpp>
 #include <ftxui/component/component.hpp>
@@ -49,7 +46,8 @@ constexpr uint16_t kStreamMaskUsbStressMode = 0x8000;
 constexpr int kInitialSyncRounds = 10;
 constexpr int kPeriodicSyncRounds = 3;
 constexpr int64_t kMaxOffsetAfterInitUs = 1000;   // Reject |offset| > 1000 us after init
-constexpr uint64_t kInitPeriodUs = 30000000ULL;    // 3 seconds from sync start before applying filter
+constexpr uint64_t kInitPeriodUs = 30000000ULL;    // 30 seconds from sync start before applying filter
+constexpr int64_t kAsymmetryThresholdUs = 2000;    // Asymmetry threshold — tune per link
 
 uint64_t now_steady_us() {
     const auto now = std::chrono::steady_clock::now().time_since_epoch();
@@ -88,6 +86,20 @@ int64_t signed_diff_u64(uint64_t a, uint64_t b) {
         return static_cast<int64_t>(a - b);
     }
     return -static_cast<int64_t>(b - a);
+}
+
+int64_t choose_offset(int64_t T1, int64_t T2, int64_t T3, int64_t T4) {
+    int64_t forward = T1 - T2;
+    int64_t reverse = T3 - T4;
+    int64_t offset_ntp = ((T1 - T2) + (T4 - T3)) / 2;
+    int64_t asym = llabs(forward - reverse);
+
+    // Asymmetry threshold — tune per link; 2000us is a good starting point
+    if (asym > kAsymmetryThresholdUs) {
+        return forward;    // Asymmetric link: fall back to forward-path-only offset
+    } else {
+        return offset_ntp; // Symmetric link: use full NTP offset
+    }
 }
 
 // Scrollable log area: focusable component with scroll_y in [0,1]. Uses
@@ -178,8 +190,6 @@ PowerMonitorSession::PowerMonitorSession(const Options& options)
     session_ = std::make_unique<Session>();
     stats_ = std::make_unique<ThreadStats>();
 
-    // Set initial timestamp rollover state
-    session_->process_device_timestamp(0);
 }
 
 PowerMonitorSession::~PowerMonitorSession() {
@@ -375,6 +385,7 @@ bool PowerMonitorSession::initialize_device() {
             std::ostringstream oss;
             oss << "TIME_SET succeeded: unix_time_us=" << unix_time_us;
             append_log(oss.str());
+            emit_time_sync_debug(oss.str());
             // Record sync start time for offset filtering
             sync_start_time_us_ = now_unix_us();
             if (!run_time_sync_rounds(kInitialSyncRounds)) {
@@ -390,8 +401,6 @@ bool PowerMonitorSession::initialize_device() {
             time_sync_succeeded_ = false;
         }
     }
-
-
 
     // Start stream
     if (!start_streaming()) {
@@ -470,19 +479,7 @@ bool PowerMonitorSession::stop_streaming() {
     append_log(ok ? "STREAM_STOP acknowledged" : "STREAM_STOP failed");
     return ok;
 }
-int64_t choose_offset(int64_t T1, int64_t T2, int64_t T3, int64_t T4) {
-    int64_t forward = T1 - T2;
-    int64_t reverse = T3 - T4;
-    int64_t offset_ntp = ((T1 - T2) + (T4 - T3)) / 2;
-    int64_t asym = llabs(forward - reverse);
 
-    // 阈值可以按你的链路调，先从 2000us 开始
-    if (asym > 2000) {
-        return forward;   // 降级：只信 host->device
-    } else {
-        return offset_ntp; // 对称时用 NTP
-    }
-}
 bool PowerMonitorSession::perform_time_sync_once(std::string* detail, int64_t* out_offset, bool send_adjust) {
     if (detail) {
         detail->clear();
@@ -521,7 +518,7 @@ bool PowerMonitorSession::perform_time_sync_once(std::string* detail, int64_t* o
         if (offset > kMaxOffsetAfterInitUs || offset < -kMaxOffsetAfterInitUs) {
             if (detail) {
                 *detail = "offset rejected: " + std::to_string(offset) + "us (max " +
-                          std::to_string(static_cast<int>(kMaxOffsetAfterInitUs)) + "us after 3s)";
+                          std::to_string(static_cast<int>(kMaxOffsetAfterInitUs)) + "us after 30s)";
             }
             return false;
         }
@@ -561,17 +558,20 @@ bool PowerMonitorSession::run_time_sync_rounds(int rounds) {
     }
     std::vector<int64_t> offsets;
     for (int i = 0; i < rounds; ++i) {
-        std::this_thread::sleep_for(5ms);
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
         std::string detail;
         int64_t offset = 0;
         // Pass false for send_adjust so we can calculate min offset and send once at the end
         if (!perform_time_sync_once(&detail, &offset, false)) {
             append_log("Time sync round " + std::to_string(i + 1) + "/" + std::to_string(rounds) + " failed: " + detail);
+            emit_time_sync_debug("Time sync round " + std::to_string(i + 1) + "/" + std::to_string(rounds) + " failed: " + detail);
             return false;
         }
         offsets.push_back(offset);
         append_log("Time sync round " + std::to_string(i + 1) + "/" + std::to_string(rounds) + " ok: offset=" + std::to_string(offset) + "us");
         append_log(detail);
+        emit_time_sync_debug("Time sync round " + std::to_string(i + 1) + "/" + std::to_string(rounds) + " ok: offset=" + std::to_string(offset) + "us");
+        emit_time_sync_debug(detail);
     }
 
     // Apply minimum offset (best result) unless disabled by --no-apply-time-offset
@@ -581,10 +581,15 @@ bool PowerMonitorSession::run_time_sync_rounds(int rounds) {
         pack_s64_le(adjust_payload, -min_offset);
         if (send_command_with_retry(protocol::MsgId::kTimeAdjust, adjust_payload, nullptr, false)) {
             append_log("Applied min offset: " + std::to_string(min_offset) + "us");
+            emit_time_sync_debug("Applied min offset: " + std::to_string(min_offset) + "us");
         }
     } else if (options_.no_apply_time_offset && !offsets.empty()) {
         int64_t min_offset = *std::min_element(offsets.begin(), offsets.end());
         append_log("Time sync offset (not applied): min=" + std::to_string(min_offset) + "us (--no-apply-time-offset)");
+        emit_time_sync_debug("Time sync offset (not applied): min=" + std::to_string(min_offset) + "us (--no-apply-time-offset)");
+    }
+    if (options_.debug_time_sync) {
+        debug_time_sync_samples_remaining_.store(8, std::memory_order_relaxed);
     }
     return true;
 }
@@ -795,27 +800,27 @@ void PowerMonitorSession::process_samples_loop() {
 
     while (!stop_requested_.load()) {
         if (sample_queue_->pop_wait(sample)) {
-            if (sample.raw_data.size() < 37) continue;
+            if (sample.raw_data.size() < 41) continue;
 
-            // DATA_SAMPLE (37-byte layout): timestamp_unix_us(8) + timestamp_us(4), then flags and packed fields.
-            // Offsets: timestamp_unix_us@0, timestamp_us@8, flags@12, vbus20@13, vshunt20@16, current20@19,
-            // power24@22, dietemp16@25, energy40@27, charge40@32
+            // DATA_SAMPLE (41-byte layout): timestamp_unix_us(8) + timestamp_us(8), then flags and packed fields.
+            // Offsets: timestamp_unix_us@0, timestamp_us@8, flags@16, vbus20@17, vshunt20@20, current20@23,
+            // power24@26, dietemp16@29, energy40@31, charge40@36
             // See protocol::DataSamplePayload (device/protocol/frame_defs.hpp) for packed field order.
 
             Session::Sample session_sample;
             session_sample.seq = sample.seq;
             session_sample.host_timestamp_us = sample.host_timestamp_us;
-            session_sample.device_timestamp_us = session_->process_device_timestamp(sample.device_timestamp_us);
+            session_sample.device_timestamp_us = sample.device_timestamp_us;
             session_sample.device_timestamp_unix_us = sample.device_timestamp_unix_us;
 
-            const size_t flags_offset = 12;
-            const size_t vbus_offset = 13;
-            const size_t vshunt_offset = 16;
-            const size_t current_offset = 19;
-            const size_t power_offset = 22;
-            const size_t temp_offset = 25;
-            const size_t energy_offset = 27;
-            const size_t charge_offset = 32;
+            const size_t flags_offset = 16;
+            const size_t vbus_offset = 17;
+            const size_t vshunt_offset = 20;
+            const size_t current_offset = 23;
+            const size_t power_offset = 26;
+            const size_t temp_offset = 29;
+            const size_t energy_offset = 31;
+            const size_t charge_offset = 36;
 
             session_sample.flags = sample.raw_data[flags_offset];
             session_sample.vbus_raw = protocol::unpack_u20(sample.raw_data.data() + vbus_offset);
@@ -827,6 +832,7 @@ void PowerMonitorSession::process_samples_loop() {
             session_sample.charge_raw = protocol::unpack_s40(sample.raw_data.data() + charge_offset);
 
             session_->add_sample(session_sample);
+            maybe_debug_time_sync_sample(sample);
             sample_counter_.fetch_add(1, std::memory_order_relaxed);
             if ((session_sample.flags & 0x10U) == 0) {
                 std::lock_guard<std::mutex> lock(ui_state_.mutex);
@@ -838,21 +844,21 @@ void PowerMonitorSession::process_samples_loop() {
 
     // Drain any remaining samples from the queue before exit.
     while (sample_queue_->pop(sample)) {
-        if (sample.raw_data.size() >= 37) {
+        if (sample.raw_data.size() >= 41) {
             Session::Sample session_sample;
             session_sample.seq = sample.seq;
             session_sample.host_timestamp_us = sample.host_timestamp_us;
-            session_sample.device_timestamp_us = session_->process_device_timestamp(sample.device_timestamp_us);
+            session_sample.device_timestamp_us = sample.device_timestamp_us;
             session_sample.device_timestamp_unix_us = sample.device_timestamp_unix_us;
 
-            const size_t flags_offset = 12;
-            const size_t vbus_offset = 13;
-            const size_t vshunt_offset = 16;
-            const size_t current_offset = 19;
-            const size_t power_offset = 22;
-            const size_t temp_offset = 25;
-            const size_t energy_offset = 27;
-            const size_t charge_offset = 32;
+            const size_t flags_offset = 16;
+            const size_t vbus_offset = 17;
+            const size_t vshunt_offset = 20;
+            const size_t current_offset = 23;
+            const size_t power_offset = 26;
+            const size_t temp_offset = 29;
+            const size_t energy_offset = 31;
+            const size_t charge_offset = 36;
 
             session_sample.flags = sample.raw_data[flags_offset];
             session_sample.vbus_raw = protocol::unpack_u20(sample.raw_data.data() + vbus_offset);
@@ -864,6 +870,7 @@ void PowerMonitorSession::process_samples_loop() {
             session_sample.charge_raw = protocol::unpack_s40(sample.raw_data.data() + charge_offset);
 
             session_->add_sample(session_sample);
+            maybe_debug_time_sync_sample(sample);
             sample_counter_.fetch_add(1, std::memory_order_relaxed);
             if ((session_sample.flags & 0x10U) == 0) {
                 std::lock_guard<std::mutex> lock(ui_state_.mutex);
@@ -1109,6 +1116,38 @@ void PowerMonitorSession::append_log(const std::string& message) {
     constexpr size_t kMaxLogs = 500;
     while (ui_state_.logs.size() > kMaxLogs) {
         ui_state_.logs.pop_front();
+    }
+}
+
+void PowerMonitorSession::emit_time_sync_debug(const std::string& message) {
+    if (!options_.debug_time_sync) {
+        return;
+    }
+    append_log("[TIME_DEBUG] " + message);
+    if (!options_.interactive) {
+        std::cerr << "[TIME_DEBUG] " << message << std::endl;
+    }
+}
+
+void PowerMonitorSession::maybe_debug_time_sync_sample(const SampleQueue::Sample& sample) {
+    if (!options_.debug_time_sync) {
+        return;
+    }
+    int remaining = debug_time_sync_samples_remaining_.load(std::memory_order_relaxed);
+    while (remaining > 0) {
+        if (debug_time_sync_samples_remaining_.compare_exchange_weak(
+                remaining, remaining - 1, std::memory_order_relaxed, std::memory_order_relaxed)) {
+            const int64_t delta_unix_us = signed_diff_u64(sample.device_timestamp_unix_us, sample.host_timestamp_unix_us);
+            std::ostringstream oss;
+            oss << "sample seq=" << sample.seq
+                << " host_unix_us=" << sample.host_timestamp_unix_us
+                << " device_unix_us=" << sample.device_timestamp_unix_us
+                << " delta_us(device-host)=" << delta_unix_us
+                << " host_steady_us=" << sample.host_timestamp_us
+                << " device_rel_us=" << sample.device_timestamp_us;
+            emit_time_sync_debug(oss.str());
+            break;
+        }
     }
 }
 

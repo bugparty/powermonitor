@@ -5,12 +5,12 @@
 
 namespace core {
 
-// Compact representation of one sensor reading (28 bytes)
+// Compact representation of one sensor reading
 // Used for inter-core communication via ring buffer
 // Field order: 8-byte first for alignment, then 4-byte, 2-byte, 1-byte
 struct RawSample {
     uint64_t timestamp_unix_us;      // Absolute Unix timestamp (sampling time + epoch_offset)
-    uint32_t timestamp_us;           // Relative to stream start (sampling time)
+    uint64_t timestamp_us;           // Relative to stream start (sampling time, 64-bit)
     uint64_t energy_raw;            // 40-bit unsigned
     int64_t charge_raw;             // 40-bit signed
     uint32_t vbus_raw;              // 20-bit unsigned raw value (in low 20 bits)
@@ -23,7 +23,7 @@ struct RawSample {
 };
 
 // 48 bytes data + potential tail padding for alignment
-static_assert(sizeof(RawSample) >= 48, "RawSample must be at least 48 bytes");
+static_assert(sizeof(RawSample) >= 52, "RawSample must be at least 52 bytes");
 
 // Flag bit definitions
 namespace SampleFlags {

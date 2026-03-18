@@ -66,15 +66,6 @@ void Session::save(const std::string& filepath) const {
     file << std::setw(2) << root << std::endl;
 }
 
-uint64_t Session::process_device_timestamp(uint32_t ts_us) {
-    if (ts_us < last_device_ts_ && last_device_ts_ - ts_us > 0x80000000) {
-        // Rollover detected
-        overflow_count_++;
-    }
-    last_device_ts_ = ts_us;
-    return (overflow_count_ << 32) | ts_us;
-}
-
 nlohmann::json Session::sample_to_json(const Sample& sample) const {
     nlohmann::json j;
     j["seq"] = sample.seq;

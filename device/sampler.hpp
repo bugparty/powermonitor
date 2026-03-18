@@ -112,11 +112,11 @@ static void sampler_do_work_dma(SamplerContext *ctx) {
   core::SharedContext *shared = ctx->shared;
   core::RawSample sample;
 
-  // Calculate timestamp relative to stream start
-  uint32_t now = time_us_32();
-  sample.timestamp_us = now - shared->stream_start_us;
+  // Calculate timestamp relative to stream start (64-bit, no wraparound)
+  uint64_t now64 = time_us_64();
+  sample.timestamp_us = now64 - shared->stream_start_us;
   // Calculate absolute Unix timestamp at sampling time (not send time)
-  sample.timestamp_unix_us = static_cast<uint64_t>(now) +
+  sample.timestamp_unix_us = now64 +
                              static_cast<uint64_t>(shared->epoch_offset_us);
 
   // Gate reads by conversion-ready (CNVRF) to avoid sampling mid-conversion
@@ -354,9 +354,9 @@ static void sampler_do_work_nodma(SamplerContext *ctx) {
   uint64_t charge_reg40 = ((uint64_t)buf5[0] << 32) | ((uint64_t)buf5[1] << 24) |
                           ((uint64_t)buf5[2] << 16) | ((uint64_t)buf5[3] << 8) | buf5[4];
 
-    uint32_t now = time_us_32();
-    sample.timestamp_us = now - shared->stream_start_us;
-    sample.timestamp_unix_us = static_cast<uint64_t>(now) +
+    uint64_t now64 = time_us_64();
+    sample.timestamp_us = now64 - shared->stream_start_us;
+    sample.timestamp_unix_us = now64 +
                         static_cast<uint64_t>(shared->epoch_offset_us);
   sample.vbus_raw = vbus_raw;
   sample.vshunt_raw = vshunt_raw;

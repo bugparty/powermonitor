@@ -33,6 +33,16 @@ public:
     uint64_t retransmit_count() const { return retransmit_count_; }
     uint64_t get_rx_count(uint8_t msgid) const { return rx_counts_[msgid]; }
 
+    // Counters for silent-drop paths — useful for fault-injection tests.
+    uint64_t orphan_rsp_count() const { return orphan_rsp_count_; }     // RSP with no matching pending cmd
+    uint64_t error_rsp_count() const { return error_rsp_count_; }       // RSP with non-OK status
+    uint64_t truncated_data_count() const { return truncated_data_count_; } // DATA_SAMPLE too short
+
+    // Last values parsed from a CFG_REPORT.
+    uint32_t current_lsb_nA() const { return current_lsb_nA_; }
+    uint16_t stream_period_us_cfg() const { return stream_period_us_; }
+    uint16_t stream_mask_cfg() const { return stream_mask_; }
+
 private:
     // Tracks an outstanding command awaiting RSP, used for timeout/retransmit logic.
     struct PendingCmd {
@@ -63,9 +73,16 @@ private:
     uint64_t data_drop_count_ = 0;
     uint64_t timeout_count_ = 0;
     uint64_t retransmit_count_ = 0;
+    uint64_t orphan_rsp_count_ = 0;
+    uint64_t error_rsp_count_ = 0;
+    uint64_t truncated_data_count_ = 0;
     uint64_t rx_counts_[256] = {};
     uint64_t time_sync_T1_ = 0;  // T1 timestamp for TIME_SYNC calculation
     uint64_t current_time_us_ = 0;  // Current time updated in tick()
+    uint64_t last_timestamp_us_ = 0;  // Last parsed DATA_SAMPLE timestamp_us
+
+public:
+    uint64_t last_timestamp_us() const { return last_timestamp_us_; }
 };
 
 } // namespace node

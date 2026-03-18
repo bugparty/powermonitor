@@ -15,8 +15,9 @@ public:
     struct Sample {
         uint32_t seq = 0;
         uint64_t host_timestamp_us = 0;
+        uint64_t host_timestamp_unix_us = 0;
         std::vector<uint8_t> raw_data;
-        uint32_t device_timestamp_us = 0;
+        uint64_t device_timestamp_us = 0;
         uint64_t device_timestamp_unix_us = 0;  // Absolute timestamp (Unix us)
     };
 

@@ -209,26 +209,29 @@ void DeviceNode::send_text_report(const char *text, size_t text_len, uint64_t no
 void DeviceNode::send_data_sample(uint64_t now_us) {
     const auto raw = model_.sample(now_us, current_lsb_nA_, adcrange_);
     std::vector<uint8_t> payload;
-    const uint32_t timestamp = static_cast<uint32_t>(now_us - stream_start_us_);
-    protocol::append_u32(payload, timestamp);
-    // Add absolute timestamp (sampling time, not send time)
+    // Wire order matches DataSamplePayload: timestamp_unix_us first, then timestamp_us
     const uint64_t timestamp_unix = now_us + epoch_offset_us_;
-    protocol::append_u64(payload, timestamp_unix);
+    protocol::append_u64(payload, timestamp_unix);              // offset 0-7: timestamp_unix_us
+    const uint64_t timestamp = now_us - stream_start_us_;
+    protocol::append_u64(payload, timestamp);                   // offset 8-15: timestamp_us (64-bit)
     uint8_t flags = 0;
     flags |= 0x01;
     if (shunt_cal_reg_ != 0) {
         flags |= 0x04;
     }
-    payload.push_back(flags);
+    payload.push_back(flags);                                   // offset 16: flags
 
     uint8_t buf[3] = {};
     protocol::pack_u20(raw.vbus_raw, buf);
-    payload.insert(payload.end(), buf, buf + 3);
+    payload.insert(payload.end(), buf, buf + 3);                // offset 17-19: vbus20
     protocol::pack_s20(raw.vshunt_raw, buf);
-    payload.insert(payload.end(), buf, buf + 3);
+    payload.insert(payload.end(), buf, buf + 3);                // offset 20-22: vshunt20
     protocol::pack_s20(raw.current_raw, buf);
-    payload.insert(payload.end(), buf, buf + 3);
-    protocol::append_u16(payload, static_cast<uint16_t>(raw.temp_raw));
+    payload.insert(payload.end(), buf, buf + 3);                // offset 23-25: current20
+    payload.insert(payload.end(), 3, 0);                        // offset 26-28: power24 (not modelled, zeros)
+    protocol::append_u16(payload, static_cast<uint16_t>(raw.temp_raw)); // offset 29-30: temp16
+    payload.insert(payload.end(), 5, 0);                        // offset 31-35: energy40 (not modelled, zeros)
+    payload.insert(payload.end(), 5, 0);                        // offset 36-40: charge40 (not modelled, zeros)
 
     const uint8_t seq = data_seq_++;
     auto bytes = protocol::build_frame(protocol::FrameType::kData, 0, seq, kMsgDataSample, payload);

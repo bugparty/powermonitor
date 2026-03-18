@@ -7,9 +7,18 @@ interface TopBarProps {
     onFitAll: () => void;
     downsampleMode: DownsampleMode;
     onDownsampleModeChange: (mode: DownsampleMode) => void;
+    alignSources: boolean;
+    onAlignSourcesChange: (enabled: boolean) => void;
 }
 
-export default function TopBar({ onFileChange, onFitAll, downsampleMode, onDownsampleModeChange }: TopBarProps) {
+export default function TopBar({
+    onFileChange,
+    onFitAll,
+    downsampleMode,
+    onDownsampleModeChange,
+    alignSources,
+    onAlignSourcesChange
+}: TopBarProps) {
     return (
         <header className="topbar">
             <h1>Power Monitor Timeline Viewer</h1>
@@ -32,6 +41,14 @@ export default function TopBar({ onFileChange, onFitAll, downsampleMode, onDowns
                         <option value="min-max">Min-Max</option>
                         <option value="lttb">LTTB</option>
                     </select>
+                </label>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--muted)" }}>
+                    <input
+                        type="checkbox"
+                        checked={alignSources}
+                        onChange={(e) => onAlignSourcesChange(e.target.checked)}
+                    />
+                    Align starts
                 </label>
             </div>
         </header>

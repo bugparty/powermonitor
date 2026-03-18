@@ -1,310 +1,253 @@
-﻿# PC Simulator Tests
+# PC Simulator Tests
 
 Related code:
-- `pc_sim/pc_sim_main.cpp`
+- `pc_sim/functional_test.cpp` — end-to-end functional tests (Google Test)
+- `pc_sim/state_machine_test.cpp` — parser state machine unit tests
+- `node/pc_node.cpp` / `node/device_node.cpp` — nodes under test
 
-This document describes the test scenarios executed by the PC-side protocol simulator (`pc_sim/pc_sim_main.cpp`).
-
-## Overview
-
-The PC simulator (`pc_sim/pc_sim_main.cpp`) performs end-to-end integration testing of the communication protocol between a PC node and a device node. It simulates a complete power monitoring session with configurable fault injection.
-
-## Test Scenario
-
-The simulator executes a complete power monitoring workflow that exercises all major protocol features:
-
-### 1. **Connection Establishment (PING)**
-
-```cpp
-pc.send_ping(loop.now_us());
-```
-
-**Purpose**: Verify basic connectivity between PC and device.
-
-**Validates**:
-- Command frame transmission
-- Response frame reception
-- CRC validation
-- Sequence number handling
+This document describes the test scenarios in `pc_sim/functional_test.cpp` and the metrics exposed by `PCNode`.
 
 ---
 
-### 2. **Configuration Setup (SET_CFG)**
+## Test Fixtures
 
-```cpp
-pc.send_set_cfg(0x0000, 0x0000, 0x1000, 0x0000, loop.now_us());
-```
+### `PowerMonitorTest`
 
-**Purpose**: Configure the INA228 sensor parameters.
+Full PC + Device pair connected over a `VirtualLink`. Default link is clean (no drops, no bit flips, 0–2 ms delay, 1–16 byte chunks). Most happy-path and fault-injection tests use this fixture.
 
-**Parameters**:
-- `shunt_cal`: 0x0000 (default calibration)
-- `config`: 0x0000 (default configuration)
-- `adc`: 0x1000 (ADC settings)
-- `diag_alert`: 0x0000 (diagnostics/alerts disabled)
+### `CommandTimeoutTest`
 
-**Validates**:
-- Multi-field command encoding
-- Configuration acknowledgment
-- Device configuration report (CFG_REPORT) reception
+PC only — no `DeviceNode`. PC→device direction has `drop_prob = 1.0`, so commands never reach the device and no RSP is ever sent. Used to exercise the retransmit/timeout path in isolation.
 
 ---
 
-### 3. **Data Streaming Session (STREAM_START)**
+## Test Cases
 
-```cpp
-pc.send_stream_start(1000, 0x000F, loop.now_us());
-loop.run_for(10'000'000, 500, [&](uint64_t now_us) {
-    link.pump(now_us);
-    pc.tick(now_us);
-    device.tick(now_us);
-});
-```
+### Happy-path tests
 
-**Purpose**: Start real-time data streaming and collect samples for 10 seconds.
+#### `PingCommand`
+Sends a single PING and runs for 100 ms.
 
-**Parameters**:
-- `period_us`: 1000 (1ms sampling period → 1kHz rate)
-- `mask`: 0x000F (enable all channels: voltage, current, power, temperature)
-
-**Duration**: 10 seconds (10,000,000 microseconds)
-
-**Tick Interval**: 500 μs (2 kHz simulation rate)
-
-**Validates**:
-- Stream start command processing
-- Continuous data sample transmission (DATA_SAMPLE messages)
-- Timestamp accuracy
-- Multi-channel data encoding
-- Sustained high-rate communication
-
-**Expected Behavior**:
-- Device sends DATA_SAMPLE frames at 1ms intervals
-- Each sample contains: timestamp, flags, vbus, current, temperature
-- ~10,000 samples collected during the session
+**Asserts**: `crc_fail = 0`, `timeout = 0`, `orphan_rsp = 0`.
 
 ---
 
-### 4. **Stream Termination (STREAM_STOP)**
+#### `SetConfiguration`
+Sends `SET_CFG` with `shunt_cal = 0x1000` and runs for 100 ms.
 
-```cpp
-pc.send_stream_stop(loop.now_us());
-loop.run_for(500'000, 500, [&](uint64_t now_us) {
-    link.pump(now_us);
-    pc.tick(now_us);
-    device.tick(now_us);
-});
-```
-
-**Purpose**: Stop data streaming and verify clean shutdown.
-
-**Duration**: 500ms grace period for in-flight messages
-
-**Validates**:
-- Stream stop command processing
-- Clean termination of data flow
-- No data samples after stop acknowledgment
+**Asserts**: `crc_fail = 0`, `timeout = 0`.
 
 ---
 
-## Communication Quality Metrics
+#### `StreamStartStop`
+Sends `STREAM_START` (1 kHz), runs 1 s, then `STREAM_STOP`.
 
-After the simulation completes, the following error statistics are reported:
+**Asserts**: `crc_fail = 0`, `timeout = 0`.
 
-```cpp
-std::cout << "Summary: crc_fail=" << pc.crc_fail_count()
-          << " data_drop=" << pc.data_drop_count()
-          << " timeouts=" << pc.timeout_count()
-          << " retries=" << pc.retransmit_count() << "\n";
-```
+---
 
-### Metrics Explained
+#### `CompleteDataStreamingScenario`
+Full workflow: PING → SET_CFG → STREAM_START → 10 s streaming → STREAM_STOP.
 
-| Metric | Description | Expected Value |
-|--------|-------------|----------------|
-| `crc_fail` | Number of frames with CRC errors | 0 (with fault injection: varies) |
-| `data_drop` | Number of data samples lost/discarded | 0 (ideal link) |
-| `timeout` | Number of command timeouts | 0 (ideal link) |
-| `retries` | Number of retransmissions | 0 (ideal link) |
+**Asserts** (all must be 0 on a clean link):
+- `crc_fail_count`
+- `data_drop_count`
+- `timeout_count`
+- `retransmit_count`
+- `orphan_rsp_count`
+- `error_rsp_count`
+- `truncated_data_count`
+
+---
+
+#### `TimeSynchronizationSequence`
+Sends `TIME_SYNC`, waits for RSP and the automatic `TIME_ADJUST` it triggers.
+Then sends `TIME_SET`.
+
+**Asserts**: no timeouts or CRC errors; `rx_count(TIME_SYNC) = 1`, `rx_count(TIME_ADJUST) = 1`, `rx_count(TIME_SET) = 1`.
+
+---
+
+### CFG_REPORT content verification
+
+#### `CfgReportValuesParsedAfterGetCfg`
+Starts streaming at 1 kHz with mask `0x000F`, then sends `GET_CFG`.
+Verifies that the `CFG_REPORT` sent by the device is correctly parsed by `PCNode`.
+
+**Asserts**:
+- `stream_period_us_cfg() = 1000`
+- `stream_mask_cfg() = 0x000F`
+- `current_lsb_nA() = 1000`
+- `timeout_count = 0`
+
+---
+
+### Data sequence number tests
+
+#### `DataSeqWraparoundNoFalseDrops`
+Streams at 1 kHz for 350 ms (~350 DATA frames) without any `SET_CFG` during streaming.
+
+**Rationale**: `data_seq_` in `DeviceNode` is a `uint8_t` shared by EVT and DATA frames.
+After the initial `CFG_REPORT` (seq=0) and `TEXT_REPORT` (seq=1), DATA frames start at seq=2.
+After 254 DATA frames the counter wraps: 255 → 0. `PCNode` uses
+`static_cast<uint8_t>(last_data_seq_ + 1)` for the expected value, so the wraparound is
+handled correctly.
+
+**Asserts**: `data_drop_count = 0` (no spurious gaps from the uint8 wraparound).
+
+> **Note**: Sending `SET_CFG` *during* streaming causes the device to emit an extra
+> `CFG_REPORT` (which increments `data_seq_`), making the next DATA frame seq appear to
+> skip a number. `data_drop_count` would then be non-zero — this is expected behaviour and
+> is NOT a bug in `PCNode`.
+
+---
+
+### Fault-injection tests
+
+#### `PacketDropsCauseDetectableErrors`
+Applies 5% chunk-level drop probability on both link directions. Streams at 1 kHz for 2 s.
+
+**Rationale**: A DATA_SAMPLE frame is ~48 bytes → ~3 chunks at `max_chunk = 16`. The probability
+that at least one chunk is dropped is `1 - 0.95³ ≈ 14%`, so across 2000 frames ~280 are
+expected to produce CRC errors.
+
+**Asserts**: `crc_fail_count > 0` — errors must be *detected*, not silently swallowed.
+
+---
+
+#### `BitFlipsCauseDetectableCrcErrors`
+Applies 1% per-bit flip probability on both link directions. Streams at 1 kHz for 2 s.
+
+**Rationale**: A 48-byte frame has 384 bits. `P(at least one flip) = 1 - 0.99³⁸⁴ ≈ 98%`,
+so virtually every frame is corrupted.
+
+**Asserts**: `crc_fail_count > 0`.
+
+---
+
+### Timeout / retransmit tests
+
+#### `CommandRetransmitsAndTimesOut`
+Uses `CommandTimeoutTest` fixture (100% drop). Sends a single PING and runs for 900 ms.
+
+**Timing** (`kCmdTimeoutUs = 200 ms`, `kMaxRetries = 3`):
+
+| Time | Event |
+|------|-------|
+| t = 0 ms | PING sent (retries = 0) |
+| t = 200 ms | Deadline hit → retransmit (retries = 1) |
+| t = 400 ms | Deadline hit → retransmit (retries = 2) |
+| t = 600 ms | Deadline hit → retransmit (retries = 3) |
+| t = 800 ms | Deadline hit, retries ≥ 3 → timeout recorded |
+
+**Asserts**: `retransmit_count = 3`, `timeout_count = 1`.
+
+---
+
+#### `MultipleCommandsAllTimeout`
+Uses `CommandTimeoutTest` fixture. Sends PING and GET_CFG simultaneously, runs for 900 ms.
+
+**Asserts**: `timeout_count = 2`, `retransmit_count = 6` (3 per command).
+
+---
+
+## PCNode Metrics Reference
+
+| Accessor | Incremented when |
+|----------|-----------------|
+| `crc_fail_count()` | Parser rejects a frame due to CRC mismatch |
+| `data_drop_count()` | DATA_SAMPLE `frame.seq` ≠ `last_data_seq_ + 1` (uint8) |
+| `timeout_count()` | Pending command exhausts `kMaxRetries` retransmits |
+| `retransmit_count()` | Pending command deadline hits and a retry is sent |
+| `orphan_rsp_count()` | RSP arrives with no matching pending command, or `orig_msgid` mismatches the pending entry |
+| `error_rsp_count()` | RSP received with `status ≠ 0x00` (non-OK) |
+| `truncated_data_count()` | DATA_SAMPLE payload is shorter than the minimum 37 bytes |
+| `get_rx_count(msgid)` | Per-MSGID receive counter (all frame types) |
+
+**Config accessors** (updated from the last parsed `CFG_REPORT`):
+- `current_lsb_nA()` — current LSB in nA
+- `stream_period_us_cfg()` — streaming period in µs
+- `stream_mask_cfg()` — active channel mask
+
+---
+
+## DeviceNode DATA_SAMPLE Frame Layout
+
+`DeviceNode::send_data_sample()` produces a 37-byte payload:
+
+| Offset | Size | Field |
+|--------|------|-------|
+| 0–3 | 4 B | `timestamp_us` (relative to stream start) |
+| 4–11 | 8 B | `timestamp_unix_us` (monotonic + epoch_offset) |
+| 12 | 1 B | flags |
+| 13–15 | 3 B | vbus20 (20-bit LE-packed) |
+| 16–18 | 3 B | vshunt20 (20-bit signed LE-packed) |
+| 19–21 | 3 B | current20 (20-bit signed LE-packed) |
+| 22–24 | 3 B | power24 (not modelled — zeros) |
+| 25–26 | 2 B | temp16 (signed, raw INA228 die temp) |
+| 27–31 | 5 B | energy40 (not modelled — zeros) |
+| 32–36 | 5 B | charge40 (not modelled — zeros) |
+
+`PCNode::handle_data_sample()` requires `frame.data.size() >= 37`; frames shorter than this
+increment `truncated_data_count` and are discarded.
 
 ---
 
 ## Fault Injection Configuration
 
-The simulator includes configurable fault injection to test protocol robustness:
-
 ```cpp
 sim::LinkConfig config;
-config.min_chunk = 1;       // Minimum bytes per transmission chunk
-config.max_chunk = 16;      // Maximum bytes per transmission chunk
-config.min_delay_us = 0;    // Minimum transmission delay
-config.max_delay_us = 2000; // Maximum transmission delay (2ms)
-config.drop_prob = 0.0;     // Packet drop probability (0-1)
-config.flip_prob = 0.0;     // Bit flip probability (0-1)
+config.min_chunk    = 1;     // bytes per delivery chunk (min)
+config.max_chunk    = 16;    // bytes per delivery chunk (max)
+config.min_delay_us = 0;     // per-chunk delivery delay (min)
+config.max_delay_us = 2000;  // per-chunk delivery delay (max)
+config.drop_prob    = 0.0;   // probability a chunk is dropped entirely
+config.flip_prob    = 0.0;   // probability each bit is flipped
 ```
 
-### Default Configuration (Ideal Link)
-
-The default settings simulate a perfect communication link:
-- No packet drops (`drop_prob = 0.0`)
-- No bit flips (`flip_prob = 0.0`)
-- Variable chunking (1-16 bytes) to test frame reassembly
-- Variable delay (0-2ms) to test timing tolerance
-
-### Testing with Faults
-
-To test protocol resilience, modify the configuration:
-
-```cpp
-config.drop_prob = 0.05;  // 5% packet loss
-config.flip_prob = 0.01;  // 1% bit error rate
-```
-
-**Expected Results with Faults**:
-- CRC failures increase (detected and discarded)
-- Timeouts may occur (triggering retransmissions)
-- Retransmission counter increases
-- Data samples may be lost (data_drop counter)
-- **Protocol should remain stable** and recover automatically
+Drop and flip are applied independently per chunk, per direction.
 
 ---
 
-## Test Coverage Summary
+## Coverage Summary
 
-This single integration test covers:
-
-✅ **Protocol Features**:
-- Frame encoding/decoding
-- CRC16-CCITT-FALSE validation
-- Sequence numbering
-- Command-response pattern
-- Event/data message handling
-
-✅ **Communication Patterns**:
-- Request-response (PING, SET_CFG)
-- Event notifications (CFG_REPORT)
-- Streaming data (DATA_SAMPLE at 1kHz)
-
-✅ **Error Handling**:
-- CRC error detection
-- Timeout and retransmission
-- Packet loss recovery
-- Bit error resilience
-
-✅ **Performance**:
-- High-rate data streaming (1kHz)
-- Large data volume (~10k samples)
-- Sustained 10-second operation
+| Area | Status |
+|------|--------|
+| Frame encode/decode + CRC | ✅ (state_machine_test.cpp) |
+| Command → RSP round-trip (PING, SET_CFG, GET_CFG, STREAM_START/STOP, TIME_SYNC/SET) | ✅ |
+| CFG_REPORT content parsing | ✅ |
+| DATA_SAMPLE streaming (sustained 10 s, 1 kHz) | ✅ |
+| DATA seq uint8 wraparound (255 → 0) | ✅ |
+| Command retransmit logic (exactly kMaxRetries retransmits) | ✅ |
+| Command timeout after max retries (exactly 1 timeout per command) | ✅ |
+| Multiple simultaneous commands each timing out independently | ✅ |
+| CRC error detection with 5% chunk drop | ✅ |
+| CRC error detection with 1% bit flip | ✅ |
+| Error counters for silent-drop paths (`orphan_rsp`, `error_rsp`, `truncated_data`) | ✅ counters exist; fault-injection tests for `error_rsp` / `orphan_rsp` pending |
+| SET_CFG during streaming (seq gap side-effect) | ⬜ not yet covered |
+| High packet loss (≥ 50%) | ⬜ not yet covered |
 
 ---
 
-## Running the Simulator
+## Running Tests
 
 ```bash
-# Build
-cmake -S pc_sim -B build_pc
-cmake --build build_pc --target pc_sim
+# Build + run all tests
+pwsh workflow.ps1
 
-# Run
-./build_pc/pc_sim
+# Run with verbose output
+pwsh workflow.ps1 -Verbose
+
+# Run a single test
+./build_linux/bin/pc_sim_test --gtest_filter=PowerMonitorTest.DataSeqWraparoundNoFalseDrops
 ```
 
-**Expected Output** (ideal link):
-```
-CMD send msgid=0x1 seq=0
-CMD send msgid=0x10 seq=1
-CMD send msgid=0x30 seq=2
-DEV CFG_REPORT sent
-RSP msgid=0x1 status=0x0
-RSP msgid=0x10 status=0x0
-RSP msgid=0x30 status=0x0
-DATA ts_us=1000000 flags=0x5 vbus=12.0 current=0.5 temp=35.2
-[... ~10,000 DATA samples ...]
-CMD send msgid=0x31 seq=3
-RSP msgid=0x31 status=0x0
-Summary: crc_fail=0 data_drop=0 timeouts=0 retries=0
-```
-
----
-
-## Modifying Test Parameters
-
-### Change Sampling Rate
-
-```cpp
-// High-speed sampling (10kHz)
-pc.send_stream_start(100, 0x000F, loop.now_us());
-
-// Low-speed sampling (1Hz)
-pc.send_stream_start(1000000, 0x000F, loop.now_us());
-```
-
-### Select Channels
-
-```cpp
-// Voltage only
-pc.send_stream_start(1000, 0x0001, loop.now_us());
-
-// Voltage + Current
-pc.send_stream_start(1000, 0x0003, loop.now_us());
-
-// All channels (voltage, current, power, temperature)
-pc.send_stream_start(1000, 0x000F, loop.now_us());
-```
-
-### Adjust Test Duration
-
-```cpp
-// Short test (1 second)
-loop.run_for(1'000'000, 500, [...]);
-
-// Long test (60 seconds)
-loop.run_for(60'000'000, 500, [...]);
-```
-
----
-
-## Interpreting Results
-
-### Success Criteria
-
-A successful test run should show:
-- All commands receive responses (`RSP msgid=...`)
-- No CRC failures
-- No timeouts
-- No retransmissions
-- Data samples arrive continuously
-
-### Failure Indicators
-
-| Symptom | Possible Cause |
-|---------|----------------|
-| High `crc_fail` | Link noise, incorrect CRC implementation |
-| `timeout > 0` | Device not responding, excessive packet loss |
-| `retries > 0` | Packet loss, delay exceeding timeout threshold |
-| `data_drop > 0` | Device buffer overflow, high packet loss |
-| No DATA samples | Stream start failed, device error |
-| Crash/hang | Parser bug, infinite loop, memory corruption |
-
----
-
-## Future Test Enhancements
-
-Potential additions for more comprehensive testing:
-
-- [ ] Multiple start/stop cycles
-- [ ] Configuration changes during streaming
-- [ ] Stress testing with extreme fault injection (50% packet loss)
-- [ ] Timing accuracy verification
-- [ ] Buffer overflow testing (very high data rates)
-- [ ] Graceful degradation under sustained errors
-- [ ] Power cycle recovery simulation
-- [ ] Concurrent command handling
+All 49 tests must pass before committing.
 
 ---
 
 ## Related Documentation
 
-- [INA228 UART Protocol](../protocol/uart_protocol.md) - Protocol specification
-- [Time Sync Documentation](../device/time_sync.md) - Time synchronization details
-- [README](../../README.md) - Project overview and build instructions
+- [UART Protocol](../protocol/uart_protocol.md) — frame format, MSGIDs, CRC
+- [State Machine Tests](state_machine_tests.md) — parser state machine unit tests
+- [Time Sync](../device/time_sync.md) — time synchronisation algorithm

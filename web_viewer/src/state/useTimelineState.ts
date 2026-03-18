@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
 import { defaultTracks } from "../constants/tracks";
-import type { ParsedPayload, Point, Range, Track } from "../types";
+import type { ParsedPayload, Point, Range, Series, Track } from "../types";
 
 interface TimelineState {
     tracks: Track[];
     visibleTracks: Track[];
+    series: Series[];
     points: Point[];
     range: Range;
     metaText: string;
@@ -20,6 +21,7 @@ interface TimelineState {
 
 export function useTimelineState(): TimelineState {
     const [tracks, setTracks] = useState<Track[]>(defaultTracks);
+    const [series, setSeries] = useState<Series[]>([]);
     const [points, setPoints] = useState<Point[]>([]);
     const [range, setRange] = useState<Range>({ start: 0, end: 1 });
     const [metaText, setMetaText] = useState("No file loaded.");
@@ -40,15 +42,18 @@ export function useTimelineState(): TimelineState {
     }
 
     function applyParsedData(parsed: ParsedPayload, sourceLabel: string): void {
-        setPoints(parsed.points);
+        const allPoints = parsed.series.flatMap((item) => item.points).sort((a, b) => a.timeUs - b.timeUs);
+        setSeries(parsed.series);
+        setPoints(allPoints);
         setMetaText(
-            `schema=${parsed.meta.schema_version || "n/a"} protocol=${parsed.meta.protocol_version || "n/a"} samples=${parsed.points.length} stream_period_us=${parsed.meta.config?.stream_period_us ?? "n/a"}`
+            `schema=${parsed.meta.schema_version || "n/a"} protocol=${parsed.meta.protocol_version || "n/a"} sources=${parsed.series.length} samples=${allPoints.length} stream_period_us=${parsed.meta.config?.stream_period_us ?? "n/a"}`
         );
         setStatusText(`Loaded ${sourceLabel}. Mouse wheel to zoom, drag to pan, hover to inspect.`);
-        fitAll(parsed.points);
+        fitAll(allPoints);
     }
 
     function clearDataWithStatus(message: string): void {
+        setSeries([]);
         setPoints([]);
         setStatusText(message);
     }
@@ -80,14 +85,17 @@ export function useTimelineState(): TimelineState {
         if (!point) {
             return;
         }
+        const voltageText = point.voltage == null ? "n/a" : `${point.voltage.toFixed(4)}V`;
+        const currentText = point.current == null ? "n/a" : `${point.current.toFixed(4)}A`;
         setStatusText(
-            `t=${(point.timeUs / 1e6).toFixed(6)}s seq=${point.seq} V=${point.voltage.toFixed(4)}V I=${point.current.toFixed(4)}A P=${point.power.toFixed(4)}W`
+            `${point.sourceLabel} t=${(point.timeUs / 1e6).toFixed(6)}s seq=${point.seq} V=${voltageText} I=${currentText} P=${point.power.toFixed(4)}W`
         );
     }
 
     return {
         tracks,
         visibleTracks,
+        series,
         points,
         range,
         metaText,

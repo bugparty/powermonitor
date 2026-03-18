@@ -20,12 +20,16 @@ This demo exercises the time synchronization protocol between a PC host and a Ra
 | 3 | PC captures T4 (receive time), computes offset | — |
 | 4 | `TIME_ADJUST` with `-offset` | `RSP(OK)` |
 
-**Formulas** (per `docs/protocol/uart_protocol.md`):
+**Formulas** (per `docs/protocol/uart_protocol.md` and `docs/device/time_sync.md`):
 
 ```
 delay  = (T4 - T1) - (T3 - T2)
-offset = ((T2 - T1) + (T3 - T4)) / 2
+offset = choose_offset(T1, T2, T3, T4)
+       = ntp_offset    if |forward - reverse| ≤ 2000 µs  (symmetric link)
+       = forward_only  if |forward - reverse| >  2000 µs  (asymmetric: trust host→device only)
 ```
+
+See [Asymmetry-Aware Offset Selection](../device/time_sync.md#asymmetry-aware-offset-selection) for details.
 
 ## Running the Demo
 

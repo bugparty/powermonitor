@@ -206,7 +206,7 @@ struct RawSample {
     uint8_t _pad;           // Alignment padding
 };
 ```
-*Note: `sizeof(RawSample)` is 20 bytes.*
+*Note: `sizeof(RawSample)` is 20 bytes. This is the internal queue format; the wire format `DataSamplePayload` is 41 bytes (see `frame_defs.hpp`).*
 
 ### Sample Ring Buffer
 

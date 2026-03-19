@@ -3,6 +3,7 @@
 Related code:
 - `protocol/parser.cpp`
 - `protocol/parser.h`
+- `protocol/frame_builder.h` (FrameType, MsgId enums)
 
 ## Current Implementation
 
@@ -13,25 +14,38 @@ The protocol parser uses a **switch-based state machine** pattern implemented in
 The parser implements a 4-state FSM for robust frame parsing:
 
 ```
-┌─────────────┐
-│ WaitSof0    │  ──► Search for 0xAA (SOF0)
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│ WaitSof1    │  ──► Verify 0x55 (SOF1) follows SOF0
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│ ReadHeader  │  ──► Parse 6-byte header (VER, TYPE, FLAGS, SEQ, LEN)
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│ ReadPayload │  ──► Read payload + CRC, verify, and callback
-└─────────────┘
+                         ┌─────────────────────────────────────────┐
+                         │                                         │
+                         ▼                                         │
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐           │
+│ kWaitSof0   │────►│ kWaitSof1   │────►│ kReadHeader │           │
+└─────────────┘     └─────────────┘     └─────────────┘           │
+       ▲                   │                   │                   │
+       │                   │                   │                   │
+       │   ┌───────────────┘ (if byte != 0x55  │                   │
+       │   │                and != 0xAA)       │                   │
+       │   │                                    ▼                   │
+       │   │                            ┌─────────────┐           │
+       │   │                            │ kReadPayload│───────────┤
+       │   │                            └─────────────┘  success  │
+       │   │                                   │                  │
+       │   │                           CRC fail│ len fail         │
+       │   │                                   ▼                  │
+       │   │                            ┌─────────────┐           │
+       │   └────────────────────────────│   resync()  │───────────┘
+       │                                └─────────────┘  no SOF found
+       │                                       │
+       └───────────────────────────────────────┘  SOF found
 ```
+
+### State Details
+
+| State | Purpose | Transitions |
+|-------|---------|-------------|
+| `kWaitSof0` | Scan for first SOF byte (0xAA) | → `kWaitSof1` when 0xAA found |
+| `kWaitSof1` | Verify second SOF byte (0x55) | → `kReadHeader` if 0x55 found<br>→ stay if 0xAA found (restart SOF search)<br>→ `kWaitSof0` otherwise |
+| `kReadHeader` | Parse 6-byte header | → `kReadPayload` if length valid<br>→ `kWaitSof0` if length invalid (0 or > max_len) |
+| `kReadPayload` | Read payload + CRC, verify | → `kWaitSof0` on success or error |
 
 ### Key Features
 
@@ -39,6 +53,7 @@ The parser implements a 4-state FSM for robust frame parsing:
 2. **Buffer management**: Incremental parsing with automatic buffer cleanup
 3. **Error recovery**: Automatic resynchronization on CRC failures or invalid frames
 4. **Robustness**: Handles fragmentation, corruption, and out-of-order bytes
+5. **TIME_SYNC CRC skip**: Special handling for TIME_SYNC responses where T3 is patched after CRC calculation
 
 ### Implementation Pattern
 
@@ -71,6 +86,113 @@ void Parser::process() {
     }
 }
 ```
+
+## CRC Verification
+
+### Normal CRC Flow
+
+1. CRC is calculated over the 6-byte header + payload (incrementally)
+2. Calculated CRC is compared against the 2-byte CRC suffix (little-endian)
+3. On mismatch: `crc_fail_count_` is incremented and `resync()` is called
+
+### TIME_SYNC Response CRC Skip
+
+**Critical Implementation Detail**: CRC verification is skipped for TIME_SYNC response frames.
+
+```cpp
+// TIME_SYNC response: FrameType::kRsp (0x02) + msgid 0x05
+const bool is_time_sync_rsp = (current_frame_.type == FrameType::kRsp && msgid == 0x05);
+if (!is_time_sync_rsp) {
+    // Perform CRC verification
+}
+```
+
+**Rationale**: On the device side, the T3 timestamp is patched into the frame **after** CRC calculation. This means the CRC will always fail if validated on the PC side. The parser recognizes TIME_SYNC responses by their frame type and message ID, and skips CRC verification for these frames.
+
+## Error Handling
+
+### Length Validation Failure
+
+When parsing the header, the length field is validated:
+
+```cpp
+if (current_frame_.len == 0 || current_frame_.len > max_len_) {
+    ++len_fail_count_;
+    state_ = State::kWaitSof0;
+    return;
+}
+```
+
+- Length of 0 is invalid (no payload)
+- Length exceeding `max_len_` (default 1024) is rejected to prevent memory exhaustion
+- Counter `len_fail_count_` tracks these failures
+
+### CRC Failure and Resync
+
+When CRC verification fails:
+
+```cpp
+if (expected != actual) {
+    ++crc_fail_count_;
+    resync();
+    return;
+}
+```
+
+The `resync()` method scans the remaining buffer for a new SOF pattern:
+
+```cpp
+void Parser::resync() {
+    for (size_t i = 0; i + 1 < buffer_.size(); ++i) {
+        if (buffer_[i] == kSof0 && buffer_[i + 1] == kSof1) {
+            buffer_.erase(buffer_.begin(), buffer_.begin() + i);
+            state_ = State::kWaitSof1;  // Found potential SOF
+            return;
+        }
+    }
+    buffer_.clear();
+    state_ = State::kWaitSof0;  // No SOF found, reset
+}
+```
+
+**Resync Strategy**:
+- Search for `0xAA 0x55` pattern in remaining buffer
+- If found: discard bytes before the pattern, transition to `kWaitSof1`
+- If not found: clear buffer, return to `kWaitSof0`
+
+## Buffer Management
+
+### Growth Strategy
+
+The parser uses a `std::deque<uint8_t>` for the receive buffer, which provides:
+- Efficient insertion at the end: O(1) amortized
+- Efficient removal from the front: O(1)
+- No reallocation of existing elements
+
+### Memory Bounds
+
+- Maximum payload length is configurable via `max_len_` (default 1024 bytes)
+- Buffer is cleared when no SOF is found in `kWaitSof0` state
+- Buffer is trimmed after each successful parse
+
+### Receive Time Tracking
+
+The parser tracks receive time for accurate frame timing:
+
+```cpp
+void set_receive_time(uint64_t receive_time_us) { receive_time_us_ = receive_time_us; }
+```
+
+This should be called before `feed()` to ensure accurate timing in the callback.
+
+## Counters
+
+The parser maintains two failure counters for monitoring and debugging:
+
+| Counter | Accessor | Increment Condition |
+|---------|----------|---------------------|
+| `crc_fail_count_` | `crc_fail_count()` | CRC mismatch (non-TIME_SYNC frames) |
+| `len_fail_count_` | `len_fail_count()` | Invalid length (0 or > max_len) |
 
 ## Why Not TinyFSM?
 

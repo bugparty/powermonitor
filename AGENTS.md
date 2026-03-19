@@ -6,6 +6,7 @@ Practical handbook for AI agents working in this repo. Keep outputs (docs, comme
 
 ## Must-Read First
 - README.md – layout, build, quick start.
+- **device/protocol/frame_defs.hpp** – **AUTHORITATIVE SOURCE** for all protocol struct definitions. Docs must match this file.
 - docs/protocol/uart_protocol.md – framing, CRC, MSGIDs, endianness, 20-bit packing.
 - docs/pc_sim/simulator_tests.md and docs/pc_sim/state_machine_tests.md – what tests assert; keep docs and tests in sync.
 - docs/pc_client/device_serial_tests.md – on-device serial test plan and ordering.
@@ -23,7 +24,7 @@ Practical handbook for AI agents working in this repo. Keep outputs (docs, comme
 - Device firmware: `pwsh workflow.ps1 -BuildDevice` (requires PICO_SDK_PATH environment variable).
 - Run tests directly: `./build_linux/bin/pc_sim_test` (Linux/WSL) or `.\build\bin\Debug\pc_sim_test.exe` (Windows).
 - Single test case: `--gtest_filter=SuiteName.TestName`.
-- Do not skip tests before commit; 34/34 must pass.
+- Do not skip tests before commit; 52/52 must pass.
 
 ---
 
@@ -49,6 +50,10 @@ Practical handbook for AI agents working in this repo. Keep outputs (docs, comme
 - Numeric rules: clamp 20-bit signed/unsigned values before packing; respect endianness (little); keep LEN upper bound check (discard if LEN==0 or >MAX_LEN).
 - Tests: keep deterministic seeds unless test explicitly checks robustness; avoid real randomness without seeding.
 - Comments: English only; explain intent, not the obvious; reference protocol sections when handling edge cases.
+- Cross-references: For protocol structs defined in `device/protocol/frame_defs.hpp`, add a comment referencing the doc section:
+  ```cpp
+  // See docs/protocol/uart_protocol.md section 5.1.1 for wire format documentation.
+  ```
 
 ---
 
@@ -91,6 +96,22 @@ Practical handbook for AI agents working in this repo. Keep outputs (docs, comme
 - Follow docs/naming_convention.md whenever adding or renaming docs; keep doc paths mapping to code modules.
 - All documentation, comments, and commit messages stay in English.
 
+### Protocol Structure Sync (Critical)
+- **Source of Truth**: `device/protocol/frame_defs.hpp` is the authoritative definition for all protocol structures.
+- **Sync Rule**: When modifying any struct in `frame_defs.hpp`, you MUST update:
+  1. `docs/protocol/uart_protocol.md` – Section 5 "Detailed Payload Definitions"
+  2. `docs/pc_sim/simulator_tests.md` – "DATA_SAMPLE Frame Layout" table if applicable
+  3. Any related tests that hardcode sizes or offsets
+- **Verification**: Before committing, ensure the byte count comment in docs matches the `static_assert` in code.
+
+### Payload Change Checklist
+Before committing changes to any protocol struct:
+- [ ] Updated `static_assert` size check in `frame_defs.hpp`
+- [ ] Updated struct definition in `docs/protocol/uart_protocol.md`
+- [ ] Updated byte offset table in `docs/pc_sim/simulator_tests.md` (if applicable)
+- [ ] Updated any hardcoded sizes in tests (e.g., minimum length checks)
+- [ ] Ran `pwsh workflow.ps1` and all tests pass
+
 ---
 
 ## Git & Review Hygiene
@@ -111,6 +132,7 @@ Practical handbook for AI agents working in this repo. Keep outputs (docs, comme
 - Are LEN, CRC, endian, and SEQ rules respected?
 - Did you run the tests (or single failing test) after changes?
 - Are docs/tests consistent? English only?
+- **If you changed protocol structs, did you sync `frame_defs.hpp` with `uart_protocol.md`?**
 - Are logs bounded and not flooding during streaming?
 
 ---

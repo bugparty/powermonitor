@@ -86,6 +86,7 @@ struct Frame {
 };
 
 // DATA_SAMPLE payload structure (41 bytes, packed).
+// See docs/protocol/uart_protocol.md section 5.1.1 for wire format documentation.
 // Field order is the wire/protocol order: timestamp_unix_us (8), timestamp_us (8),
 // flags (1), vbus20[3], vshunt20[3], current20[3], then dietemp16 (int16_t) last.
 // Because this struct is packed, do not apply manual alignment-based reordering.
@@ -104,7 +105,8 @@ struct DataSamplePayload {
 
 static_assert(sizeof(DataSamplePayload) == 41, "DataSamplePayload must be 41 bytes");
 
-// CFG_REPORT payload structure
+// CFG_REPORT payload structure (16 bytes).
+// See docs/protocol/uart_protocol.md section 5.1.1.1 for wire format documentation.
 struct CfgReportPayload {
     uint8_t proto_ver;       // Protocol version (0x01)
     uint8_t flags;           // Bit0: streaming_on, Bit1: cal_valid, Bit2: adcrange
@@ -118,7 +120,8 @@ struct CfgReportPayload {
 
 static_assert(sizeof(CfgReportPayload) == 16, "CfgReportPayload must be 16 bytes");
 
-// STATS_REPORT payload structure
+// STATS_REPORT payload structure (31 bytes).
+// See docs/protocol/uart_protocol.md section 5.1.2.1 for wire format documentation.
 struct StatsReportPayload {
     uint16_t report_seq;        // Monotonic report sequence (wrap-around)
     uint32_t samples_produced;  // Total samples produced on device side
@@ -162,12 +165,14 @@ struct RegWriteCmdPayload {
     uint16_t reg_value;
 } __attribute__((packed));
 
-// TIME_SYNC command payload
+// TIME_SYNC command payload.
+// See docs/protocol/uart_protocol.md section 5.2.2 for wire format documentation.
 struct TimeSyncPayload {
     uint64_t t1;
 } __attribute__((packed));
 
-// TIME_SYNC response payload
+// TIME_SYNC response payload.
+// See docs/protocol/uart_protocol.md section 5.2.2 for wire format documentation.
 struct TimeSyncResponsePayload {
     uint8_t orig_msgid;
     uint8_t status;
@@ -176,7 +181,8 @@ struct TimeSyncResponsePayload {
     uint64_t t3;
 } __attribute__((packed));
 
-// TIME_ADJUST command payload
+// TIME_ADJUST command payload.
+// See docs/protocol/uart_protocol.md section 5.2.3 for wire format documentation.
 struct TimeAdjustPayload {
     int64_t offset_us;
 } __attribute__((packed));

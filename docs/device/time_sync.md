@@ -155,19 +155,25 @@ The device sends two types of timestamps in each `DATA_SAMPLE` frame:
 | Relative (`timestamp_us`) | No sync error, stable interval calculation | Jitter analysis, dropout detection |
 | Absolute (`timestamp_unix_us`) | Direct alignment with PC/external data | Multi-source correlation, BOXR research |
 
-### Protocol Change
+### Protocol Layout
 
-The `DATA_SAMPLE` payload will be extended to include both timestamps:
+The `DATA_SAMPLE` payload structure is 41 bytes (see `DataSamplePayload` in `frame_defs.hpp`):
 
 ```
-Original (16 bytes):
-  timestamp_us (4 bytes) + flags (2 bytes) + vbus20 (3 bytes) + vshunt20 (3 bytes) + current20 (3 bytes) + dietemp16 (2 bytes)
-
-Proposed (24 bytes):
-  timestamp_us (4 bytes) + timestamp_unix_us (8 bytes) + flags (2 bytes) + vbus20 (3 bytes) + vshunt20 (3 bytes) + current20 (3 bytes) + dietemp16 (2 bytes)
+Wire order (41 bytes total):
+  offset  0-7:  timestamp_unix_us (8 bytes, uint64_t)
+  offset  8-15: timestamp_us (8 bytes, uint64_t)
+  offset    16: flags (1 byte)
+  offset 17-19: vbus20 (3 bytes, 20-bit LE-packed)
+  offset 20-22: vshunt20 (3 bytes, signed 20-bit LE-packed)
+  offset 23-25: current20 (3 bytes, signed 20-bit LE-packed)
+  offset 26-28: power24 (3 bytes, 24-bit LE-packed)
+  offset 29-30: dietemp16 (2 bytes, int16_t)
+  offset 31-35: energy40 (5 bytes, 40-bit LE-packed)
+  offset 36-40: charge40 (5 bytes, 40-bit LE-packed)
 ```
 
-Note: The 4-byte `timestamp_us` is kept for backward compatibility; new `timestamp_unix_us` (8 bytes) is added.
+Note: Both timestamps are 64-bit. `timestamp_unix_us` provides absolute Unix time for cross-source correlation; `timestamp_us` provides relative time since stream start for jitter analysis.
 
 ## Error Handling
 

@@ -457,16 +457,20 @@ Expected output:
 
 ## Note on Test Implementation Status
 
-This document specifies 22 tests (19 unit tests + 3 integration tests), and **22 tests are implemented** in the test suite. However, the implementation does not fully match the spec for all integration tests. Specifically:
+This document specifies 24 tests (19 unit tests + 3 integration tests + 2 additional tests), and **24 tests are implemented** in the test suite.
 
 - **Tests 1.1 through 6.3**: All 19 unit tests are fully implemented and cover the core state machine functionality (WAIT_SOF0, WAIT_SOF1, READ_HEADER, READ_PAYLOAD, VERIFY_CRC, RESYNC states).
 
 - **Integration Tests**:
-  - Test 7.1 (Streaming Data with Packet Loss): Implemented as Integration_MixedFramesWithErrors
-  - Test 7.2 (Communication with Mixed Frame Types): NOT IMPLEMENTED - the spec requires testing PING, SET_CFG, STREAM_START/STOP sequences with mixed frame types; Integration_ByteByByteFeed only tests byte-by-byte parsing
-  - Test 7.3 (Stress Test - Rapid State Changes): NOT IMPLEMENTED - the spec requires stress testing with thousands of frames; Integration_LengthValidation only tests length validation
+  - Test 7.1 (Streaming Data with Packet Loss): Implemented as `Integration_MixedFramesWithErrors` - tests mixed valid/invalid frames with error recovery
+  - Test 7.2 (Communication with Mixed Frame Types): Implemented as `Integration_MixedFrameTypesRealistic` - tests realistic PING, SET_CFG, STREAM_START/STOP, DATA/RSP/EVT frame sequences with garbage injection
+  - Test 7.3 (Stress Test - Rapid State Changes): Implemented as `Integration_StressRapidStateChanges` - tests 1000 iterations with alternating valid/invalid frames, garbage bytes, incomplete frames, CRC errors, and length errors
 
-The core state machine logic is thoroughly covered by the existing 22 tests, which exercise all 6 states and their transitions.
+- **Additional Tests**:
+  - `Integration_ByteByByteFeed`: Tests byte-by-byte frame parsing for state transition correctness
+  - `Integration_LengthValidation`: Tests invalid length handling (LEN=0 and LEN>4097)
+
+The core state machine logic is thoroughly covered by the existing 24 tests, which exercise all 6 states and their transitions under both normal and stress conditions.
 
 ## State Coverage Summary
 
@@ -479,4 +483,4 @@ The core state machine logic is thoroughly covered by the existing 22 tests, whi
 | VERIFY_CRC | ≥2 times | Test 5.1, 5.2, 5.3 |
 | RESYNC | ≥2 times | Test 6.1, 6.2, 6.3 |
 
-**Total Test Cases**: **22 tests** (19 unit tests in Categories 1-6 + 3 integration tests)
+**Total Test Cases**: **24 tests** (19 unit tests in Categories 1-6 + 3 integration tests + 2 additional tests)

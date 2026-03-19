@@ -1,14 +1,15 @@
-# Multi-Source Power Bundle Schema
+# Multi-Source Power JSON Schema
 
-This document defines a bundle format for combining multiple power capture sources for the same run.
+This document defines the multi-source JSON format for power capture runs that combine Pico / INA228 data with Jetson Nano onboard rail data.
 
-The goal is to keep existing Pico `powermonitor` JSON files unchanged while providing a normalized output that can also carry Jetson onboard power samples.
+The primary target is the integrated Jetson Nano workflow where `host_pc_client` writes one JSON file directly. Legacy bundle conversion remains supported for older archives.
 
 ## Scope
 
-- One bundle file represents one capture label, for example `power_boxr_mh02_low_clk1_gpu_low_510000000`.
-- The bundle may contain one or more sources.
+- One JSON file represents one capture label, for example `power_boxr_mh02_low_clk1_gpu_low_510000000`.
+- The file may contain one or more sources.
 - Each source keeps its own metadata, summary statistics, and raw samples.
+- Source-specific sidecar logs may still exist.
 
 ## Top-Level Structure
 
@@ -17,9 +18,14 @@ The goal is to keep existing Pico `powermonitor` JSON files unchanged while prov
   "schema_version": "power-bundle/v1",
   "capture_name": "power_boxr_mh02_low_clk1_gpu_low_510000000",
   "created_at": "2026-03-17T00:00:00Z",
+  "producer": {
+    "name": "host_pc_client",
+    "mode": "integrated_dual_source"
+  },
   "sources": {
     "pico": {
       "format": "powermonitor_json/v1",
+      "enabled": true,
       "meta": {},
       "summary": {},
       "artifacts": {},
@@ -27,6 +33,7 @@ The goal is to keep existing Pico `powermonitor` JSON files unchanged while prov
     },
     "onboard_cpp": {
       "format": "onboard_csv/v1",
+      "enabled": true,
       "meta": {},
       "summary": {},
       "artifacts": {},
@@ -43,6 +50,7 @@ Each source entry under `sources` must use the same shape:
 ```json
 {
   "format": "powermonitor_json/v1",
+  "enabled": true,
   "meta": {},
   "summary": {
     "sample_count": 37053,
@@ -52,7 +60,6 @@ Each source entry under `sources` must use the same shape:
     "energy_j": 975.1
   },
   "artifacts": {
-    "primary_path": "power_boxr_mh02_low_clk1_gpu_low_510000000.json",
     "log_path": "power_boxr_mh02_low_clk1_gpu_low_510000000.log"
   },
   "samples": []
@@ -62,6 +69,7 @@ Each source entry under `sources` must use the same shape:
 ### Required fields
 
 - `format`: source-specific payload format identifier
+- `enabled`: whether the source was enabled for this run
 - `meta`: original source metadata or source-level normalized metadata
 - `summary.sample_count`
 - `summary.mean_w`
@@ -79,6 +87,15 @@ Recommended source ids:
 
 Do not use positional names such as `samples2` or `source_b`. Source ids must remain stable across tools and documents.
 
+### Artifact fields
+
+Recommended `artifacts` fields:
+
+- `log_path`: sidecar log for this source
+- `raw_path`: optional legacy raw sidecar path when the source was also persisted separately
+
+In the integrated Nano workflow, the primary persisted data is the enclosing multi-source JSON file itself, not a per-source primary file.
+
 ## Pico Source
 
 `pico` is derived from the existing `powermonitor` JSON output.
@@ -86,6 +103,7 @@ Do not use positional names such as `samples2` or `source_b`. Source ids must re
 ```json
 {
   "format": "powermonitor_json/v1",
+  "enabled": true,
   "meta": {
     "config": {},
     "device": {},
@@ -103,7 +121,6 @@ Do not use positional names such as `samples2` or `source_b`. Source ids must re
     "energy_j": 975.1
   },
   "artifacts": {
-    "primary_path": "power_boxr_mh02_low_clk1_gpu_low_510000000.json",
     "log_path": "power_boxr_mh02_low_clk1_gpu_low_510000000.log"
   },
   "samples": [
@@ -129,7 +146,7 @@ Do not use positional names such as `samples2` or `source_b`. Source ids must re
 
 Notes:
 
-- Keep Pico samples unchanged when bundling.
+- Keep Pico samples unchanged when emitting the multi-source JSON.
 - `summary.energy_j` is the run-level energy estimate derived from the time series.
 
 ## Onboard Source
@@ -139,6 +156,7 @@ Notes:
 ```json
 {
   "format": "onboard_csv/v1",
+  "enabled": true,
   "meta": {
     "source": "onboard_cpp",
     "columns": [
@@ -158,7 +176,7 @@ Notes:
     "energy_j": 1095.3
   },
   "artifacts": {
-    "primary_path": "power_boxr_mh02_low_clk1_gpu_low_510000000.csv",
+    "raw_path": "power_boxr_mh02_low_clk1_gpu_low_510000000.csv",
     "log_path": "power_boxr_mh02_low_clk1_gpu_low_510000000_onboard_cpp.log"
   },
   "samples": [
@@ -185,13 +203,14 @@ Notes:
 ## Compatibility Rules
 
 - Existing Pico JSON files remain valid raw artifacts and do not need schema changes.
-- Bundles are additive companion files, recommended name: `power_<capture>.bundle.json`.
+- In the integrated Jetson Nano workflow, this schema is the primary output format written directly to `power_<capture>.json`.
+- In legacy workflows, the same schema may be written as an additive companion file named `power_<capture>.bundle.json`.
 - Tools that only understand legacy Pico JSON may continue reading `power_<capture>.json`.
-- New tools should prefer the bundle when present.
+- New tools should prefer the multi-source form when present, whether it is stored as `.bundle.json` or directly as the primary `.json`.
 
 ## Conversion Rules
 
-When converting from current benchmark artifacts:
+When converting from legacy benchmark artifacts:
 
 1. Read Pico samples from `power_<capture>.json`.
 2. Read onboard samples from `power_<capture>.csv`.
@@ -203,3 +222,16 @@ Reference converter:
 - `scripts/build_power_bundles.py`
 
 If only one source exists, still emit the bundle with a single entry under `sources`.
+
+## Integrated Jetson Nano Output
+
+For the target Jetson Nano design:
+
+- `host_pc_client` writes this schema directly
+- `sources.pico` is always present when Pico capture is enabled
+- `sources.onboard_cpp` is present by default on Nano unless disabled with CLI
+- source-specific logs may still be written as sidecar files
+- recommended default CLI behavior is onboard enabled unless `--no-onboard` is passed
+- if onboard capture is unavailable and strict mode is off, the run may continue with `sources.onboard_cpp` omitted and a warning recorded in metadata
+
+This removes the normal need for a post-run merge step.

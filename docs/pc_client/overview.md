@@ -5,6 +5,7 @@ Related code:
 
 Related docs:
 - `docs/pc_client/power_bundle_schema.md`
+- `docs/pc_client/jetson_nano_dual_source_capture.md`
 
 This document defines the PC client behavior and integration plan for the INA228 power monitor.
 It uses the `serial` library (wjwwood/serial) to connect to a USB CDC/UART device, perform the
@@ -16,6 +17,7 @@ protocol handshake, and stream data for local storage.
 - Establish a serial connection, initialize the device, and begin streaming.
 - Collect the data stream until the user requests stop.
 - Persist results to a JSON file for later analysis.
+- Support Jetson Nano workflows where `host_pc_client` also manages onboard rail capture and writes a single multi-source JSON output.
 
 ## Dependencies
 
@@ -98,6 +100,11 @@ powermonitor -i
 | | `--run-label` | Run label stored in output metadata | Empty |
 | | `--run-tag` | Repeatable run tag stored in output metadata | None |
 | | `--usb-stress` | Enable USB throughput stress mode (sets STREAM_START mask bit15) | No |
+| | `--onboard` | Enable onboard Nano rail capture | On for Jetson Nano workflow |
+| | `--no-onboard` | Disable onboard Nano rail capture | Off |
+| | `--onboard-period-us` | Onboard sampling period in microseconds | 1000 |
+| | `--onboard-log` | Onboard-specific debug log path | Auto |
+| | `--onboard-strict` | Fail startup if onboard capture cannot start | No |
 | `-i` | `--interactive` | Enter interactive mode | No |
 | `-v` | `--verbose` | Verbose output | No |
 | `-h` | `--help` | Show help | - |
@@ -152,6 +159,20 @@ Displayed panels include:
 Notes:
 - In non-interactive mode, capture starts immediately after connection and runs until Ctrl+C.
 - TUI mode is intended to work on both Windows and Linux terminals.
+
+## Jetson Nano Dual-Source Workflow
+
+On Jetson Nano, the target design is that `host_pc_client` directly manages onboard rail capture in addition to the Pico / INA228 stream.
+
+In that workflow:
+
+- the user runs one executable: `host_pc_client`
+- the primary output is one JSON file containing both `sources.pico` and `sources.onboard_cpp`
+- the client may still emit a separate onboard debug log
+- onboard capture is enabled by default and can be disabled with `--no-onboard`
+- the web viewer renders the unified JSON as two synchronized tracks (`pico` above, `onboard_cpp` below)
+
+See `docs/pc_client/jetson_nano_dual_source_capture.md` for the full Nano-specific design.
 
 ## Port Discovery and Connection
 

@@ -1,3 +1,4 @@
+cmake_minimum_required(VERSION 3.16)
 project(powermonitor_client LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -71,6 +72,7 @@ add_library(pc_client_lib
     src/response_queue.cpp
     src/read_thread.cpp
     src/session.cpp
+    src/thread_affinity.cpp
 )
 
 target_link_libraries(pc_client_lib PUBLIC
@@ -157,4 +159,20 @@ if(MSVC)
   target_link_options(pc_time_sync_demo PUBLIC "/INCREMENTAL")
   target_compile_options(pc_client_tests PUBLIC "/ZI")
   target_link_options(pc_client_tests PUBLIC "/INCREMENTAL")
+endif()
+
+# CPU Affinity Benchmark (Linux-only)
+if(NOT MSVC AND UNIX)
+    add_executable(cpu_affinity_benchmark
+        ${CMAKE_CURRENT_SOURCE_DIR}/../benchmarks/cpu_affinity_benchmark.cpp
+        src/thread_affinity.cpp
+    )
+
+    target_include_directories(cpu_affinity_benchmark PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+
+    target_link_libraries(cpu_affinity_benchmark PRIVATE pthread rt)
+
+    target_compile_options(cpu_affinity_benchmark PRIVATE -O2)
 endif()

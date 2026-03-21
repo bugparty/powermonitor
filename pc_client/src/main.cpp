@@ -109,6 +109,9 @@ struct ConfigOptions {
     std::vector<std::string> run_tags;
     std::string output_path;
     std::string config_path;
+    int read_thread_core = -1;
+    int proc_thread_core = -1;
+    int rt_prio = -1;
 };
 
 bool parse_vid_pid(const std::string &hardware_id, uint16_t &vid, uint16_t &pid) {
@@ -200,6 +203,18 @@ bool load_yaml_config(const std::string &path, ConfigOptions &options) {
         if (parse_yaml_u16(ina["shunt_tempco"], value)) {
             options.shunt_tempco = value;
             options.config_overridden = true;
+        }
+    }
+
+    if (const auto affinity = root["affinity"]) {
+        if (affinity["read_thread_core"] && affinity["read_thread_core"].IsScalar()) {
+            options.read_thread_core = affinity["read_thread_core"].as<int>();
+        }
+        if (affinity["proc_thread_core"] && affinity["proc_thread_core"].IsScalar()) {
+            options.proc_thread_core = affinity["proc_thread_core"].as<int>();
+        }
+        if (affinity["rt_prio"] && affinity["rt_prio"].IsScalar()) {
+            options.rt_prio = affinity["rt_prio"].as<int>();
         }
     }
 
@@ -323,6 +338,10 @@ int main(int argc, char **argv) {
                  "Print time sync diagnostics and post-sync sample timestamp deltas");
     app.add_flag("--no-apply-time-offset", no_apply_time_offset,
                  "Do not send TIME_ADJUST after time sync (measure offset only, do not correct device clock)");
+
+    auto opt_read_core = app.add_option("--read-thread-core", options.read_thread_core, "CPU core for serial read thread");
+    auto opt_proc_core = app.add_option("--proc-thread-core", options.proc_thread_core, "CPU core for data processing thread");
+    auto opt_rt_prio = app.add_option("--rt-prio", options.rt_prio, "Real-time priority (SCHED_FIFO)");
 
     try {
         app.parse(argc, argv);
@@ -523,6 +542,9 @@ int main(int argc, char **argv) {
     session_options.no_apply_time_offset = options.no_apply_time_offset;
     session_options.vid_hex = hex_u16(options.vid);
     session_options.pid_hex = hex_u16(options.pid);
+    session_options.read_thread_core = options.read_thread_core;
+    session_options.proc_thread_core = options.proc_thread_core;
+    session_options.rt_prio = options.rt_prio;
 
     powermonitor::client::PowerMonitorSession session(session_options);
     try {

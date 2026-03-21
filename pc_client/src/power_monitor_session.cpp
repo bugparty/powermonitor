@@ -1,4 +1,5 @@
 #include "power_monitor_session.h"
+#include "thread_affinity.h"
 
 #include <algorithm>
 #include <atomic>
@@ -237,7 +238,14 @@ int PowerMonitorSession::run() {
     append_log("Streaming started.");
 
     // Start sample processing loop
-    std::thread processor([this] { process_samples_loop(); });
+    std::thread processor([this] {
+#ifndef _WIN32
+        if (options_.proc_thread_core >= 0) {
+            ThreadAffinity::SetCpuAffinity(options_.proc_thread_core);
+        }
+#endif
+        process_samples_loop();
+    });
 
     int tui_rc = 0;
     if (options_.interactive) {
@@ -340,7 +348,8 @@ bool PowerMonitorSession::initialize_device() {
     // Start read thread (must be started before sending any commands)
     read_thread_ = std::make_unique<ReadThread>(
         serial_.get(), sample_queue_.get(), response_queue_.get(),
-        &stop_requested_, stats_.get()
+        &stop_requested_, stats_.get(),
+        options_.read_thread_core, options_.rt_prio
     );
     read_thread_->start();
 

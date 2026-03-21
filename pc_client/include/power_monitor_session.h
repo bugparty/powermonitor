@@ -42,6 +42,9 @@ public:
         std::vector<std::string> run_tags;
         std::string vid_hex = "0x0000";
         std::string pid_hex = "0x0000";
+        int read_thread_core = -1;
+        int proc_thread_core = -1;
+        int rt_prio = -1;
     };
 
     explicit PowerMonitorSession(const Options& options);

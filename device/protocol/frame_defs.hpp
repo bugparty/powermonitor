@@ -106,7 +106,7 @@ struct DataSamplePayload {
 static_assert(sizeof(DataSamplePayload) == 41, "DataSamplePayload must be 41 bytes");
 
 // CFG_REPORT payload structure (16 bytes).
-// See docs/protocol/uart_protocol.md section 5.1.1.1 for wire format documentation.
+// See docs/protocol/uart_protocol.md section 5.1.2 for wire format documentation.
 struct CfgReportPayload {
     uint8_t proto_ver;       // Protocol version (0x01)
     uint8_t flags;           // Bit0: streaming_on, Bit1: cal_valid, Bit2: adcrange

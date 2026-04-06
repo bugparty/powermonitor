@@ -12,14 +12,13 @@ This document defines comprehensive test cases for the PC-side protocol parser s
 
 ## State Machine States
 
-Based on the protocol specification, the parser has 6 states:
+Based on the protocol specification, the parser has 4 states (plus a `resync()` method):
 
-1. **WAIT_SOF0** - Waiting for first start byte (0xAA)
-2. **WAIT_SOF1** - Waiting for second start byte (0x55)
-3. **READ_HEADER** - Reading 6-byte header (VER, TYPE, FLAGS, SEQ, LEN_L, LEN_H)
-4. **READ_PAYLOAD** - Reading payload (MSGID + DATA)
-5. **VERIFY_CRC** - Verifying CRC16 checksum
-6. **RESYNC** - Attempting to resynchronize after CRC failure
+1. **kWaitSof0** - Waiting for first start byte (0xAA)
+2. **kWaitSof1** - Waiting for second start byte (0x55)
+3. **kReadHeader** - Reading 6-byte header (VER, TYPE, FLAGS, SEQ, LEN_L, LEN_H)
+4. **kReadPayload** - Reading payload (MSGID + DATA)
+5. **resync()** - Method (not a state) that transitions back to kWaitSof0 on CRC failure
 
 ## Test Cases
 
@@ -432,7 +431,7 @@ Test with actual USB-TTL adapter and embedded device
 ## Success Criteria
 
 - All unit tests pass (100% pass rate)
-- State coverage: 100% (all 6 states exercised ≥2 times)
+- State coverage: 100% (all 4 states exercised ≥2 times)
 - Transition coverage: 100% (all valid transitions exercised)
 - No memory leaks detected
 - No crashes or undefined behavior
@@ -441,7 +440,7 @@ Test with actual USB-TTL adapter and embedded device
 ## Test Execution Command
 
 ```bash
-./test.sh
+pwsh workflow.ps1
 ```
 
 Expected output:
@@ -457,9 +456,9 @@ Expected output:
 
 ## Note on Test Implementation Status
 
-This document specifies 24 tests (19 unit tests + 3 integration tests + 2 additional tests), and **24 tests are implemented** in the test suite.
+This document specifies 27 tests (19 unit tests + 8 integration tests), and **27 tests are implemented** in the test suite.
 
-- **Tests 1.1 through 6.3**: All 19 unit tests are fully implemented and cover the core state machine functionality (WAIT_SOF0, WAIT_SOF1, READ_HEADER, READ_PAYLOAD, VERIFY_CRC, RESYNC states).
+- **Tests 1.1 through 6.3**: All 19 unit tests are fully implemented and cover the core state machine functionality (kWaitSof0, kWaitSof1, kReadHeader, kReadPayload states). `resync()` is a method that transitions back to kWaitSof0, not a separate FSM state.
 
 - **Integration Tests**:
   - Test 7.1 (Streaming Data with Packet Loss): Implemented as `Integration_MixedFramesWithErrors` - tests mixed valid/invalid frames with error recovery
@@ -470,17 +469,17 @@ This document specifies 24 tests (19 unit tests + 3 integration tests + 2 additi
   - `Integration_ByteByByteFeed`: Tests byte-by-byte frame parsing for state transition correctness
   - `Integration_LengthValidation`: Tests invalid length handling (LEN=0 and LEN>4097)
 
-The core state machine logic is thoroughly covered by the existing 24 tests, which exercise all 6 states and their transitions under both normal and stress conditions.
+The core state machine logic is thoroughly covered by the existing 27 tests, which exercise all 4 states and their transitions under both normal and stress conditions.
 
 ## State Coverage Summary
 
 | State | Target Coverage | Test Cases |
 |-------|----------------|------------|
-| WAIT_SOF0 | ≥2 times | Test 1.1, 1.1a, 1.2, 1.3 |
-| WAIT_SOF1 | ≥2 times | Test 2.1, 2.2, 2.3 |
-| READ_HEADER | ≥2 times | Test 3.1, 3.2, 3.3 |
-| READ_PAYLOAD | ≥2 times | Test 4.1, 4.2, 4.3 |
-| VERIFY_CRC | ≥2 times | Test 5.1, 5.2, 5.3 |
-| RESYNC | ≥2 times | Test 6.1, 6.2, 6.3 |
+| kWaitSof0 | ≥2 times | Test 1.1, 1.1a, 1.2, 1.3 |
+| kWaitSof1 | ≥2 times | Test 2.1, 2.2, 2.3 |
+| kReadHeader | ≥2 times | Test 3.1, 3.2, 3.3 |
+| kReadPayload | ≥2 times | Test 4.1, 4.2, 4.3 |
+| VERIFY_CRC (via kReadPayload) | ≥2 times | Test 5.1, 5.2, 5.3 |
+| RESYNC (resync() method) | ≥2 times | Test 6.1, 6.2, 6.3 |
 
-**Total Test Cases**: **24 tests** (19 unit tests in Categories 1-6 + 3 integration tests + 2 additional tests)
+**Total Test Cases**: **27 tests** (19 unit tests in Categories 1-6 + 8 integration tests)

@@ -278,7 +278,7 @@ pwsh workflow.ps1 -Verbose
 ./build_linux/bin/pc_sim_test --gtest_filter=PowerMonitorTest.DataSeqWraparoundNoFalseDrops
 ```
 
-All 58 tests must pass before committing.
+All 61 tests must pass before committing.
 
 ---
 

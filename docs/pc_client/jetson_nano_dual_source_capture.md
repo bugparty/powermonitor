@@ -96,24 +96,25 @@ So a plain command such as:
 
 should produce a JSON file with both sources when onboard sampling is available.
 
-### Proposed Switches
+### Implemented CLI Switches
 
-Recommended CLI switches:
+The following CLI switches are implemented:
 
-| Switch | Meaning | Default on Nano |
-|--------|---------|-----------------|
-| `--onboard` | Enable onboard Nano rail capture | On |
-| `--no-onboard` | Disable onboard Nano rail capture | Off |
-| `--onboard-period-us <N>` | Onboard sampling period | `1000` |
-| `--onboard-log <PATH>` | Path for onboard-specific log | Auto |
-| `--onboard-strict` | Fail the run if onboard capture cannot start | Off |
+| Switch | Meaning | Default |
+|--------|---------|---------|
+| `--onboard` | Enable onboard Nano rail capture | Off |
+| `--no-onboard` | Disable onboard Nano rail capture | - |
+| `--onboard-path <PATH>` | INA3221 hwmon path | `/sys/class/hwmon/hwmon1` |
+| `--onboard-period-us <N>` | INA sampling period (µs) | `1000` |
+| `--onboard-core <N>` | CPU core affinity for INA thread | -1 (disabled) |
+| `--onboard-rt-prio <N>` | RT priority for INA thread | -1 (disabled) |
+| `--onboard-cpu-cluster0-freq <PATH>` | CPU cluster 0 freq sysfs path | (empty, skip) |
+| `--onboard-cpu-cluster1-freq <PATH>` | CPU cluster 1 freq sysfs path | (empty, skip) |
+| `--onboard-emc-freq <PATH>` | EMC freq sysfs path | (empty, skip) |
 
-Recommended behavior:
+**Note**: CPU and EMC frequency paths require root access. Run as `sudo`.
 
-- `--no-onboard` removes `sources.onboard_cpp` from output
-- if onboard capture is enabled but unavailable:
-  - default mode: continue with Pico-only capture and emit a warning in the main log / JSON metadata
-  - strict mode: fail startup
+See `docs/pc_client/onboard_sampler_design.md` for architecture details.
 
 ## Internal Integration Options
 

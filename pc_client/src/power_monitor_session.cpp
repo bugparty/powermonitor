@@ -1,5 +1,7 @@
 #include "power_monitor_session.h"
 #include "thread_affinity.h"
+#include "onboard_sampler.h"
+#include "onboard_sample_queue.h"
 
 #include <algorithm>
 #include <atomic>
@@ -237,6 +239,43 @@ int PowerMonitorSession::run() {
 
     append_log("Streaming started.");
 
+    // Start onboard sampler if enabled
+    if (options_.onboard_enabled) {
+        append_log("Starting onboard hwmon sampler...");
+        onboard_queue_ = std::make_shared<OnboardSampleQueue>();
+
+        OnboardSampler::Config onboard_cfg;
+        onboard_cfg.hwmon_path = options_.onboard_hwmon_path;
+        onboard_cfg.period_us = options_.onboard_period_us;
+        onboard_cfg.cpu_core = options_.onboard_cpu_core;
+        onboard_cfg.rt_prio = options_.onboard_rt_prio;
+        onboard_cfg.cpu_cluster0_freq_path = options_.onboard_cpu_cluster0_freq_path;
+        onboard_cfg.cpu_cluster1_freq_path = options_.onboard_cpu_cluster1_freq_path;
+        onboard_cfg.emc_freq_path = options_.onboard_emc_freq_path;
+
+        onboard_sampler_ = std::make_unique<OnboardSampler>(onboard_cfg, onboard_queue_);
+
+        if (!onboard_sampler_->start()) {
+            std::cerr << "Warning: Failed to start onboard sampler: "
+                      << onboard_sampler_->get_last_error() << std::endl;
+            append_log("Warning: Failed to start onboard sampler: " + onboard_sampler_->get_last_error());
+            onboard_sampler_.reset();
+            onboard_queue_.reset();
+        } else {
+            // Start onboard processing thread
+            onboard_proc_thread_ = std::thread([this] {
+                process_onboard_loop();
+            });
+            append_log("Onboard sampler started on " + options_.onboard_hwmon_path);
+
+            // Set onboard meta in session
+            Session::OnboardMeta onboard_meta;
+            onboard_meta.hwmon_path = options_.onboard_hwmon_path;
+            onboard_meta.source = "onboard_cpp";
+            session_->set_onboard_meta(onboard_meta);
+        }
+    }
+
     // Start sample processing loop
     std::thread processor([this] {
 #ifndef _WIN32
@@ -289,6 +328,14 @@ int PowerMonitorSession::run() {
     stop_requested_ = true;
     sample_queue_->stop();
 
+    // Stop onboard sampler
+    if (onboard_sampler_) {
+        onboard_sampler_->stop();
+        if (onboard_queue_) {
+            onboard_queue_->stop();
+        }
+    }
+
     if (streaming_.load()) {
         stop_streaming();
     }
@@ -296,6 +343,16 @@ int PowerMonitorSession::run() {
 
     if (processor.joinable()) {
         processor.join();
+    }
+
+    // Join onboard processing thread
+    if (onboard_proc_thread_.joinable()) {
+        onboard_proc_thread_.join();
+    }
+
+    // Join onboard sampler
+    if (onboard_sampler_) {
+        onboard_sampler_->join();
     }
 
     session_end_unix_us_ = now_unix_us();
@@ -890,6 +947,24 @@ void PowerMonitorSession::process_samples_loop() {
     }
 }
 
+void PowerMonitorSession::process_onboard_loop() {
+    if (!onboard_queue_) {
+        return;
+    }
+
+    OnboardSample sample;
+    while (!stop_requested_.load()) {
+        if (onboard_queue_->pop_wait(sample)) {
+            session_->add_onboard_sample(sample);
+        }
+    }
+
+    // Drain remaining samples
+    while (onboard_queue_->pop(sample)) {
+        session_->add_onboard_sample(sample);
+    }
+}
+
 int PowerMonitorSession::run_tui_loop() {
     auto sum_counts = [](const std::atomic<uint64_t> counts[256]) {
         uint64_t total = 0;
@@ -1187,7 +1262,12 @@ void PowerMonitorSession::save_and_exit() {
     if (!options_.output_file.empty()) {
         std::cout << "Saving data to " << options_.output_file << std::endl;
         try {
-            session_->save(options_.output_file);
+            // Use bundle format if onboard is enabled, otherwise legacy format
+            if (options_.onboard_enabled && onboard_sampler_) {
+                session_->save_bundle(options_.output_file);
+            } else {
+                session_->save(options_.output_file);
+            }
         } catch (const std::exception& e) {
             std::cerr << "Failed to save data: " << e.what() << std::endl;
         }

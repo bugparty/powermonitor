@@ -100,11 +100,17 @@ powermonitor -i
 | | `--run-label` | Run label stored in output metadata | Empty |
 | | `--run-tag` | Repeatable run tag stored in output metadata | None |
 | | `--usb-stress` | Enable USB throughput stress mode (sets STREAM_START mask bit15) | No |
-| | `--onboard` | Enable onboard Nano rail capture | On for Jetson Nano workflow |
+| | `--vid` | USB VID override (hex) | Auto-detect |
+| | `--pid` | USB PID override (hex) | Auto-detect |
+| | `-l` | `--list-devices` | List available Pico USB serial devices | No |
+| | `--debug-time-sync` | Print time sync diagnostics | No |
+| | `--no-apply-time-offset` | Skip TIME_ADJUST after time sync | No (adjust applied) |
+| | `--onboard` | Enable onboard Nano rail capture | Off |
 | | `--no-onboard` | Disable onboard Nano rail capture | Off |
+| | `--onboard-path` | Onboard hwmon path | `/sys/class/hwmon/hwmon1` |
 | | `--onboard-period-us` | Onboard sampling period in microseconds | 1000 |
-| | `--onboard-log` | Onboard-specific debug log path | Auto |
-| | `--onboard-strict` | Fail startup if onboard capture cannot start | No |
+| | `--onboard-core` | CPU core for onboard sampler thread | Auto |
+| | `--onboard-rt-prio` | RT priority for onboard sampler | Auto |
 | `-i` | `--interactive` | Enter interactive mode | No |
 | `-v` | `--verbose` | Verbose output | No |
 | `-h` | `--help` | Show help | - |

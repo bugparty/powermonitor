@@ -7,11 +7,14 @@ A power monitoring system based on the INA228 current/voltage/power sensor and R
 - INA228 sensor driver for RP2040
 - Interactive command-based configuration of INA228 (set/get config)
 - Raw data acquisition plus derived/processed values on the PC side
+- Jetson Nano integrated dual-source workflow:
+  - **Pico/INA228**: High-precision power measurements via USB
+  - **Onboard telemetry**: INA3221 power rails, GPU/CPU/EMC frequencies, thermal zones, fan RPM
+  - Dual-thread architecture for parallel high-rate power and low-rate telemetry sampling
 - Save collected and processed data to JSON for offline analysis
-- Jetson Nano integrated dual-source workflow with one `host_pc_client` run and one multi-source JSON output
 - Custom UART protocol with CRC error detection
 - Retransmission and timeout handling
-- Real-time data streaming with 1 kHz sample rates
+- Real-time data streaming with 1 kHz sample rates (Pico) and ~270 Hz (onboard INA3221)
 - PC-side protocol simulator with fault injection capabilities
 - Comprehensive test suite using Google Test
 
@@ -24,7 +27,8 @@ powermonitor/
 │   ├── powermonitor.cpp # Main device firmware
 │   └── CMakeLists.txt  # Pico SDK build configuration
 ├── pc_client/          # PC-side serial client
-├── onboard_power_sampler/ # Jetson Nano onboard hwmon sampler
+│   ├── include/        # Headers (serial, protocol, onboard sampler, etc.)
+│   └── src/            # Source files
 ├── pc_sim/             # PC-side simulator and tests
 │   ├── pc_sim_main.cpp # Simulator demo entry
 │   └── CMakeLists.txt  # Host build configuration with GTest
@@ -43,6 +47,7 @@ powermonitor/
 └── docs/               # Documentation
     ├── pc_client/
     │   ├── overview.md
+    │   ├── onboard_sampler_design.md  # Onboard telemetry architecture
     │   ├── jetson_nano_dual_source_capture.md
     │   ├── power_bundle_schema.md
     │   └── implementation_plan.md
@@ -118,8 +123,8 @@ cmake --build build
 There are two test tracks:
 
 - **PC simulator / host-side tests** (GoogleTest): protocol framing/parsing, state machines, and fault-injection scenarios.
-  - Recommended: `./test.sh`
-  - Or run directly: `./build/pc_sim/pc_sim_test`
+  - Recommended: `pwsh workflow.ps1`
+  - Or run directly: `./build_linux/bin/pc_sim_test`
   - Details: `docs/pc_sim/simulator_tests.md` and `docs/pc_sim/state_machine_tests.md`
 
 - **Real device tests** (serial/on-device): step-by-step validation against actual hardware.

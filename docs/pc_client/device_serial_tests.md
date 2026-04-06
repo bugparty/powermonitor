@@ -68,7 +68,7 @@ A design for gtest-based on-device functional tests that reuse `pc_client` facil
 
 ## TDD Workflow
 - Add each test first, then implement helper/support code.
-- Run targeted gtest filters during development, then full `pc_client_tests`, then `./test.sh` before commit.
+- Run targeted gtest filters during development, then full `pc_client_tests`, then `pwsh workflow.ps1` before commit.
 
 ## Safety Notes for Config Register 0x0
 - Bit 15 `RST`: software reset (do not set in tests).

@@ -49,7 +49,7 @@ Before approving a change, verify:
 - [ ] Dual timestamp (relative + absolute) handled correctly
 - [ ] No memory leaks or dynamic allocation in hot paths
 - [ ] Error handling proper (no exceptions in hot paths)
-- [ ] Tests pass (run `./test.sh` or build PC simulator)
+- [ ] Tests pass (run `pwsh workflow.ps1` or build PC simulator)
 - [ ] Docs updated if protocol/timing changes
 - [ ] C++17/20 style consistent (4-space indent, snake_case, PascalCase)
 

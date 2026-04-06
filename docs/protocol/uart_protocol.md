@@ -313,7 +313,7 @@ struct {
     uint16_t stream_period_us;// Current streaming period
     uint16_t stream_mask;     // Streaming channel mask
 } __attribute__((packed));
-```
+// Total length: 16 bytes
 
 #### 5.1.2.1 STATS_REPORT (0x92)
 

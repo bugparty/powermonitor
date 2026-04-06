@@ -191,31 +191,22 @@ RP2040 provides several mechanisms for communication between cores. This design 
 
 ## Data Structures
 
-### RawSample (20 bytes)
+### RawSample (internal queue format)
 
-Compact representation of one sensor reading for the SPSC queue.
-
-```cpp
-struct RawSample {
-    uint32_t timestamp_us;  // Relative to stream start
-    uint32_t vbus_raw;      // 20-bit unsigned raw value
-    int32_t vshunt_raw;     // 20-bit signed raw
-    int32_t current_raw;    // 20-bit signed raw
-    int16_t dietemp_raw;    // 16-bit signed raw
-    uint8_t flags;          // Status flags (I2C error, etc.)
-    uint8_t _pad;           // Alignment padding
-};
-```
-*Note: `sizeof(RawSample)` is 20 bytes. This is the internal queue format; the wire format `DataSamplePayload` is 41 bytes (see `frame_defs.hpp`).*
+Compact representation of one sensor reading for the SPSC queue. The actual structure
+has been extended beyond the original 20-byte design and now includes additional fields
+(timestamp_unix_us, energy_raw, charge_raw, power_raw). See `device/core/raw_sample.hpp`
+for the authoritative definition. The wire format `DataSamplePayload` is 41 bytes
+(see `frame_defs.hpp`).
 
 ### Sample Ring Buffer
 
 The project uses a custom, lock-free SPSC (Single-Producer, Single-Consumer) queue implemented in `device/core/spsc_queue.hpp`.
 
 **Configuration:**
-- Capacity: 256 samples
-- Memory: ~5KB (256 × 20 bytes)
-- At 1kHz sampling rate, this provides a ~256ms buffer.
+- Capacity: 512 samples
+- Memory: ~10KB (512 × ~20 bytes per RawSample)
+- At 1kHz sampling rate, this provides a ~512ms buffer.
 
 ## Inter-Core Communication
 

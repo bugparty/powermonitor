@@ -112,6 +112,16 @@ struct ConfigOptions {
     int read_thread_core = -1;
     int proc_thread_core = -1;
     int rt_prio = -1;
+
+    // Onboard sampler options
+    bool onboard_enabled = false;
+    std::string onboard_hwmon_path = "/sys/class/hwmon/hwmon1";
+    uint64_t onboard_period_us = 1000;
+    int onboard_cpu_core = -1;
+    int onboard_rt_prio = -1;
+    std::string onboard_cpu_cluster0_freq_path;
+    std::string onboard_cpu_cluster1_freq_path;
+    std::string onboard_emc_freq_path;
 };
 
 bool parse_vid_pid(const std::string &hardware_id, uint16_t &vid, uint16_t &pid) {
@@ -215,6 +225,34 @@ bool load_yaml_config(const std::string &path, ConfigOptions &options) {
         }
         if (affinity["rt_prio"] && affinity["rt_prio"].IsScalar()) {
             options.rt_prio = affinity["rt_prio"].as<int>();
+        }
+    }
+
+    // Parse onboard sampler configuration
+    if (const auto onboard = root["onboard"]) {
+        if (onboard["enabled"] && onboard["enabled"].IsScalar()) {
+            options.onboard_enabled = onboard["enabled"].as<bool>();
+        }
+        if (onboard["hwmon_path"] && onboard["hwmon_path"].IsScalar()) {
+            options.onboard_hwmon_path = onboard["hwmon_path"].as<std::string>();
+        }
+        if (onboard["period_us"] && onboard["period_us"].IsScalar()) {
+            options.onboard_period_us = onboard["period_us"].as<uint64_t>();
+        }
+        if (onboard["cpu_core"] && onboard["cpu_core"].IsScalar()) {
+            options.onboard_cpu_core = onboard["cpu_core"].as<int>();
+        }
+        if (onboard["rt_prio"] && onboard["rt_prio"].IsScalar()) {
+            options.onboard_rt_prio = onboard["rt_prio"].as<int>();
+        }
+        if (onboard["cpu_cluster0_freq_path"] && onboard["cpu_cluster0_freq_path"].IsScalar()) {
+            options.onboard_cpu_cluster0_freq_path = onboard["cpu_cluster0_freq_path"].as<std::string>();
+        }
+        if (onboard["cpu_cluster1_freq_path"] && onboard["cpu_cluster1_freq_path"].IsScalar()) {
+            options.onboard_cpu_cluster1_freq_path = onboard["cpu_cluster1_freq_path"].as<std::string>();
+        }
+        if (onboard["emc_freq_path"] && onboard["emc_freq_path"].IsScalar()) {
+            options.onboard_emc_freq_path = onboard["emc_freq_path"].as<std::string>();
         }
     }
 
@@ -342,6 +380,21 @@ int main(int argc, char **argv) {
     auto opt_read_core = app.add_option("--read-thread-core", options.read_thread_core, "CPU core for serial read thread");
     auto opt_proc_core = app.add_option("--proc-thread-core", options.proc_thread_core, "CPU core for data processing thread");
     auto opt_rt_prio = app.add_option("--rt-prio", options.rt_prio, "Real-time priority (SCHED_FIFO)");
+
+    // Onboard sampler options
+    app.add_flag("--onboard", options.onboard_enabled, "Enable onboard hwmon power sampling");
+    // --no-onboard is the explicit negation of --onboard (onboard_enabled defaults to false)
+    app.add_flag("--no-onboard", "Alias for not using --onboard");
+    app.add_option("--onboard-path", options.onboard_hwmon_path, "Hwmon path (default: /sys/class/hwmon/hwmon1)");
+    app.add_option("--onboard-period-us", options.onboard_period_us, "Onboard sampling period in microseconds");
+    app.add_option("--onboard-core", options.onboard_cpu_core, "CPU core for onboard sampler thread");
+    app.add_option("--onboard-rt-prio", options.onboard_rt_prio, "RT priority for onboard sampler");
+    app.add_option("--onboard-cpu-cluster0-freq", options.onboard_cpu_cluster0_freq_path,
+                   "Full sysfs path for CPU cluster 0 freq (enables sudo read)");
+    app.add_option("--onboard-cpu-cluster1-freq", options.onboard_cpu_cluster1_freq_path,
+                   "Full sysfs path for CPU cluster 1 freq (enables sudo read)");
+    app.add_option("--onboard-emc-freq", options.onboard_emc_freq_path,
+                   "Full sysfs path for EMC freq (enables sudo read)");
 
     try {
         app.parse(argc, argv);
@@ -545,6 +598,14 @@ int main(int argc, char **argv) {
     session_options.read_thread_core = options.read_thread_core;
     session_options.proc_thread_core = options.proc_thread_core;
     session_options.rt_prio = options.rt_prio;
+    session_options.onboard_enabled = options.onboard_enabled;
+    session_options.onboard_hwmon_path = options.onboard_hwmon_path;
+    session_options.onboard_period_us = options.onboard_period_us;
+    session_options.onboard_cpu_core = options.onboard_cpu_core;
+    session_options.onboard_rt_prio = options.onboard_rt_prio;
+    session_options.onboard_cpu_cluster0_freq_path = options.onboard_cpu_cluster0_freq_path;
+    session_options.onboard_cpu_cluster1_freq_path = options.onboard_cpu_cluster1_freq_path;
+    session_options.onboard_emc_freq_path = options.onboard_emc_freq_path;
 
     powermonitor::client::PowerMonitorSession session(session_options);
     try {

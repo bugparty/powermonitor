@@ -257,7 +257,7 @@ To improve sync accuracy and filter out outliers, the PC performs multiple sync 
 sequenceDiagram
     participant D as Device
     participant PC as PC
-    Note over D: 5s timer
+    Note over D: 120s timer
     D->>D: Enter sync_waiting
     D-->>PC: EVT_TIME_SYNC_REQUEST (0x94)
     Note over D: Tight loop: tud_task + USB read only

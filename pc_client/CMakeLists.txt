@@ -73,6 +73,8 @@ add_library(pc_client_lib
     src/read_thread.cpp
     src/session.cpp
     src/thread_affinity.cpp
+    src/onboard_sampler.cpp
+    src/onboard_sample_queue.cpp
 )
 
 target_link_libraries(pc_client_lib PUBLIC

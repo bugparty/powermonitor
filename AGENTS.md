@@ -24,7 +24,7 @@ Practical handbook for AI agents working in this repo. Keep outputs (docs, comme
 - Device firmware: `pwsh workflow.ps1 -BuildDevice` (requires PICO_SDK_PATH environment variable).
 - Run tests directly: `./build_linux/bin/pc_sim_test` (Linux/WSL) or `.\build\bin\Debug\pc_sim_test.exe` (Windows).
 - Single test case: `--gtest_filter=SuiteName.TestName`.
-- Do not skip tests before commit; 52/52 must pass.
+- Do not skip tests before commit; 61/61 must pass.
 
 ---
 
@@ -117,7 +117,7 @@ Before committing changes to any protocol struct:
 ## Git & Review Hygiene
 - Never revert user changes. No force pushes. No commit amend unless user asks.
 - Stage only relevant files; avoid committing secrets (env, creds).
-- Keep commits focused; ensure `./test.sh` passes before proposing a commit.
+- Keep commits focused; ensure `pwsh workflow.ps1` passes before proposing a commit.
 
 ---
 

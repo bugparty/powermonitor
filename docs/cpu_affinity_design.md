@@ -13,8 +13,8 @@ When running both `pc_client` (Pico INA228 power monitor) and `onboard_power_sam
 ### PC Client (`host_pc_client`)
 - **Read Thread** - USB serial polling (`read_thread.cpp`)
 - **Processor Thread** - Sample processing loop
-- **Refresh Thread** - Statistics/config refresh
 - **Main Thread** - CLI and coordination
+- (No Refresh Thread exists in the current implementation.)
 
 ### Onboard Power Sampler (`onboard_power_sampler`)
 - **Main Thread** - Single-threaded hwmon polling with `clock_nanosleep()`

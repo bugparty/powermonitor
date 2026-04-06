@@ -13,6 +13,37 @@
 namespace powermonitor {
 namespace client {
 
+/**
+ * @brief Sample structure for onboard power measurements from Jetson Nano hwmon
+ */
+struct OnboardSample {
+    int64_t mono_ns = 0;
+    int64_t unix_ns = 0;
+
+    // INA3221 power rails (mW)
+    int64_t vdd_in_mw = 0;
+    int64_t vdd_cpu_gpu_cv_mw = 0;
+    int64_t vdd_soc_mw = 0;
+    int64_t total_mw = 0;
+
+    // GPU / CPU / EMC frequencies (Hz, -1 = unavailable)
+    int64_t gpu_freq_hz = -1;
+    int64_t cpu_cluster0_freq_hz = -1;
+    int64_t cpu_cluster1_freq_hz = -1;
+    int64_t emc_freq_hz = -1;
+
+    // Temperatures (milli-Celsius, -1 = unavailable)
+    int64_t temp_cpu_mc = -1;
+    int64_t temp_gpu_mc = -1;
+    int64_t temp_soc0_mc = -1;
+    int64_t temp_soc1_mc = -1;
+    int64_t temp_soc2_mc = -1;
+    int64_t temp_tj_mc = -1;
+
+    // Fan (RPM, -1 = unavailable)
+    int64_t fan_rpm = -1;
+};
+
 class Session {
 public:
     struct Stats {
@@ -60,6 +91,24 @@ public:
         std::vector<std::string> tags;
     };
 
+    // Onboard power data structures
+    struct OnboardMeta {
+        std::string hwmon_path;
+        std::string source = "onboard_cpp";
+        std::string columns = "mono_ns,unix_ns,vdd_in_mw,vdd_cpu_gpu_cv_mw,vdd_soc_mw,total_mw,"
+                             "gpu_freq_hz,cpu_cluster0_freq_hz,cpu_cluster1_freq_hz,emc_freq_hz,"
+                             "temp_cpu_mc,temp_gpu_mc,temp_soc0_mc,temp_soc1_mc,temp_soc2_mc,temp_tj_mc,"
+                             "fan_rpm";
+    };
+
+    struct OnboardSummary {
+        size_t sample_count = 0;
+        double mean_w = 0.0;
+        double p50_w = 0.0;
+        double p95_w = 0.0;
+        double energy_j = 0.0;
+    };
+
     Session() = default;
     ~Session() = default;
 
@@ -80,6 +129,15 @@ public:
         session_end_unix_us_ = end_unix_us;
     }
 
+    // Onboard power data methods
+    void set_onboard_meta(const OnboardMeta& meta) { onboard_meta_ = meta; }
+    void add_onboard_sample(const OnboardSample& sample);
+    size_t onboard_sample_count() const {
+        std::lock_guard<std::mutex> lock(onboard_mutex_);
+        return onboard_samples_.size();
+    }
+    void save_bundle(const std::string& filepath) const;
+
 private:
     Config config_;
     RuntimeMeta runtime_meta_;
@@ -89,8 +147,15 @@ private:
     std::vector<nlohmann::json> samples_;
     mutable std::mutex mutex_;
 
+    // Onboard power data
+    OnboardMeta onboard_meta_;
+    std::vector<OnboardSample> onboard_samples_;
+    mutable std::mutex onboard_mutex_;
+
     nlohmann::json sample_to_json(const Sample& sample) const;
     nlohmann::json build_meta_json() const;
+    nlohmann::json build_onboard_source_json() const;
+    OnboardSummary compute_onboard_summary() const;
 };
 
 }  // namespace client

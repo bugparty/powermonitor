@@ -109,6 +109,7 @@ Uses classic structure of **delimiter + header + payload + checksum**.
 |**0x90**|`EVT_ALERT`|D→P|Event|Hardware alert (Over-Voltage, etc.)|
 |**0x91**|`CFG_REPORT`|D→P|Event|**Configuration report** (includes conversion coefficients)|
 |**0x92**|`STATS_REPORT`|D→P|Event|Periodic stream statistics report (`samples_produced/samples_dropped/queue_depth`)|
+|**0x93**|`TEXT_REPORT`|D→P|Event|Free-form text message (debug output, up to 4096 bytes)|
 |**0x94**|`EVT_TIME_SYNC_REQUEST`|D→P|Event|Device requests PC to initiate time sync (no payload)|
 
 ## 4. Common Response Mechanism
@@ -220,23 +221,23 @@ DATA Packet Loss Handling:
 ```c
 struct DataSample {
     uint64_t timestamp_unix_us; // Absolute timestamp (microseconds) synced from PC via TIME_SET
-    uint32_t timestamp_us;   // Relative timestamp (microseconds), see explanation below
+    uint64_t timestamp_us;      // Relative timestamp (microseconds), see explanation below
 
-    uint8_t  flags;          // Status flags:
-                             //   Bit0: CNVRF  - ADC conversion complete
-                             //   Bit1: ALERT  - Alert triggered
-                             //   Bit2: CAL_VALID - Calibration valid (0 means CURRENT invalid)
-                             //   Bit3: OVF    - Math overflow
+    uint8_t  flags;             // Status flags:
+                                //   Bit0: CNVRF  - ADC conversion complete
+                                //   Bit1: ALERT  - Alert triggered
+                                //   Bit2: CAL_VALID - Calibration valid (0 means CURRENT invalid)
+                                //   Bit3: OVF    - Math overflow
 
-    uint8_t  vbus20[3];      // VBUS unsigned 20-bit LE-packed
-    uint8_t  vshunt20[3];    // VSHUNT signed 20-bit LE-packed
-    uint8_t  current20[3];   // CURRENT signed 20-bit LE-packed
-    uint8_t  power24[3];     // POWER unsigned 24-bit LE-packed
-    int16_t  dietemp16;      // DIE_TEMP signed 16-bit
-    uint8_t  energy40[5];    // ENERGY unsigned 40-bit LE-packed
-    uint8_t  charge40[5];    // CHARGE signed 40-bit LE-packed
+    uint8_t  vbus20[3];         // VBUS unsigned 20-bit LE-packed
+    uint8_t  vshunt20[3];       // VSHUNT signed 20-bit LE-packed
+    uint8_t  current20[3];      // CURRENT signed 20-bit LE-packed
+    uint8_t  power24[3];        // POWER unsigned 24-bit LE-packed
+    int16_t  dietemp16;         // DIE_TEMP signed 16-bit
+    uint8_t  energy40[5];       // ENERGY unsigned 40-bit LE-packed
+    uint8_t  charge40[5];       // CHARGE signed 40-bit LE-packed
 
-} __attribute__((packed));   // Total length: 8 + 4 + 1 + 3 + 3 + 3 + 3 + 2 + 5 + 5 = 37 bytes
+} __attribute__((packed));      // Total length: 8 + 8 + 1 + 3 + 3 + 3 + 3 + 2 + 5 + 5 = 41 bytes
 ```
 
 **timestamp_us Description**:
@@ -245,26 +246,17 @@ struct DataSample {
 |---|---|
 |**Origin**|Moment when `STREAM_START` command is executed, resets to 0|
 |**Precision**|1 microsecond|
-|**Range**|0 ~ 4,294,967,295 µs (approximately 71.6 minutes)|
-|**Overflow Handling**|Natural wrap-around to 0, PC should detect and accumulate overflow count|
+|**Range**|0 ~ 18,446,744,073,709,551,615 µs (uint64_t max, ~584,942 years)|
+|**Overflow Handling**|Not a practical concern with 64-bit; uint64_t provides ample range|
 
 **PC-side Time Reconstruction Algorithm**:
 
 ```c
-// State variables
-uint32_t last_ts = 0;
-uint64_t overflow_count = 0;
-
-// Each time a frame is received
-void on_data_sample(uint32_t ts_us) {
-    if (ts_us < last_ts) {
-        // Wrap-around detected
-        overflow_count++;
-    }
-    last_ts = ts_us;
-    
-    // Absolute time (microseconds)
-    uint64_t absolute_us = (overflow_count << 32) + ts_us;
+// timestamp_us is now 64-bit, no overflow handling needed
+// Simply use the value directly or combine with timestamp_unix_us as needed
+void on_data_sample(uint64_t ts_us) {
+    // Relative time since STREAM_START (microseconds)
+    // No wrap-around handling needed for 64-bit
 }
 ```
 
@@ -321,7 +313,7 @@ struct {
     uint16_t stream_period_us;// Current streaming period
     uint16_t stream_mask;     // Streaming channel mask
 } __attribute__((packed));
-```
+// Total length: 16 bytes
 
 #### 5.1.2.1 STATS_REPORT (0x92)
 
@@ -570,7 +562,7 @@ sequenceDiagram
 
 ### 5.3 Debug Commands
 
-#### 5.2.1 REG_READ (0x20)
+#### 5.3.1 REG_READ (0x20)
 
 - **Direction**: PC → Dev
 - **Purpose**: Read INA228 register raw value (supports 16/24/40-bit registers)
@@ -610,7 +602,7 @@ struct RegReadRsp {
 |1|24-bit|VSHUNT (0x04), VBUS (0x05), DIETEMP (0x06), CURRENT (0x07), POWER (0x08)|
 |2|40-bit|ENERGY (0x09), CHARGE (0x0A)|
 
-#### 5.2.2 REG_WRITE (0x21)
+#### 5.3.2 REG_WRITE (0x21)
 
 - **Description**: INA228's writable registers (Configuration, Calibration, Limits, etc.) are all **16-bit**.
 
@@ -656,17 +648,17 @@ Byte layout: [Bit7:0] [Bit15:8] [Bit19:16]
 ```c
 // ===== Unsigned unpacking (VBUS) =====
 uint32_t unpack_u20(const uint8_t buf[3]) {
-    return (uint32_t)buf[0] | 
-           ((uint32_t)buf[1] << 8) | 
-           ((uint32_t)buf[2] << 16);
+    return (uint32_t)buf[0] |
+           ((uint32_t)buf[1] << 8) |
+           (((uint32_t)buf[2] & 0x0F) << 16);
 }
 
 // ===== Signed unpacking (VSHUNT, CURRENT) =====
 int32_t unpack_s20(const uint8_t buf[3]) {
-    uint32_t raw = (uint32_t)buf[0] | 
-                   ((uint32_t)buf[1] << 8) | 
-                   ((uint32_t)buf[2] << 16);
-    
+    uint32_t raw = (uint32_t)buf[0] |
+                   ((uint32_t)buf[1] << 8) |
+                   (((uint32_t)buf[2] & 0x0F) << 16);
+
     // Bit 19 is sign bit, extend to 32-bit
     if (raw & 0x80000) {
         raw |= 0xFFF00000;  // Sign extension

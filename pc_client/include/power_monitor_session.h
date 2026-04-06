@@ -5,6 +5,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "protocol/frame_builder.h"
@@ -21,6 +22,8 @@ namespace client {
 class ResponseQueue;
 class ReadThread;
 class Session;
+class OnboardSampler;
+class OnboardSampleQueue;
 struct ThreadStats;
 
 class PowerMonitorSession {
@@ -42,6 +45,21 @@ public:
         std::vector<std::string> run_tags;
         std::string vid_hex = "0x0000";
         std::string pid_hex = "0x0000";
+        int read_thread_core = -1;
+        int proc_thread_core = -1;
+        int rt_prio = -1;
+
+        // Onboard sampler options
+        bool onboard_enabled = false;
+        std::string onboard_hwmon_path = "/sys/class/hwmon/hwmon1";
+        uint64_t onboard_period_us = 1000;
+        int onboard_cpu_core = -1;
+        int onboard_rt_prio = -1;
+
+        // Privileged sysfs paths for CPU/EMC freq (leave empty to skip)
+        std::string onboard_cpu_cluster0_freq_path;
+        std::string onboard_cpu_cluster1_freq_path;
+        std::string onboard_emc_freq_path;
     };
 
     explicit PowerMonitorSession(const Options& options);
@@ -74,6 +92,7 @@ private:
                                  bool try_lock_command = false);
 
     void process_samples_loop();
+    void process_onboard_loop();
     int run_tui_loop();
     bool save_snapshot(const std::string& path);
     void append_log(const std::string& message);
@@ -111,6 +130,10 @@ private:
      std::unique_ptr<Session> session_;
      std::unique_ptr<ThreadStats> stats_;
 
+     // Onboard sampler
+     std::shared_ptr<OnboardSampleQueue> onboard_queue_;
+     std::unique_ptr<OnboardSampler> onboard_sampler_;
+     std::thread onboard_proc_thread_;
 
      std::atomic<bool> stop_requested_{false};
      std::atomic<bool> interrupted_{false};

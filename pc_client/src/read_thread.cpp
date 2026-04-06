@@ -1,4 +1,5 @@
 #include "read_thread.h"
+#include "thread_affinity.h"
 
 #include <chrono>
 #include <iostream>
@@ -18,12 +19,14 @@ namespace client {
 
 ReadThread::ReadThread(serial::Serial* serial, SampleQueue* sample_q,
                        ResponseQueue* response_q, std::atomic<bool>* stop_flag,
-                       ThreadStats* stats)
+                       ThreadStats* stats, int core_id, int rt_prio)
     : serial_(serial),
       sample_q_(sample_q),
       response_q_(response_q),
       stop_flag_(stop_flag),
-      stats_(stats) {
+      stats_(stats),
+      core_id_(core_id),
+      rt_prio_(rt_prio) {
 }
 
 ReadThread::~ReadThread() {
@@ -138,6 +141,14 @@ struct ParserState {
 void ReadThread::run() {
 #ifdef _WIN32
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
+#else
+    if (core_id_ >= 0 && rt_prio_ >= 0) {
+        ThreadAffinity::SetRealtimeWithAffinity(core_id_, rt_prio_);
+    } else if (core_id_ >= 0) {
+        ThreadAffinity::SetCpuAffinity(core_id_);
+    } else if (rt_prio_ >= 0) {
+        ThreadAffinity::SetRealtimePriority(rt_prio_);
+    }
 #endif
     ParserState state(response_q_, sample_q_, stats_);
 

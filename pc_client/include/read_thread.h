@@ -35,7 +35,7 @@ class ReadThread {
 public:
     ReadThread(serial::Serial* serial, SampleQueue* sample_q, 
                ResponseQueue* response_q, std::atomic<bool>* stop_flag,
-               ThreadStats* stats);
+               ThreadStats* stats, int core_id = -1, int rt_prio = -1);
     ~ReadThread();
 
     ReadThread(const ReadThread&) = delete;
@@ -53,6 +53,8 @@ private:
     ResponseQueue* response_q_;
     std::atomic<bool>* stop_flag_;
     ThreadStats* stats_;
+    int core_id_;
+    int rt_prio_;
     
     std::thread thread_;
     std::atomic<bool> running_{false};

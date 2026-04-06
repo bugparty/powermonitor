@@ -45,7 +45,10 @@ public:
         uint32_t vbus_raw = 0;
         int32_t vshunt_raw = 0;
         int32_t current_raw = 0;
+        uint32_t power_raw = 0;
         int16_t temp_raw = 0;
+        uint64_t energy_raw = 0;
+        int64_t charge_raw = 0;
     };
 
     struct RuntimeMeta {
@@ -77,9 +80,6 @@ public:
         session_end_unix_us_ = end_unix_us;
     }
 
-    // Handle device timestamp overflow
-    uint64_t process_device_timestamp(uint32_t ts_us);
-
 private:
     Config config_;
     RuntimeMeta runtime_meta_;
@@ -88,10 +88,6 @@ private:
     uint64_t session_end_unix_us_ = 0;
     std::vector<nlohmann::json> samples_;
     mutable std::mutex mutex_;
-
-    // Device timestamp overflow state
-    uint32_t last_device_ts_ = 0;
-    uint64_t overflow_count_ = 0;
 
     nlohmann::json sample_to_json(const Sample& sample) const;
     nlohmann::json build_meta_json() const;

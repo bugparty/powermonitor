@@ -10,7 +10,9 @@
 // These tests verify end-to-end functionality of the power monitor system,
 // including command handling, data streaming, and error tolerance.
 
-// Test fixture for common setup
+// ---------------------------------------------------------------------------
+// Fixture: full PC + Device pair over a clean link
+// ---------------------------------------------------------------------------
 class PowerMonitorTest : public ::testing::Test {
 protected:
     void SetUp() override {
@@ -47,16 +49,45 @@ protected:
     std::unique_ptr<node::DeviceNode> device;
 };
 
-// Test basic ping command
+// ---------------------------------------------------------------------------
+// Fixture: PC only (no device), 100% drop on PC→device direction.
+// Used to exercise the timeout/retransmit path without a device to respond.
+// ---------------------------------------------------------------------------
+class CommandTimeoutTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        sim::LinkConfig drop_all;
+        drop_all.drop_prob = 1.0;
+        link.set_pc_to_dev_config(drop_all);
+        pc = std::make_unique<node::PCNode>(&link.pc());
+    }
+
+    void RunSimulation(uint64_t duration_us, uint64_t tick_interval_us) {
+        loop.run_for(duration_us, tick_interval_us, [&](uint64_t now_us) {
+            link.pump(now_us);
+            pc->tick(now_us);
+            // No device — nothing ever acknowledges commands.
+        });
+    }
+
+    sim::VirtualLink link;
+    sim::EventLoop loop;
+    std::unique_ptr<node::PCNode> pc;
+};
+
+// ===========================================================================
+// Happy-path tests
+// ===========================================================================
+
 TEST_F(PowerMonitorTest, PingCommand) {
     pc->send_ping(loop.now_us());
     RunSimulation(100'000, 500);
 
     EXPECT_EQ(pc->crc_fail_count(), 0);
     EXPECT_EQ(pc->timeout_count(), 0);
+    EXPECT_EQ(pc->orphan_rsp_count(), 0);
 }
 
-// Test configuration command
 TEST_F(PowerMonitorTest, SetConfiguration) {
     pc->send_set_cfg(0x0000, 0x0000, 0x1000, 0x0000, loop.now_us());
     RunSimulation(100'000, 500);
@@ -65,7 +96,6 @@ TEST_F(PowerMonitorTest, SetConfiguration) {
     EXPECT_EQ(pc->timeout_count(), 0);
 }
 
-// Test stream start and stop
 TEST_F(PowerMonitorTest, StreamStartStop) {
     pc->send_stream_start(1000, 0x000F, loop.now_us());
     RunSimulation(1'000'000, 500);
@@ -77,35 +107,104 @@ TEST_F(PowerMonitorTest, StreamStartStop) {
     EXPECT_EQ(pc->timeout_count(), 0);
 }
 
-// Test complete data streaming scenario
 TEST_F(PowerMonitorTest, CompleteDataStreamingScenario) {
-    // Send commands
     pc->send_ping(loop.now_us());
     pc->send_set_cfg(0x0000, 0x0000, 0x1000, 0x0000, loop.now_us());
     pc->send_stream_start(1000, 0x000F, loop.now_us());
 
-    // Run streaming for 10 seconds
     RunSimulation(10'000'000, 500);
 
-    // Stop streaming
     pc->send_stream_stop(loop.now_us());
     RunSimulation(500'000, 500);
 
-    // Verify no communication errors
-    EXPECT_EQ(pc->crc_fail_count(), 0) << "CRC failures detected";
-    EXPECT_EQ(pc->data_drop_count(), 0) << "Data drops detected";
-    EXPECT_EQ(pc->timeout_count(), 0) << "Timeouts detected";
-    EXPECT_EQ(pc->retransmit_count(), 0) << "Retransmissions detected";
+    EXPECT_EQ(pc->crc_fail_count(), 0)       << "CRC failures on clean link";
+    EXPECT_EQ(pc->data_drop_count(), 0)       << "Data drops on clean link";
+    EXPECT_EQ(pc->timeout_count(), 0)         << "Command timeouts on clean link";
+    EXPECT_EQ(pc->retransmit_count(), 0)      << "Retransmissions on clean link";
+    EXPECT_EQ(pc->orphan_rsp_count(), 0)      << "Orphan RSPs on clean link";
+    EXPECT_EQ(pc->error_rsp_count(), 0)       << "Error RSPs on clean link";
+    EXPECT_EQ(pc->truncated_data_count(), 0)  << "Truncated DATA frames on clean link";
 }
 
-// Test link with packet drops
-TEST_F(PowerMonitorTest, CommunicationWithPacketDrops) {
+TEST_F(PowerMonitorTest, TimeSynchronizationSequence) {
+    constexpr uint8_t kMsgTimeSync   = 0x05;
+    constexpr uint8_t kMsgTimeAdjust = 0x06;
+    constexpr uint8_t kMsgTimeSet    = 0x07;
+
+    pc->send_time_sync(loop.now_us());
+    RunSimulation(200'000, 500);
+
+    EXPECT_EQ(pc->timeout_count(), 0)  << "Timeouts during TIME_SYNC";
+    EXPECT_EQ(pc->crc_fail_count(), 0) << "CRC failures during TIME_SYNC";
+    EXPECT_EQ(pc->get_rx_count(kMsgTimeSync),   1) << "TIME_SYNC RSP missing";
+    EXPECT_EQ(pc->get_rx_count(kMsgTimeAdjust), 1) << "TIME_ADJUST RSP missing";
+
+    pc->send_time_set(1678900000000000ULL, loop.now_us());
+    RunSimulation(100'000, 500);
+
+    EXPECT_EQ(pc->timeout_count(), 0)              << "Timeouts during TIME_SET";
+    EXPECT_EQ(pc->get_rx_count(kMsgTimeSet), 1)    << "TIME_SET RSP missing";
+}
+
+// ===========================================================================
+// CFG_REPORT content verification
+// Verifies that handle_cfg_report() correctly parses values sent by the device.
+// ===========================================================================
+
+TEST_F(PowerMonitorTest, CfgReportValuesParsedAfterGetCfg) {
+    // Start streaming so stream_period_us and stream_mask are set on device.
+    pc->send_stream_start(1000, 0x000F, loop.now_us());
+    RunSimulation(200'000, 500);
+
+    pc->send_get_cfg(loop.now_us());
+    RunSimulation(100'000, 500);
+
+    EXPECT_EQ(pc->timeout_count(), 0)              << "Timeout waiting for GET_CFG RSP";
+    EXPECT_EQ(pc->stream_period_us_cfg(), 1000)    << "stream_period_us not parsed from CFG_REPORT";
+    EXPECT_EQ(pc->stream_mask_cfg(),  0x000F)      << "stream_mask not parsed from CFG_REPORT";
+    EXPECT_EQ(pc->current_lsb_nA(),  1000U)        << "current_lsb_nA not parsed from CFG_REPORT";
+
+    pc->send_stream_stop(loop.now_us());
+    RunSimulation(100'000, 500);
+}
+
+// ===========================================================================
+// Data sequence number tests
+// ===========================================================================
+
+// Verify that the uint8 wraparound of DATA frame seq (255 → 0) is not
+// misidentified as a sequence gap. Run streaming long enough to produce >256
+// DATA samples so the counter wraps at least once.
+TEST_F(PowerMonitorTest, DataSeqWraparoundNoFalseDrops) {
+    // Do NOT send SET_CFG during streaming — that triggers an extra CFG_REPORT
+    // which increments device data_seq_, creating a perceived gap in DATA seqs.
+    pc->send_stream_start(1000, 0x000F, loop.now_us());
+    // Allow stream_start to complete, then run 300ms = ~300 DATA samples at 1kHz.
+    // Device data_seq_ starts at 2 (after initial CFG_REPORT and TEXT_REPORT),
+    // so DATA seqs are 2,3,...,255,0,1,...  The wraparound must not raise a drop.
+    RunSimulation(350'000, 500);
+
+    pc->send_stream_stop(loop.now_us());
+    RunSimulation(100'000, 500);
+
+    EXPECT_EQ(pc->data_drop_count(), 0) << "Seq uint8 wraparound incorrectly detected as a drop";
+    EXPECT_EQ(pc->crc_fail_count(), 0);
+    EXPECT_EQ(pc->timeout_count(), 0);
+}
+
+// ===========================================================================
+// Fault-injection tests — verify errors are detected, not silently ignored
+// ===========================================================================
+
+// With 5% packet drops, at least some CRC errors or data drops must be
+// detected by the PC. Asserting >= 0 is meaningless; we want > 0.
+TEST_F(PowerMonitorTest, PacketDropsCauseDetectableErrors) {
     sim::LinkConfig config;
     config.min_chunk = 1;
     config.max_chunk = 16;
     config.min_delay_us = 0;
     config.max_delay_us = 2000;
-    config.drop_prob = 0.05;  // 5% packet drop
+    config.drop_prob = 0.05;
     config.flip_prob = 0.0;
     link.set_pc_to_dev_config(config);
     link.set_dev_to_pc_config(config);
@@ -119,21 +218,22 @@ TEST_F(PowerMonitorTest, CommunicationWithPacketDrops) {
     pc->send_stream_stop(loop.now_us());
     RunSimulation(500'000, 500);
 
-    // With packet drops, partial frames may cause CRC errors
-    // This test verifies the system handles drops gracefully
-    // and doesn't crash
-    EXPECT_GE(pc->crc_fail_count(), 0);
+    // At 5% chunk-level drop with ~3 chunks per DATA frame, ~14% of frames
+    // will have at least one dropped chunk, producing CRC errors.
+    EXPECT_GT(pc->crc_fail_count(), 0) << "5% drop should produce detectable CRC errors";
 }
 
-// Test link with bit flips
-TEST_F(PowerMonitorTest, CommunicationWithBitFlips) {
+// With 1% per-bit corruption, a 48-byte DATA frame (384 bits) has ~98%
+// probability of containing at least one flipped bit, so CRC errors are
+// virtually certain over a 2-second run.
+TEST_F(PowerMonitorTest, BitFlipsCauseDetectableCrcErrors) {
     sim::LinkConfig config;
     config.min_chunk = 1;
     config.max_chunk = 16;
     config.min_delay_us = 0;
     config.max_delay_us = 2000;
     config.drop_prob = 0.0;
-    config.flip_prob = 0.01;  // 1% bit flip
+    config.flip_prob = 0.01;
     link.set_pc_to_dev_config(config);
     link.set_dev_to_pc_config(config);
 
@@ -146,34 +246,99 @@ TEST_F(PowerMonitorTest, CommunicationWithBitFlips) {
     pc->send_stream_stop(loop.now_us());
     RunSimulation(500'000, 500);
 
-    // With bit flips, we may have CRC failures detected and handled
-    // This test just ensures the system doesn't crash
-    EXPECT_GE(pc->crc_fail_count(), 0);
+    EXPECT_GT(pc->crc_fail_count(), 0) << "1% bit-flip should produce detectable CRC errors";
 }
 
-// Test time synchronization sequence
-TEST_F(PowerMonitorTest, TimeSynchronizationSequence) {
-    constexpr uint8_t kMsgTimeSync = 0x05;
-    constexpr uint8_t kMsgTimeAdjust = 0x06;
-    constexpr uint8_t kMsgTimeSet = 0x07;
+// ===========================================================================
+// Timeout / retransmit tests
+// ===========================================================================
 
-    // Send TIME_SYNC
-    pc->send_time_sync(loop.now_us());
-    // Wait for response and subsequent TIME_ADJUST + response
-    // Sequence: PC->TimeSync, Dev->Rsp, PC->TimeAdjust, Dev->Rsp
-    RunSimulation(200'000, 500);
+// When all PC→device traffic is dropped, the PC must retransmit exactly
+// kMaxRetries (3) times and then record a timeout.
+TEST_F(CommandTimeoutTest, CommandRetransmitsAndTimesOut) {
+    // kCmdTimeoutUs = 200ms, kMaxRetries = 3
+    // Timeline: send at t=0, retransmit at t=200ms/400ms/600ms, timeout at t=800ms.
+    pc->send_ping(loop.now_us());
+    RunSimulation(900'000, 500);
 
-    EXPECT_EQ(pc->timeout_count(), 0) << "Timeouts detected during TimeSync sequence";
-    EXPECT_EQ(pc->crc_fail_count(), 0) << "CRC failures detected";
+    EXPECT_EQ(pc->timeout_count(),     1) << "Expected exactly 1 timeout after max retries";
+    EXPECT_EQ(pc->retransmit_count(),  3) << "Expected exactly 3 retransmits before timeout";
+}
 
-    // Verify both TimeSync and TimeAdjust were acknowledged
-    EXPECT_EQ(pc->get_rx_count(kMsgTimeSync), 1) << "TimeSync response missing";
-    EXPECT_EQ(pc->get_rx_count(kMsgTimeAdjust), 1) << "TimeAdjust response missing";
+// Multiple commands queued simultaneously — each times out independently.
+TEST_F(CommandTimeoutTest, MultipleCommandsAllTimeout) {
+    pc->send_ping(loop.now_us());
+    pc->send_get_cfg(loop.now_us());
 
-    // Send TIME_SET
-    pc->send_time_set(1678900000000000ULL, loop.now_us());
+    RunSimulation(900'000, 500);
+
+    EXPECT_EQ(pc->timeout_count(),    2) << "Each queued command must time out independently";
+    EXPECT_EQ(pc->retransmit_count(), 6) << "3 retransmits per command × 2 commands";
+}
+
+// ===========================================================================
+// 64-bit timestamp tests
+// ===========================================================================
+
+// Verify that timestamps exceeding the old 32-bit limit (~71.6 min) are
+// correctly handled without wraparound.
+TEST_F(PowerMonitorTest, LongRunningStreamTimestampNoWraparound) {
+    // Start streaming at a large base time so that relative timestamps exceed
+    // the old uint32_t max (4,294,967,295 µs ≈ 71.6 min).
+    // We set stream_start very early and run well past the 32-bit boundary.
+    constexpr uint64_t kBaseTime = 100'000;  // 100 ms
+    constexpr uint64_t kStreamPeriod = 10'000;  // 10 ms per sample (100 Hz)
+
+    // Fast-forward time to the base, let initial handshake happen
+    RunSimulation(kBaseTime, 500);
+
+    pc->send_stream_start(kStreamPeriod, 0x000F, loop.now_us());
+    RunSimulation(200'000, 500);  // let stream start settle
+
+    // Now jump ahead past the 32-bit boundary: ~4.3 billion µs = ~71.6 min
+    // We simulate in a large step to avoid running billions of ticks.
+    // Run 4,300,000,000 µs (~71.7 min) with coarse tick interval.
+    constexpr uint64_t kLongDuration = 4'300'000'000ULL;
+    RunSimulation(kLongDuration, kStreamPeriod);
+
+    // The last timestamp should be > uint32_t max, proving no wraparound
+    EXPECT_GT(pc->last_timestamp_us(), 4'294'967'295ULL)
+        << "Timestamp should exceed uint32_t max after 71+ min of streaming";
+    EXPECT_EQ(pc->truncated_data_count(), 0)
+        << "No DATA frames should be truncated with 64-bit timestamps";
+    EXPECT_EQ(pc->crc_fail_count(), 0);
+}
+
+// Verify that the sim produces 41-byte DATA_SAMPLE payloads (post 64-bit migration).
+TEST_F(PowerMonitorTest, DataSamplePayloadSize41Bytes) {
+    pc->send_stream_start(1000, 0x000F, loop.now_us());
     RunSimulation(100'000, 500);
 
-    EXPECT_EQ(pc->timeout_count(), 0) << "Timeouts detected during TimeSet";
-    EXPECT_EQ(pc->get_rx_count(kMsgTimeSet), 1) << "TimeSet response missing";
+    // If any DATA frames arrived with <41 bytes, truncated_data_count would be > 0
+    EXPECT_EQ(pc->truncated_data_count(), 0)
+        << "All DATA_SAMPLE frames must have 41-byte payloads";
+    // Verify we actually received some data
+    EXPECT_GT(pc->get_rx_count(0x80), 0U)
+        << "Should have received at least one DATA_SAMPLE";
+
+    pc->send_stream_stop(loop.now_us());
+    RunSimulation(100'000, 500);
+}
+
+// Verify timestamps are monotonically increasing during continuous streaming.
+TEST_F(PowerMonitorTest, DataTimestampsMonotonicallyIncreasing) {
+    pc->send_stream_start(1000, 0x000F, loop.now_us());
+
+    // Run 5 seconds of streaming
+    RunSimulation(5'000'000, 500);
+
+    // After 5 seconds of 1kHz streaming, timestamp should be roughly 5 million µs
+    // (accounting for startup delay and stream_start offset)
+    EXPECT_GT(pc->last_timestamp_us(), 4'000'000ULL)
+        << "Timestamp should reflect ~5 seconds of streaming";
+    EXPECT_EQ(pc->data_drop_count(), 0)
+        << "No sequence drops on clean link";
+
+    pc->send_stream_stop(loop.now_us());
+    RunSimulation(100'000, 500);
 }

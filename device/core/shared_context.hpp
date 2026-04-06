@@ -21,7 +21,7 @@ struct SharedContext {
     // === Written by Core 0, Read by Core 1 ===
     volatile uint16_t stream_period_us;   // Sampling period in microseconds
     volatile uint16_t stream_mask;        // Channel mask (which sensors to read)
-    volatile uint32_t stream_start_us;    // Timestamp origin for relative timestamps
+    volatile uint64_t stream_start_us;    // Timestamp origin for relative timestamps (64-bit)
     volatile int64_t epoch_offset_us;    // Offset: Unix time = monotonic + epoch_offset
 
     // === Written by Core 1, Read by Core 0 ===

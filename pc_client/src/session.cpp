@@ -1,4 +1,4 @@
-﻿#include "session.h"
+#include "session.h"
 
 #include <ctime>
 #include <fstream>
@@ -66,15 +66,6 @@ void Session::save(const std::string& filepath) const {
     file << std::setw(2) << root << std::endl;
 }
 
-uint64_t Session::process_device_timestamp(uint32_t ts_us) {
-    if (ts_us < last_device_ts_ && last_device_ts_ - ts_us > 0x80000000) {
-        // 检测到回绕
-        overflow_count_++;
-    }
-    last_device_ts_ = ts_us;
-    return (overflow_count_ << 32) | ts_us;
-}
-
 nlohmann::json Session::sample_to_json(const Sample& sample) const {
     nlohmann::json j;
     j["seq"] = sample.seq;
@@ -88,16 +79,25 @@ nlohmann::json Session::sample_to_json(const Sample& sample) const {
     j["raw"]["vshunt_s20"] = sample.vshunt_raw;
     j["raw"]["current_s20"] = sample.current_raw;
     j["raw"]["dietemp_s16"] = sample.temp_raw;
+    j["raw"]["power_u24"] = sample.power_raw;
+    j["raw"]["energy_u40"] = sample.energy_raw;
+    j["raw"]["charge_s40"] = sample.charge_raw;
 
     const double vbus_lsb = 195.3125e-6;
     const double vshunt_lsb = config_.adcrange ? 78.125e-9 : 312.5e-9;
     const double current_lsb = config_.current_lsb_nA * 1e-9;
     const double temp_lsb = 7.8125e-3;
+    const double power_lsb = current_lsb * 3.2;
+    const double energy_lsb = current_lsb * 3.2 * 16.0;
+    const double charge_lsb = current_lsb;
 
     j["engineering"]["vbus_v"] = sample.vbus_raw * vbus_lsb;
     j["engineering"]["vshunt_v"] = sample.vshunt_raw * vshunt_lsb;
     j["engineering"]["current_a"] = sample.current_raw * current_lsb;
     j["engineering"]["temp_c"] = sample.temp_raw * temp_lsb;
+    j["engineering"]["power_w"] = sample.power_raw * power_lsb;
+    j["engineering"]["energy_j"] = sample.energy_raw * energy_lsb;
+    j["engineering"]["charge_c"] = sample.charge_raw * charge_lsb;
 
     return j;
 }

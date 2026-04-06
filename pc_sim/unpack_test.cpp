@@ -80,15 +80,23 @@ TEST(UnpackTest, ToEngineering) {
     int32_t vshunt_raw = 2000;
     int32_t current_raw = 3000;
     int16_t temp_raw = 4000;
+    uint32_t power_raw = 5000;
+    uint64_t energy_raw = 6000;
+    int64_t charge_raw = 7000;
     uint32_t current_lsb_nA = 1000; // 1 uA LSB
     bool adcrange = false;
 
-    EngineeringSample sample = to_engineering(vbus_raw, vshunt_raw, current_raw, temp_raw, current_lsb_nA, adcrange);
+    EngineeringSample sample = to_engineering(vbus_raw, vshunt_raw, current_raw, temp_raw,
+                                              power_raw, energy_raw, charge_raw,
+                                              current_lsb_nA, adcrange);
 
     EXPECT_DOUBLE_EQ(sample.vbus_v, 1000 * 195.3125e-6);
     EXPECT_DOUBLE_EQ(sample.vshunt_v, 2000 * 312.5e-9);
     EXPECT_DOUBLE_EQ(sample.current_a, 3000 * 1000 * 1e-9);
     EXPECT_DOUBLE_EQ(sample.temp_c, 4000 * 7.8125e-3);
+    EXPECT_DOUBLE_EQ(sample.power_w, 5000 * 1000 * 1e-9 * 3.2);
+    EXPECT_DOUBLE_EQ(sample.energy_j, 6000 * 1000 * 1e-9 * 3.2 * 16.0);
+    EXPECT_DOUBLE_EQ(sample.charge_c, 7000 * 1000 * 1e-9);
 }
 
 } // namespace

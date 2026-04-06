@@ -124,11 +124,11 @@ std::vector<PortInfo> list_ports() {
             PortInfo info;
             info.port = "/dev/" + name;
 
-            // 读取 sysfs 信息
+            // Read sysfs info
             std::string sysfs_base = "/sys/class/tty/" + name + "/device";
             std::string usb_base;
 
-            // 查找 USB 设备路径
+            // Resolve USB device path
             if (name.find("ttyUSB") == 0) {
                 usb_base = sysfs_base + "/../..";
             } else if (name.find("ttyACM") == 0) {
@@ -180,7 +180,7 @@ public:
         if (!ok) {
             DWORD err = GetLastError();
             std::cerr << "GetCommState failed with error: " << err << std::endl;
-            // 处理错误
+            // Handle error
         }
         //comDCB.fRtsControl = RTS_CONTROL_DISABLE;
         //comDCB.fDtrControl = DTR_CONTROL_DISABLE;
@@ -235,7 +235,7 @@ public:
         }
     }
 
-    // 同步写入
+    // Synchronous write
     size_t write(const std::vector<uint8_t>& data) {
         asio::error_code ec;
         size_t bytes = asio::write(serial_, asio::buffer(data), ec);
@@ -246,7 +246,7 @@ public:
         return bytes;
     }
 
-    // 异步写入
+    // Asynchronous write
     void async_write(const std::vector<uint8_t>& data) {
         auto buf = std::make_shared<std::vector<uint8_t>>(data);
         asio::async_write(serial_, asio::buffer(*buf),
@@ -268,7 +268,7 @@ private:
                 if (!ec) {
                     bytes_received_ += bytes;
                     on_data_received(read_buf_.data(), bytes);
-                    do_read();  // 继续读取
+                    do_read();  // Continue reading
                 } else if (ec != asio::error::operation_aborted) {
                     std::cerr << "Read error: " << ec.message() << std::endl;
                 }
@@ -316,7 +316,7 @@ void print_ports() {
 }
 
 int main(int argc, char* argv[]) {
-    // ls 命令 - 列出可用串口
+    // ls command - list available serial ports
     if (argc >= 2 && std::string(argv[1]) == "ls") {
         print_ports();
         return 0;
@@ -342,7 +342,7 @@ int main(int argc, char* argv[]) {
         SerialPort serial(io, port, baud_rate);
         serial.start_read();
 
-        // 在单独线程运行 io_context
+        // Run io_context in a separate thread
         std::atomic<bool> running{true};
         std::thread io_thread([&io, &running] {
             while (running) {
@@ -368,7 +368,7 @@ int main(int argc, char* argv[]) {
             } else if (line == "stats") {
                 std::cout << "Bytes received: " << serial.bytes_received() << std::endl;
             } else if (line == "ping") {
-                // 简单的 ping 帧 (根据你的协议调整)
+                // Simple ping frame (adjust to your protocol)
                 std::vector<uint8_t> ping = {0xAA, 0x01, 0x00, 0x01, 0x01, 0x00, 0x00};
                 serial.async_write(ping);
                 std::cout << "Ping sent" << std::endl;

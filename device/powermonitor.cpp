@@ -6,8 +6,11 @@
 #include "tusb.h"
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 
 #include "command_handler.hpp"
+#include "core/raw_sample.hpp"
+#include "hardware_tests.hpp"
 #include "pico/multicore.h"
 #include "protocol/parser.hpp"
 #include "sampler.hpp"
@@ -21,8 +24,8 @@
 #define INA228_SHUNT_OHMS 0.015f
 
 #include "INA228.hpp"
-#include "pio_i2c.h"
 #include "hardware/clocks.h"
+#include "pio_i2c.h"
 
 // Global state
 static device::DeviceContext g_ctx;
@@ -57,22 +60,36 @@ namespace device {
 uint64_t g_last_frame_recv_time_us = 0;
 }
 
-// USB CDC write function
-static void usb_cdc_write(const uint8_t *data, size_t len, bool flush = true) {
+// USB CDC write function with optional flush, backoff and timeout.
+// Returns true if all |len| bytes were written, false on timeout/disconnect.
+template <bool Flush = true>
+inline static bool usb_cdc_write(const uint8_t *data, size_t len,
+                                 uint32_t timeout_us = 200000,  // 200 ms default
+                                 uint32_t backoff_us = 100) {
   if (!data || len == 0 || !tud_cdc_connected())
-    return;
+    return false;
 
-  // Write in chunks if needed
+  const uint64_t start = time_us_64();
+
   size_t remaining = len;
   const uint8_t *ptr = data;
 
   while (remaining > 0) {
+    if (!tud_cdc_connected()) {
+      return false;
+    }
+
+    if (time_us_64() - start > timeout_us) {
+      return false;
+    }
+
     const uint32_t avail = tud_cdc_write_available();
     if (avail == 0) {
       tud_task();
-      if (flush) {
+      if (Flush) {
         tud_cdc_write_flush();
       }
+      sleep_us(backoff_us);
       continue;
     }
 
@@ -83,9 +100,10 @@ static void usb_cdc_write(const uint8_t *data, size_t len, bool flush = true) {
     if (written == 0) {
       // Avoid tight spinning when backend temporarily cannot accept bytes.
       tud_task();
-      if (flush) {
+      if (Flush) {
         tud_cdc_write_flush();
       }
+      sleep_us(backoff_us);
       continue;
     }
 
@@ -93,23 +111,29 @@ static void usb_cdc_write(const uint8_t *data, size_t len, bool flush = true) {
     remaining -= written;
 
     // Flushing once at end reduces USB transaction overhead in chunked writes.
-    if (flush && remaining == 0) {
+    if (Flush && remaining == 0) {
       tud_cdc_write_flush();
     }
   }
+  return true;
 }
 
-static void usb_cdc_write_flush(const uint8_t *data, size_t len) {
-  usb_cdc_write(data, len, true);
+static bool usb_cdc_write_flush(const uint8_t *data, size_t len) {
+  // Control/EVT paths: allow longer blocking timeout.
+  return usb_cdc_write<true>(data, len, 500000);
 }
 
-static void usb_cdc_write_no_flush(const uint8_t *data, size_t len) {
-  usb_cdc_write(data, len, false);
+static bool usb_cdc_write_no_flush(const uint8_t *data, size_t len) {
+  // Data path: shorter timeout, no flush at end.
+  return usb_cdc_write<false>(data, len, 100000);
 }
 
-// Parser callback - called when a complete frame is received
+// Parser callback - called when a complete frame is received.
+// T2 is captured here, immediately after CRC verification and before
+// handle_frame(), so it reflects precisely when this specific frame completed.
 static void on_frame_received(const protocol::Frame &frame, void *user_data) {
   (void)user_data;
+  device::g_last_frame_recv_time_us = time_us_64();
   if (g_handler) {
     g_handler->handle_frame(frame);
   }
@@ -123,12 +147,14 @@ static void process_streaming_usb_stress() {
 
   for (uint8_t i = 0; i < kStressBurstFramesPerLoop; ++i) {
     core::RawSample sample{};
-    sample.timestamp_us =
-        static_cast<uint32_t>(time_us_64() - g_ctx.stream_start_us);
+    sample.timestamp_us = time_us_64() - g_ctx.stream_start_us;
     sample.vbus_raw = kStressVbusRaw;
     sample.vshunt_raw = kStressVshuntRaw;
     sample.current_raw = kStressCurrentRaw;
     sample.dietemp_raw = kStressDietempRaw;
+    sample.power_raw = 0;
+    sample.energy_raw = 0;
+    sample.charge_raw = 0;
     sample.flags = core::SampleFlags::kCnvrf | core::SampleFlags::kCalValid;
     sample._pad = 0;
     g_handler->send_data_sample_noflush(sample);
@@ -160,162 +186,6 @@ static void process_streaming_loop() {
 
   process_streaming();
 }
-
-#ifdef POWERMONITOR_TEST_MODE
-static uint64_t g_last_test_run_us = 0;
-
-static void run_hardware_tests() {
-  uint64_t now = time_us_64();
-  if (now - g_last_test_run_us < 1000000ULL) {
-    return; // not yet 1 second
-  }
-  g_last_test_run_us = now;
-
-  printf("--- INA228 Hardware Self-Test ---\n");
-  if (g_ctx.ina228) {
-    INA228::Measurements meas;
-    
-    // Benchmark 100 consecutive reads
-    uint64_t start_time = time_us_64();
-    const int NUM_READS = 100;
-    bool success = true;
-    for (int i = 0; i < NUM_READS; ++i) {
-      if (!g_ctx.ina228->read_all_measurements(meas)) {
-        success = false;
-        break;
-      }
-    }
-    uint64_t end_time = time_us_64();
-
-    if (!success) {
-      printf("Failed to read all measurements from INA228 during benchmark!\n");
-      return;
-    }
-
-    uint64_t total_duration_us = end_time - start_time;
-    float avg_duration_us = static_cast<float>(total_duration_us) / NUM_READS;
-
-    printf("[0x03] SHUNT_TEMPCO : 0x%04X\n", meas.shunt_tempco);
-    printf("[0x04] VSHUNT       : %.6f mV\n", meas.vshunt_mV);
-    printf("[0x05] VBUS         : %.6f V\n", meas.vbus_V);
-    printf("[0x06] DIETEMP      : %.2f C\n", meas.dietemp_C);
-    printf("[0x07] CURRENT      : %.6f A\n", meas.current_A);
-    printf("[0x08] POWER        : %.6f W\n", meas.power_W);
-    printf("[0x09] ENERGY       : %.6f J\n", meas.energy_J);
-    printf("[0x0A] CHARGE       : %.6f C\n", meas.charge_C);
-    
-    printf("\n--- Benchmark: HW I2C vs PIO I2C (@1MHz) ---\n");
-    printf("[HW  I2C] reads=%d  total=%llu us  avg=%.2f us\n",
-           NUM_READS, total_duration_us, avg_duration_us);
-
-    // === PIO I2C Benchmark ===
-    i2c_deinit(I2C_PORT);
-    gpio_init(I2C_SDA);
-    gpio_init(I2C_SCL);
-    gpio_pull_up(I2C_SDA);
-    gpio_pull_up(I2C_SCL);
-    PIO pio = pio0;
-    uint pio_sm = pio_claim_unused_sm(pio, true);
-    uint offset = pio_add_program(pio, &i2c_program);
-    i2c_program_init(pio, pio_sm, offset, I2C_SDA, I2C_SCL);
-    static const struct { uint8_t reg; uint8_t len; const char* name; } diag_regs[] = {
-      {0x03, 2, "TEMPCO "},
-      {0x04, 3, "VSHUNT "},
-      {0x05, 3, "VBUS   "},
-      {0x06, 2, "DIETEMP"},
-      {0x07, 3, "CURRENT"},
-      {0x08, 3, "POWER  "},
-      {0x09, 5, "ENERGY "},
-      {0x0A, 5, "CHARGE "},
-    };
-    bool diag_ok = true;
-    for (int r = 0; r < 8; ++r) {
-      printf("[PIO] reading 0x%02X %s (%d bytes)... ",
-             diag_regs[r].reg, diag_regs[r].name, diag_regs[r].len);
-      uint8_t dbuf[5] = {};
-      bool ok = pio_i2c_read_reg(pio, pio_sm, INA228_ADDR,
-                                 diag_regs[r].reg, dbuf, diag_regs[r].len);
-      if (ok) {
-        printf("OK (");
-        for (int b = 0; b < diag_regs[r].len; ++b) printf("%02X", dbuf[b]);
-        printf(")\n");
-      } else {
-        printf("FAIL\n");
-        diag_ok = false;
-        break;
-      }
-    }
-    INA228::Measurements pio_meas;
-    uint64_t pio_start = time_us_64();
-    bool pio_ok = diag_ok;
-    
-    // We run 100 PIO reads for actual load benchmarking
-    // (We also previously executed 100 HW reads)
-    if (pio_ok) {
-      for (int i = 0; i < NUM_READS; ++i) {
-        if (!g_ctx.ina228->read_all_measurements_pio(pio_meas, pio, pio_sm)) {
-          pio_ok = false;
-          break;
-        }
-      }
-    }
-    uint64_t pio_total = time_us_64() - pio_start;
-    pio_sm_set_enabled(pio, pio_sm, false);
-    pio_remove_program(pio, &i2c_program, offset);
-    pio_sm_unclaim(pio, pio_sm);
-    gpio_set_oeover(I2C_SDA, GPIO_OVERRIDE_NORMAL);
-    gpio_set_oeover(I2C_SCL, GPIO_OVERRIDE_NORMAL);
-    
-    // I2C Bus Clear: If the PIO aborted mid-transaction, the INA228 might
-    // be holding SDA low. This will permanently hang the Pico SDK HW I2C.
-    // We bit-bang SCL up to 9 times to clock out any stuck bits.
-    gpio_init(I2C_SDA);
-    gpio_init(I2C_SCL);
-    gpio_set_dir(I2C_SDA, GPIO_IN);
-    gpio_set_dir(I2C_SCL, GPIO_OUT);
-    gpio_put(I2C_SCL, 1);
-    sleep_us(10);
-    for (int i = 0; i < 9; ++i) {
-        if (gpio_get(I2C_SDA)) break;
-        gpio_put(I2C_SCL, 0);
-        sleep_us(5);
-        gpio_put(I2C_SCL, 1);
-        sleep_us(5);
-    }
-    gpio_set_dir(I2C_SDA, GPIO_OUT);
-    gpio_put(I2C_SDA, 0);
-    sleep_us(5);
-    gpio_put(I2C_SCL, 1);
-    sleep_us(5);
-    gpio_put(I2C_SDA, 1);
-    sleep_us(5);
-    i2c_init(I2C_PORT, 1000 * 1000);
-    gpio_set_function(I2C_SDA, GPIO_FUNC_I2C);
-    gpio_set_function(I2C_SCL, GPIO_FUNC_I2C);
-    gpio_pull_up(I2C_SDA);
-    gpio_pull_up(I2C_SCL);
-    if (pio_ok) {
-      // Print PIO benchmark results
-      printf("[PIO I2C] reads=%d  total=%llu us  avg=%.2f us\n",
-             NUM_READS, pio_total, (float)pio_total / NUM_READS);
-      printf("[PIO 0x03] TEMPCO : 0x%04X\n", pio_meas.shunt_tempco);
-      printf("[PIO 0x04] VSHUNT : %.6f mV\n", pio_meas.vshunt_mV);
-      printf("[PIO 0x05] VBUS   : %.6f V\n", pio_meas.vbus_V);
-      printf("[PIO 0x06] TEMP   : %.2f C\n", pio_meas.dietemp_C);
-      printf("[PIO 0x07] CURRENT: %.6f A\n", pio_meas.current_A);
-      printf("[PIO 0x08] POWER  : %.6f W\n", pio_meas.power_W);
-      printf("[PIO 0x09] ENERGY : %.6f J\n", pio_meas.energy_J);
-      printf("[PIO 0x0A] CHARGE : %.6f C\n", pio_meas.charge_C);
-    } else {
-      printf("[PIO I2C] FAILED during benchmark\n");
-    }
-    printf("-----------------------------------------------\n");
-    stdio_flush();
-  } else {
-    printf("INA228 context not initialized!\n");
-  }
-}
-#endif
 
 int main() {
   // Initialize stdio (for debug output)
@@ -351,10 +221,32 @@ int main() {
   g_ctx.shared_ctx = &g_shared_ctx;
 
   // Initialize sampler with shared context and INA228 pointer
-  device::sampler_init(&g_shared_ctx, &ina228);
+  device::sampler_init(&g_shared_ctx, &ina228, INA228_ADDR);
+
+#ifndef POWERMONITOR_TEST_MODE
+  // Transition from HW I2C to PIO I2C for high-speed sampling
+  i2c_deinit(I2C_PORT);
+  gpio_init(I2C_SDA);
+  gpio_init(I2C_SCL);
+  gpio_pull_up(I2C_SDA);
+  gpio_pull_up(I2C_SCL);
+
+  PIO pio = pio0;
+  uint sm = pio_claim_unused_sm(pio, true);
+  uint offset = pio_add_program(pio, &i2c_program);
+  i2c_program_init(pio, sm, offset, I2C_SDA, I2C_SCL);
+
+  // Set PIO clock to 1 MHz
+  float div = (float)clock_get_hz(clk_sys) / (32 * 1000000);
+  pio_sm_set_clkdiv(pio, sm, div);
+
+  // Initialize DMA channels and buffers for the sampler
+  device::sampler_init_dma(pio, sm, INA228_ADDR);
 
   // Launch Core 1 for sampling
+  printf("Starting high-speed PIO DMA sampling on Core 1...\n");
   device::sampler_launch_core1();
+#endif
 
   // Initialize command handler
   device::CommandHandler handler(g_ctx, usb_cdc_write_flush,
@@ -374,7 +266,7 @@ int main() {
 
 #ifdef POWERMONITOR_TEST_MODE
     if (tud_cdc_connected()) {
-      run_hardware_tests();
+      device::run_hardware_tests(g_ctx, g_shared_ctx);
     }
     continue;
 #endif
@@ -388,12 +280,11 @@ int main() {
         g_boot_text_sent = true;
       }
     }
-    // Process incoming USB data (always, for fast T2 capture during sync)
+    // Process incoming USB data
     if (tud_cdc_available()) {
       uint8_t buf[64];
-      uint32_t count = tud_cdc_read(buf, sizeof(buf));
+      auto count = tud_cdc_read(buf, sizeof(buf));
       if (count > 0) {
-        device::g_last_frame_recv_time_us = time_us_64();
         g_parser.feed(buf, count);
       }
     }
@@ -405,9 +296,13 @@ int main() {
       continue; // Tight loop: no streaming, no stats
     }
 
+    if (!g_ctx.is_streaming()) { // if not streaming, there is no need to process streaming loop
+        continue;
+    }
+
     // Normal path: check 5s timer and maybe send time sync request
     const uint64_t now_us = time_us_64();
-    if (g_ctx.is_streaming() && g_handler &&
+    if (g_handler &&
         (g_last_time_sync_request_us == 0 ||
          now_us - g_last_time_sync_request_us >= kTimeSyncRequestPeriodUs)) {
       if (g_handler->send_time_sync_request()) {

@@ -2,13 +2,14 @@
 #include "onboard_sample_queue.h"
 #include "session.h"  // For OnboardSample definition
 
+#ifndef _WIN32
+
 #include <errno.h>
 #include <fcntl.h>
 #include <sched.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
-
 #include <fstream>
 #include <optional>
 
@@ -281,3 +282,33 @@ bool OnboardSampler::apply_thread_affinity() {
 
 }  // namespace client
 }  // namespace powermonitor
+
+#else  // _WIN32 — stub implementations (OnboardSampler is Jetson Linux only)
+
+namespace powermonitor {
+namespace client {
+
+OnboardSampler::OnboardSampler(const Config& cfg,
+                               std::shared_ptr<OnboardSampleQueue> queue)
+    : config_(cfg), queue_(queue) {
+    last_error_ = "OnboardSampler is not supported on Windows";
+}
+
+OnboardSampler::~OnboardSampler() {}
+
+bool OnboardSampler::start() {
+    last_error_ = "OnboardSampler is not supported on Windows";
+    return false;
+}
+
+void OnboardSampler::stop() {}
+void OnboardSampler::join() {}
+bool OnboardSampler::is_running() const { return false; }
+void OnboardSampler::ina_loop() {}
+void OnboardSampler::telemetry_loop() {}
+bool OnboardSampler::apply_thread_affinity() { return false; }
+
+}  // namespace client
+}  // namespace powermonitor
+
+#endif  // _WIN32

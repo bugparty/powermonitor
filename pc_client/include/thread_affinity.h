@@ -1,96 +1,91 @@
 #pragma once
 
+#include <cstdio>
+#include <string>
+
+#ifndef _WIN32
 #include <pthread.h>
 #include <sched.h>
 #include <unistd.h>
-#include <cstring>
-#include <stdexcept>
-#include <string>
+#endif
 
 namespace powermonitor {
 namespace client {
 
 class ThreadAffinity {
 public:
-    // Set CPU affinity for the calling thread
-    // Returns true on success, false on failure
+    // Set CPU affinity for the calling thread.
+    // Returns true on success; no-op and returns false on Windows.
     static bool SetCpuAffinity(int core_id) {
+#ifndef _WIN32
         cpu_set_t cpuset;
         CPU_ZERO(&cpuset);
         CPU_SET(core_id, &cpuset);
-
-        pthread_t thread = pthread_self();
-        int ret = pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpuset);
-
-        return ret == 0;
+        return pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset) == 0;
+#else
+        (void)core_id;
+        return false;
+#endif
     }
 
-    // Set real-time scheduling priority for the calling thread
-    // prio: 1-99 (higher = more important)
-    // Returns true on success, false on failure
+    // Set real-time scheduling priority (SCHED_FIFO).
+    // prio: 1-99. No-op and returns false on Windows.
     static bool SetRealtimePriority(int prio) {
+#ifndef _WIN32
         struct sched_param param;
         param.sched_priority = prio;
-
-        int ret = pthread_setschedparam(pthread_self(), SCHED_FIFO, &param);
-        return ret == 0;
+        return pthread_setschedparam(pthread_self(), SCHED_FIFO, &param) == 0;
+#else
+        (void)prio;
+        return false;
+#endif
     }
 
-    // Combine affinity + RT priority in one call
-    // Returns true if both succeed, false otherwise
+    // Combine affinity + RT priority in one call.
     static bool SetRealtimeWithAffinity(int core_id, int prio) {
-        bool affinity_ok = SetCpuAffinity(core_id);
-        bool rt_ok = SetRealtimePriority(prio);
-        return affinity_ok && rt_ok;
+        return SetCpuAffinity(core_id) & SetRealtimePriority(prio);
     }
 
-    // Get current CPU affinity (returns core ID, -1 if not bound)
+    // Returns the single pinned core ID, or -1 if not bound (or on Windows).
     static int GetCurrentCore() {
+#ifndef _WIN32
         cpu_set_t cpuset;
         CPU_ZERO(&cpuset);
-
-        pthread_t thread = pthread_self();
-        int ret = pthread_getaffinity_np(thread, sizeof(cpu_set_t), &cpuset);
-
-        if (ret != 0) {
+        if (pthread_getaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset) != 0)
             return -1;
-        }
-
-        // Check if only one core is set
-        int core_count = 0;
-        int last_core = -1;
+        int count = 0, last = -1;
         for (int i = 0; i < CPU_SETSIZE; ++i) {
-            if (CPU_ISSET(i, &cpuset)) {
-                core_count++;
-                last_core = i;
-            }
+            if (CPU_ISSET(i, &cpuset)) { ++count; last = i; }
         }
-
-        return (core_count == 1) ? last_core : -1;
+        return (count == 1) ? last : -1;
+#else
+        return -1;
+#endif
     }
 
-    // Get number of CPU cores
+    // Returns the number of online CPUs (1 on Windows stub).
     static int GetNumCores() {
-        return sysconf(_SC_NPROCESSORS_ONLN);
+#ifndef _WIN32
+        return static_cast<int>(sysconf(_SC_NPROCESSORS_ONLN));
+#else
+        return 1;
+#endif
     }
 
-    // Print current thread's affinity and priority info
+    // Print current thread's affinity and scheduling policy info.
     static void PrintThreadInfo(const std::string& thread_name) {
-        int core = GetCurrentCore();
+#ifndef _WIN32
         int policy;
         struct sched_param param;
-
         pthread_getschedparam(pthread_self(), &policy, &param);
-
-        const char* policy_str;
-        switch (policy) {
-            case SCHED_FIFO: policy_str = "SCHED_FIFO"; break;
-            case SCHED_RR:   policy_str = "SCHED_RR"; break;
-            default:         policy_str = "SCHED_OTHER"; break;
-        }
-
+        const char* policy_str =
+            (policy == SCHED_FIFO) ? "SCHED_FIFO" :
+            (policy == SCHED_RR)   ? "SCHED_RR"   : "SCHED_OTHER";
         printf("[ThreadAffinity] %s: core=%d policy=%s prio=%d\n",
-               thread_name.c_str(), core, policy_str, param.sched_priority);
+               thread_name.c_str(), GetCurrentCore(), policy_str, param.sched_priority);
+#else
+        printf("[ThreadAffinity] %s: (not supported on Windows)\n", thread_name.c_str());
+#endif
     }
 };
 

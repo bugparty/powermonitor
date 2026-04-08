@@ -342,3 +342,45 @@ TEST_F(PowerMonitorTest, DataTimestampsMonotonicallyIncreasing) {
     pc->send_stream_stop(loop.now_us());
     RunSimulation(100'000, 500);
 }
+
+// Test TimeSync command with invalid payload length
+TEST_F(PowerMonitorTest, TimeSyncInvalidPayload) {
+    // 1. Run simulation briefly to clear initial reports
+    RunSimulation(100'000, 500);
+
+    // 2. Inject malformed frame (TimeSync 0x05 with 4 bytes payload, needs 8)
+    std::vector<uint8_t> payload = {0x00, 0x00, 0x00, 0x00};
+    // kCmd=0x01, flags=0, seq=0xAA, msgid=0x05
+    auto frame_bytes = protocol::build_frame(protocol::FrameType::kCmd, 0, 0xAA, 0x05, payload);
+    link.pc().write(frame_bytes, loop.now_us());
+
+    bool response_received = false;
+    uint8_t received_status = 0xFF;
+
+    protocol::Parser parser([&](const protocol::Frame &frame, uint64_t) {
+        if (frame.type == protocol::FrameType::kRsp && frame.msgid == 0x05) {
+            // Check status in payload
+            // Payload: [orig_msgid, status, ...]
+            if (frame.data.size() >= 2) {
+                if (frame.data[0] == 0x05) {
+                    received_status = frame.data[1];
+                    response_received = true;
+                }
+            }
+        }
+    });
+
+    // 3. Run custom loop to pump data and tick device (but NOT PC)
+    loop.run_for(100'000, 500, [&](uint64_t now_us) {
+        link.pump(now_us);
+        device->tick(now_us);
+
+        if (link.pc().available() > 0) {
+            auto bytes = link.pc().read(link.pc().available());
+            parser.feed(bytes);
+        }
+    });
+
+    EXPECT_TRUE(response_received) << "Device did not send response to invalid TimeSync";
+    EXPECT_EQ(received_status, 0x02) << "Device returned wrong status (expected 0x02 ERR_LEN)";
+}

@@ -84,6 +84,12 @@ export default function GanttPanel({ source, range, layout }: GanttPanelProps) {
         return LANE_LABEL_WIDTH + ((timeUs - range.start) / span) * chartWidth;
     };
 
+    // Extract numeric ID from span id (e.g., "vio_3" -> "3")
+    const getSpanNumber = (id: string): string => {
+        const parts = id.split('_');
+        return parts[parts.length - 1] || id;
+    };
+
     // Render a single span bar
     const renderSpan = (span: TimeSpan) => {
         const x = timeToX(span.startUs);
@@ -92,6 +98,9 @@ export default function GanttPanel({ source, range, layout }: GanttPanelProps) {
         const overlapOffset = overlapOffsets.get(span.id) || 0;
         const y = 6 + span.lane * LANE_HEIGHT + BAR_GAP + overlapOffset;
         const isHovered = hoveredSpan === span.id;
+
+        // Show span number when bar is wide enough
+        const showNumber = width > 25;
 
         return (
             <g key={span.id}>
@@ -110,10 +119,11 @@ export default function GanttPanel({ source, range, layout }: GanttPanelProps) {
                     onMouseEnter={() => setHoveredSpan(span.id)}
                     onMouseLeave={() => setHoveredSpan(null)}
                 />
-                {span.label && width > 35 && (
+                {showNumber && (
                     <text
-                        x={x + 4}
+                        x={x + width / 2}
                         y={y + 11}
+                        textAnchor="middle"
                         fontSize={9}
                         fontFamily="var(--font-mono)"
                         fontWeight={600}
@@ -121,7 +131,7 @@ export default function GanttPanel({ source, range, layout }: GanttPanelProps) {
                         fillOpacity={0.95}
                         style={{ pointerEvents: "none" }}
                     >
-                        {span.label}
+                        {getSpanNumber(span.id)}
                     </text>
                 )}
             </g>
@@ -200,9 +210,12 @@ export default function GanttPanel({ source, range, layout }: GanttPanelProps) {
     // Find hovered span details
     const hoveredSpanData = hoveredSpan ? visibleSpans.find(s => s.id === hoveredSpan) : null;
     const formatDuration = (us: number) => {
-        if (us >= 1_000_000) return `${(us / 1_000_000).toFixed(2)} s`;
+        if (us >= 1_000_000) return `${(us / 1_000_000).toFixed(3)} s`;
         if (us >= 1_000) return `${(us / 1_000).toFixed(1)} ms`;
         return `${us.toFixed(0)} µs`;
+    };
+    const formatStartTime = (us: number) => {
+        return `${(us / 1_000_000).toFixed(3)} s`;
     };
 
     return (
@@ -213,7 +226,7 @@ export default function GanttPanel({ source, range, layout }: GanttPanelProps) {
                     {hoveredSpanData ? (
                         <>
                             {hoveredSpanData.id} · {formatDuration(hoveredSpanData.endUs - hoveredSpanData.startUs)} ·
-                            start {formatDuration(hoveredSpanData.startUs)}
+                            start {formatStartTime(hoveredSpanData.startUs)}
                         </>
                     ) : (
                         `${visibleSpans.length} spans · ${laneCount} lanes`

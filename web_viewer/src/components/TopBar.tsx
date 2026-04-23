@@ -2,6 +2,8 @@ import React from "react";
 import type { ChangeEvent } from "react";
 import type { DownsampleMode } from "../types";
 
+export type MovingAvgWindow = 0 | 5 | 10 | 20;
+
 interface TopBarProps {
     onFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
     onFitAll: () => void;
@@ -9,6 +11,8 @@ interface TopBarProps {
     onDownsampleModeChange: (mode: DownsampleMode) => void;
     alignSources: boolean;
     onAlignSourcesChange: (enabled: boolean) => void;
+    movingAvgWindow: MovingAvgWindow;
+    onMovingAvgWindowChange: (window: MovingAvgWindow) => void;
 }
 
 export default function TopBar({
@@ -17,7 +21,9 @@ export default function TopBar({
     downsampleMode,
     onDownsampleModeChange,
     alignSources,
-    onAlignSourcesChange
+    onAlignSourcesChange,
+    movingAvgWindow,
+    onMovingAvgWindowChange
 }: TopBarProps) {
     return (
         <header className="topbar">
@@ -40,6 +46,19 @@ export default function TopBar({
                         <option value="none">None</option>
                         <option value="min-max">Min-Max</option>
                         <option value="lttb">LTTB</option>
+                    </select>
+                </label>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 13, color: "var(--muted)" }}>
+                    Moving Avg
+                    <select
+                        value={movingAvgWindow}
+                        onChange={(e) => onMovingAvgWindowChange(Number(e.target.value) as MovingAvgWindow)}
+                        className="select"
+                    >
+                        <option value={0}>Off</option>
+                        <option value={5}>5ms</option>
+                        <option value={10}>10ms</option>
+                        <option value={20}>20ms</option>
                     </select>
                 </label>
                 <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--muted)" }}>

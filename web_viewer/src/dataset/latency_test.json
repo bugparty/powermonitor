@@ -1,0 +1,115 @@
+{
+  "schema_version": "2.0",
+  "meta": {
+    "stream_period_us": 16666,
+    "has_latency": true,
+    "has_power": false
+  },
+  "sources": {
+    "boxr_latency": {
+      "label": "BOXR Latency",
+      "samples": [
+        {
+          "seq": 0,
+          "device_timestamp_unix_us": 1000000,
+          "latency": {
+            "m2d_ns": 6500000,
+            "c2d_ns": 95000000,
+            "p2d_ns": 1800000,
+            "r2d_ns": 15000000
+          }
+        },
+        {
+          "seq": 1,
+          "device_timestamp_unix_us": 1016666,
+          "latency": {
+            "m2d_ns": 4200000,
+            "c2d_ns": 96000000,
+            "p2d_ns": 1900000,
+            "r2d_ns": 15500000
+          }
+        },
+        {
+          "seq": 2,
+          "device_timestamp_unix_us": 1033332,
+          "latency": {
+            "m2d_ns": 6800000,
+            "c2d_ns": 94000000,
+            "p2d_ns": 1750000,
+            "r2d_ns": 14800000
+          }
+        },
+        {
+          "seq": 3,
+          "device_timestamp_unix_us": 1049998,
+          "latency": {
+            "m2d_ns": 4500000,
+            "c2d_ns": 97000000,
+            "p2d_ns": 1820000,
+            "r2d_ns": 15200000
+          }
+        },
+        {
+          "seq": 4,
+          "device_timestamp_unix_us": 1066664,
+          "latency": {
+            "m2d_ns": 7100000,
+            "c2d_ns": 93000000,
+            "p2d_ns": 1880000,
+            "r2d_ns": 15600000
+          }
+        },
+        {
+          "seq": 5,
+          "device_timestamp_unix_us": 1083330,
+          "latency": {
+            "m2d_ns": 5200000,
+            "c2d_ns": 98000000,
+            "p2d_ns": 1920000,
+            "r2d_ns": 15900000
+          }
+        },
+        {
+          "seq": 6,
+          "device_timestamp_unix_us": 1099996,
+          "latency": {
+            "m2d_ns": 6300000,
+            "c2d_ns": 92000000,
+            "p2d_ns": 1780000,
+            "r2d_ns": 14700000
+          }
+        },
+        {
+          "seq": 7,
+          "device_timestamp_unix_us": 1116662,
+          "latency": {
+            "m2d_ns": 4900000,
+            "c2d_ns": 99000000,
+            "p2d_ns": 1850000,
+            "r2d_ns": 15300000
+          }
+        },
+        {
+          "seq": 8,
+          "device_timestamp_unix_us": 1133328,
+          "latency": {
+            "m2d_ns": 6100000,
+            "c2d_ns": 91000000,
+            "p2d_ns": 1760000,
+            "r2d_ns": 14500000
+          }
+        },
+        {
+          "seq": 9,
+          "device_timestamp_unix_us": 1149994,
+          "latency": {
+            "m2d_ns": 5700000,
+            "c2d_ns": 100000000,
+            "p2d_ns": 1830000,
+            "r2d_ns": 15100000
+          }
+        }
+      ]
+    }
+  }
+}

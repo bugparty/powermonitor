@@ -1,4 +1,4 @@
-import type { ParsedMeta, ParsedPayload, Point, Series, SourceId } from "../types";
+import type { ParsedMeta, ParsedPayload, Point, Series, SourceId, TimeSpan, TimeSpanSource } from "../types";
 
 interface RawSample {
     engineering?: {
@@ -9,6 +9,12 @@ interface RawSample {
         vshunt_v?: unknown;
         charge_c?: unknown;
         energy_j?: unknown;
+    };
+    latency?: {
+        m2d_ns?: unknown;   // Motion-to-Display (nanoseconds)
+        c2d_ns?: unknown;   // Camera-to-Display (nanoseconds)
+        p2d_ns?: unknown;   // Prediction-to-Display (nanoseconds)
+        r2d_ns?: unknown;   // Render-to-Display (nanoseconds)
     };
     seq?: unknown;
     device_timestamp_us?: unknown;
@@ -24,6 +30,23 @@ interface RawPayload {
     meta?: ParsedMeta;
     schema_version?: string;
     sources?: Record<string, { samples?: RawSample[] }>;
+    timespans?: Record<string, RawTimeSpanSource>;
+}
+
+interface RawTimeSpanSource {
+    label?: string;
+    lane_labels?: string[];
+    spans?: RawTimeSpan[];
+}
+
+interface RawTimeSpan {
+    id?: string;
+    lane?: unknown;
+    start_us?: unknown;
+    end_us?: unknown;
+    color?: string;
+    label?: string;
+    metadata?: Record<string, unknown>;
 }
 
 function normalizeTimestamp(sample: RawSample): number {
@@ -60,6 +83,46 @@ function humanizeSourceLabel(sourceId: string): string {
     return sourceId;
 }
 
+// Default colors for time spans (cycling through signal colors)
+const DEFAULT_SPAN_COLORS = [
+    "#22c55e", // green (--sig-voltage)
+    "#f59e0b", // amber (--sig-current)
+    "#a855f7", // violet (--sig-power)
+    "#3b82f6", // blue (--sig-energy)
+    "#06b6d4", // cyan (--sig-vshunt)
+    "#f97316", // orange (--sig-charge)
+    "#ef4444", // red (--sig-temp)
+];
+
+function parseTimeSpans(raw: Record<string, RawTimeSpanSource>): TimeSpanSource[] {
+    return Object.entries(raw).map(([sourceId, source]) => {
+        const laneLabels = source.lane_labels || [];
+        const laneCount = laneLabels.length || 1;
+        const spans: TimeSpan[] = (source.spans || []).map((rawSpan, index) => {
+            const lane = Number(rawSpan.lane ?? 0);
+            const startUs = Number(rawSpan.start_us ?? 0);
+            const endUs = Number(rawSpan.end_us ?? startUs);
+            const color = rawSpan.color || DEFAULT_SPAN_COLORS[lane % DEFAULT_SPAN_COLORS.length];
+            return {
+                id: rawSpan.id || `${sourceId}_${index}`,
+                lane: Number.isFinite(lane) ? lane : 0,
+                startUs: Number.isFinite(startUs) ? startUs : 0,
+                endUs: Number.isFinite(endUs) ? endUs : startUs,
+                color,
+                label: rawSpan.label,
+                metadata: rawSpan.metadata,
+            };
+        });
+        return {
+            id: sourceId,
+            label: source.label || sourceId,
+            spans,
+            laneCount,
+            laneLabels,
+        };
+    });
+}
+
 function parseSeries(samples: RawSample[], sourceId: SourceId, sourceLabel: string): Point[] {
     return samples
         .map((sample): Point | null => {
@@ -78,7 +141,17 @@ function parseSeries(samples: RawSample[], sourceId: SourceId, sourceLabel: stri
                         ? voltage * current
                         : NaN;
 
-            if (!Number.isFinite(power)) {
+            // Check if this sample has either power or latency data
+            const hasPowerData = Number.isFinite(power);
+            const latency = sample.latency || {};
+            const m2dNs = Number(latency.m2d_ns);
+            const c2dNs = Number(latency.c2d_ns);
+            const p2dNs = Number(latency.p2d_ns);
+            const r2dNs = Number(latency.r2d_ns);
+            const hasLatencyData = Number.isFinite(m2dNs) || Number.isFinite(c2dNs) ||
+                                    Number.isFinite(p2dNs) || Number.isFinite(r2dNs);
+
+            if (!hasPowerData && !hasLatencyData) {
                 return null;
             }
 
@@ -87,6 +160,7 @@ function parseSeries(samples: RawSample[], sourceId: SourceId, sourceLabel: stri
             const charge = Number(engineering.charge_c);
             const energy = Number(engineering.energy_j);
 
+            // Convert latency from nanoseconds to milliseconds
             return {
                 sourceId,
                 sourceLabel,
@@ -94,11 +168,16 @@ function parseSeries(samples: RawSample[], sourceId: SourceId, sourceLabel: stri
                 timeUs: normalizeTimestamp(sample),
                 voltage: hasVoltage ? voltage : null,
                 current: hasCurrent ? current : null,
-                power,
+                power: hasPowerData ? power : 0,
                 temp: Number.isFinite(temp) ? temp : null,
                 vshunt: Number.isFinite(vshunt) ? vshunt : null,
                 charge: Number.isFinite(charge) ? charge : null,
-                energy: Number.isFinite(energy) ? energy : null
+                energy: Number.isFinite(energy) ? energy : null,
+                // Latency metrics: convert ns → ms (divide by 1,000,000)
+                m2d: Number.isFinite(m2dNs) ? m2dNs / 1_000_000 : null,
+                c2d: Number.isFinite(c2dNs) ? c2dNs / 1_000_000 : null,
+                p2d: Number.isFinite(p2dNs) ? p2dNs / 1_000_000 : null,
+                r2d: Number.isFinite(r2dNs) ? r2dNs / 1_000_000 : null,
             };
         })
         .filter((point): point is Point => point !== null)
@@ -111,10 +190,14 @@ function buildLegacyPayload(root: RawPayload): ParsedPayload {
     if (!points.length) {
         throw new Error("No valid engineering samples found");
     }
-    return {
+    const result: ParsedPayload = {
         meta: root.meta || {},
         series: [{ id: "legacy", label: "Powermonitor", points }]
     };
+    if (root.timespans) {
+        result.timespans = parseTimeSpans(root.timespans);
+    }
+    return result;
 }
 
 function buildBundlePayload(root: RawPayload): ParsedPayload {
@@ -139,17 +222,19 @@ function buildBundlePayload(root: RawPayload): ParsedPayload {
         })
         .filter((item): item is Series => item !== null);
 
-    if (!series.length) {
-        throw new Error("No valid source samples found");
-    }
-
-    return {
+    const result: ParsedPayload = {
         meta: {
             ...(root.meta || {}),
             schema_version: root.schema_version || root.meta?.schema_version
         },
-        series
+        series: series.length > 0 ? series : []
     };
+
+    if (root.timespans) {
+        result.timespans = parseTimeSpans(root.timespans);
+    }
+
+    return result;
 }
 
 export function parsePayload(text: string): ParsedPayload {

@@ -22,8 +22,8 @@ interface TimelineChartProps {
     points: DataPoint[];
     range: Range;
     downsampleMode: DownsampleMode;
-    onWheel: (event: WheelEvent<HTMLElement>) => void;
-    onMouseDown: (event: MouseEvent<HTMLElement>) => void;
+    onWheel?: (event: WheelEvent<HTMLElement>) => void;
+    onMouseDown?: (event: MouseEvent<HTMLElement>) => void;
     onPointHover: (point: DataPoint | null) => void;
 }
 

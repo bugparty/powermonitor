@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react";
 import { defaultTracks } from "../constants/tracks";
-import type { ParsedPayload, Point, Range, Series, Track } from "../types";
+import type { ParsedPayload, Point, Range, Series, Track, TimeSpanSource } from "../types";
 
 interface TimelineState {
     tracks: Track[];
     visibleTracks: Track[];
     series: Series[];
     points: Point[];
+    timespans: TimeSpanSource[];
     range: Range;
     metaText: string;
     statusText: string;
@@ -23,6 +24,7 @@ export function useTimelineState(): TimelineState {
     const [tracks, setTracks] = useState<Track[]>(defaultTracks);
     const [series, setSeries] = useState<Series[]>([]);
     const [points, setPoints] = useState<Point[]>([]);
+    const [timespans, setTimespans] = useState<TimeSpanSource[]>([]);
     const [range, setRange] = useState<Range>({ start: 0, end: 1 });
     const [metaText, setMetaText] = useState("No file loaded.");
     const [statusText, setStatusText] = useState("Select a powermonitor JSON file to render timeline.");
@@ -45,9 +47,20 @@ export function useTimelineState(): TimelineState {
         const allPoints = parsed.series.flatMap((item) => item.points).sort((a, b) => a.timeUs - b.timeUs);
         setSeries(parsed.series);
         setPoints(allPoints);
-        setMetaText(
-            `schema=${parsed.meta.schema_version || "n/a"} protocol=${parsed.meta.protocol_version || "n/a"} sources=${parsed.series.length} samples=${allPoints.length} stream_period_us=${parsed.meta.config?.stream_period_us ?? "n/a"}`
-        );
+        setTimespans(parsed.timespans || []);
+
+        // Build meta text
+        const parts = [
+            `schema=${parsed.meta.schema_version || "n/a"}`,
+            `protocol=${parsed.meta.protocol_version || "n/a"}`,
+            `sources=${parsed.series.length}`,
+            `samples=${allPoints.length}`,
+        ];
+        if (parsed.timespans?.length) {
+            const totalSpans = parsed.timespans.reduce((sum, ts) => sum + ts.spans.length, 0);
+            parts.push(`timespans=${totalSpans}`);
+        }
+        setMetaText(parts.join(" · "));
         setStatusText(`Loaded ${sourceLabel}. Mouse wheel to zoom, drag to pan, hover to inspect.`);
         fitAll(allPoints);
     }
@@ -55,6 +68,7 @@ export function useTimelineState(): TimelineState {
     function clearDataWithStatus(message: string): void {
         setSeries([]);
         setPoints([]);
+        setTimespans([]);
         setStatusText(message);
     }
 
@@ -87,9 +101,28 @@ export function useTimelineState(): TimelineState {
         }
         const voltageText = point.voltage == null ? "n/a" : `${point.voltage.toFixed(4)}V`;
         const currentText = point.current == null ? "n/a" : `${point.current.toFixed(4)}A`;
-        setStatusText(
-            `${point.sourceLabel} t=${(point.timeUs / 1e6).toFixed(6)}s seq=${point.seq} V=${voltageText} I=${currentText} P=${point.power.toFixed(4)}W`
-        );
+        const parts = [
+            `${point.sourceLabel}`,
+            `t=${(point.timeUs / 1e6).toFixed(6)}s`,
+            `seq=${point.seq}`,
+            `V=${voltageText}`,
+            `I=${currentText}`,
+            `P=${point.power.toFixed(4)}W`
+        ];
+        // Add latency info if available
+        if (point.m2d != null) {
+            parts.push(`M2D=${point.m2d.toFixed(3)}ms`);
+        }
+        if (point.c2d != null) {
+            parts.push(`C2D=${point.c2d.toFixed(3)}ms`);
+        }
+        if (point.p2d != null) {
+            parts.push(`P2D=${point.p2d.toFixed(3)}ms`);
+        }
+        if (point.r2d != null) {
+            parts.push(`R2D=${point.r2d.toFixed(3)}ms`);
+        }
+        setStatusText(parts.join(" "));
     }
 
     return {
@@ -97,6 +130,7 @@ export function useTimelineState(): TimelineState {
         visibleTracks,
         series,
         points,
+        timespans,
         range,
         metaText,
         statusText,

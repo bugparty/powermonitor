@@ -43,6 +43,27 @@ using namespace ftxui;
 namespace {
 std::atomic<bool> g_signal_interrupted{false};
 
+struct PicoEngineeringValues {
+    double vbus_v = 0.0;
+    double current_a = 0.0;
+    double temp_c = 0.0;
+    double power_w = 0.0;
+};
+
+PicoEngineeringValues compute_pico_engineering_values(const Session::Config& config, const Session::Sample& sample) {
+    const double vbus_lsb = 195.3125e-6;
+    const double current_lsb = config.current_lsb_nA * 1e-9;
+    const double temp_lsb = 7.8125e-3;
+    const double power_lsb = current_lsb * 3.2;
+
+    PicoEngineeringValues values;
+    values.vbus_v = sample.vbus_raw * vbus_lsb;
+    values.current_a = sample.current_raw * current_lsb;
+    values.temp_c = sample.temp_raw * temp_lsb;
+    values.power_w = sample.power_raw * power_lsb;
+    return values;
+}
+
 constexpr uint16_t kStreamMaskUsbStressMode = 0x8000;
 
 // Time sync: rounds and outlier filter (see docs/device/time_sync.md)
@@ -866,12 +887,9 @@ void PowerMonitorSession::process_samples_loop() {
 
     while (!stop_requested_.load()) {
         if (sample_queue_->pop_wait(sample)) {
-            if (sample.raw_data.size() < 41) continue;
-
-            // DATA_SAMPLE (41-byte layout): timestamp_unix_us(8) + timestamp_us(8), then flags and packed fields.
-            // Offsets: timestamp_unix_us@0, timestamp_us@8, flags@16, vbus20@17, vshunt20@20, current20@23,
-            // power24@26, dietemp16@29, energy40@31, charge40@36
-            // See protocol::DataSamplePayload (device/protocol/frame_defs.hpp) for packed field order.
+            if (sample.raw_data.size() < 41) {
+                continue;
+            }
 
             Session::Sample session_sample;
             session_sample.seq = sample.seq;
@@ -898,6 +916,7 @@ void PowerMonitorSession::process_samples_loop() {
             session_sample.charge_raw = protocol::unpack_s40(sample.raw_data.data() + charge_offset);
 
             session_->add_sample(session_sample);
+            export_pico_power_sample(session_sample);
             maybe_debug_time_sync_sample(sample);
             sample_counter_.fetch_add(1, std::memory_order_relaxed);
             if ((session_sample.flags & 0x10U) == 0) {
@@ -908,41 +927,43 @@ void PowerMonitorSession::process_samples_loop() {
         }
     }
 
-    // Drain any remaining samples from the queue before exit.
     while (sample_queue_->pop(sample)) {
-        if (sample.raw_data.size() >= 41) {
-            Session::Sample session_sample;
-            session_sample.seq = sample.seq;
-            session_sample.host_timestamp_us = sample.host_timestamp_us;
-            session_sample.device_timestamp_us = sample.device_timestamp_us;
-            session_sample.device_timestamp_unix_us = sample.device_timestamp_unix_us;
+        if (sample.raw_data.size() < 41) {
+            continue;
+        }
 
-            const size_t flags_offset = 16;
-            const size_t vbus_offset = 17;
-            const size_t vshunt_offset = 20;
-            const size_t current_offset = 23;
-            const size_t power_offset = 26;
-            const size_t temp_offset = 29;
-            const size_t energy_offset = 31;
-            const size_t charge_offset = 36;
+        Session::Sample session_sample;
+        session_sample.seq = sample.seq;
+        session_sample.host_timestamp_us = sample.host_timestamp_us;
+        session_sample.device_timestamp_us = sample.device_timestamp_us;
+        session_sample.device_timestamp_unix_us = sample.device_timestamp_unix_us;
 
-            session_sample.flags = sample.raw_data[flags_offset];
-            session_sample.vbus_raw = protocol::unpack_u20(sample.raw_data.data() + vbus_offset);
-            session_sample.vshunt_raw = protocol::unpack_s20(sample.raw_data.data() + vshunt_offset);
-            session_sample.current_raw = protocol::unpack_s20(sample.raw_data.data() + current_offset);
-            session_sample.power_raw = protocol::unpack_u24(sample.raw_data.data() + power_offset);
-            session_sample.temp_raw = protocol::unpack_s16(sample.raw_data.data() + temp_offset);
-            session_sample.energy_raw = protocol::unpack_u40(sample.raw_data.data() + energy_offset);
-            session_sample.charge_raw = protocol::unpack_s40(sample.raw_data.data() + charge_offset);
+        const size_t flags_offset = 16;
+        const size_t vbus_offset = 17;
+        const size_t vshunt_offset = 20;
+        const size_t current_offset = 23;
+        const size_t power_offset = 26;
+        const size_t temp_offset = 29;
+        const size_t energy_offset = 31;
+        const size_t charge_offset = 36;
 
-            session_->add_sample(session_sample);
-            maybe_debug_time_sync_sample(sample);
-            sample_counter_.fetch_add(1, std::memory_order_relaxed);
-            if ((session_sample.flags & 0x10U) == 0) {
-                std::lock_guard<std::mutex> lock(ui_state_.mutex);
-                ui_state_.latest_sample = session_sample;
-                ui_state_.has_latest_sample = true;
-            }
+        session_sample.flags = sample.raw_data[flags_offset];
+        session_sample.vbus_raw = protocol::unpack_u20(sample.raw_data.data() + vbus_offset);
+        session_sample.vshunt_raw = protocol::unpack_s20(sample.raw_data.data() + vshunt_offset);
+        session_sample.current_raw = protocol::unpack_s20(sample.raw_data.data() + current_offset);
+        session_sample.power_raw = protocol::unpack_u24(sample.raw_data.data() + power_offset);
+        session_sample.temp_raw = protocol::unpack_s16(sample.raw_data.data() + temp_offset);
+        session_sample.energy_raw = protocol::unpack_u40(sample.raw_data.data() + energy_offset);
+        session_sample.charge_raw = protocol::unpack_s40(sample.raw_data.data() + charge_offset);
+
+        session_->add_sample(session_sample);
+        export_pico_power_sample(session_sample);
+        maybe_debug_time_sync_sample(sample);
+        sample_counter_.fetch_add(1, std::memory_order_relaxed);
+        if ((session_sample.flags & 0x10U) == 0) {
+            std::lock_guard<std::mutex> lock(ui_state_.mutex);
+            ui_state_.latest_sample = session_sample;
+            ui_state_.has_latest_sample = true;
         }
     }
 }
@@ -956,13 +977,56 @@ void PowerMonitorSession::process_onboard_loop() {
     while (!stop_requested_.load()) {
         if (onboard_queue_->pop_wait(sample)) {
             session_->add_onboard_sample(sample);
+            export_onboard_power_sample(sample);
         }
     }
 
-    // Drain remaining samples
     while (onboard_queue_->pop(sample)) {
         session_->add_onboard_sample(sample);
+        export_onboard_power_sample(sample);
     }
+}
+
+void PowerMonitorSession::export_pico_power_sample(const Session::Sample& sample) {
+    if (!power_ring_buffer_.ok()) {
+        return;
+    }
+
+    const PicoEngineeringValues values = compute_pico_engineering_values(session_->get_config(), sample);
+
+    RealtimePowerSample power_sample{};
+    power_sample.source = static_cast<uint32_t>(PowerSampleSource::kPico);
+    power_sample.flags = sample.flags;
+    power_sample.host_timestamp_us = sample.host_timestamp_us;
+    power_sample.unix_timestamp_us = sample.device_timestamp_unix_us;
+    power_sample.device_timestamp_us = sample.device_timestamp_us;
+    power_sample.device_timestamp_unix_us = sample.device_timestamp_unix_us;
+    power_sample.power_w = values.power_w;
+    power_sample.voltage_v = values.vbus_v;
+    power_sample.current_a = values.current_a;
+    power_sample.temp_c = values.temp_c;
+
+    power_ring_buffer_.push(power_sample);
+}
+
+void PowerMonitorSession::export_onboard_power_sample(const OnboardSample& sample) {
+    if (!power_ring_buffer_.ok()) {
+        return;
+    }
+
+    RealtimePowerSample power_sample{};
+    power_sample.source = static_cast<uint32_t>(PowerSampleSource::kOnboard);
+    power_sample.host_timestamp_us = sample.mono_ns > 0 ? static_cast<uint64_t>(sample.mono_ns / 1000) : 0;
+    power_sample.unix_timestamp_us = sample.unix_ns > 0 ? static_cast<uint64_t>(sample.unix_ns / 1000) : 0;
+    power_sample.power_w = sample.total_mw / 1000.0;
+    power_sample.gpu_freq_hz = sample.gpu_freq_hz > 0 ? static_cast<uint64_t>(sample.gpu_freq_hz) : 0;
+    power_sample.cpu_cluster0_freq_hz = sample.cpu_cluster0_freq_hz > 0 ? static_cast<uint64_t>(sample.cpu_cluster0_freq_hz) : 0;
+    power_sample.cpu_cluster1_freq_hz = sample.cpu_cluster1_freq_hz > 0 ? static_cast<uint64_t>(sample.cpu_cluster1_freq_hz) : 0;
+    power_sample.emc_freq_hz = sample.emc_freq_hz > 0 ? static_cast<uint64_t>(sample.emc_freq_hz) : 0;
+    power_sample.cpu_temp_c = sample.temp_cpu_mc > 0 ? (sample.temp_cpu_mc / 1000.0) : 0.0;
+    power_sample.gpu_temp_c = sample.temp_gpu_mc > 0 ? (sample.temp_gpu_mc / 1000.0) : 0.0;
+
+    power_ring_buffer_.push(power_sample);
 }
 
 int PowerMonitorSession::run_tui_loop() {

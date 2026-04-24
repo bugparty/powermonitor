@@ -11,6 +11,7 @@
 #include "protocol/frame_builder.h"
 #include "sample_queue.h"
 #include "session.h"
+#include "shm_power_ring_buffer.h"
 
 namespace serial {
 class Serial;
@@ -100,6 +101,8 @@ private:
     void save_and_exit();
     void emit_time_sync_debug(const std::string& message);
     void maybe_debug_time_sync_sample(const SampleQueue::Sample& sample);
+    void export_pico_power_sample(const Session::Sample& sample);
+    void export_onboard_power_sample(const OnboardSample& sample);
 
     struct UiState {
         mutable std::mutex mutex;
@@ -149,6 +152,7 @@ private:
      std::mutex command_mutex_;
      mutable size_t last_stats_width_ = 0;
      UiState ui_state_;
+     ShmPowerRingBuffer power_ring_buffer_;
   };
 
 

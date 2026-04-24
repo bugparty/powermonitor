@@ -1,0 +1,28 @@
+<!doctype html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-sans);}
+  .card{padding:20px 24px;display:flex;gap:32px;align-items:flex-start;flex-wrap:wrap}
+  .col{display:flex;flex-direction:column;gap:8px}
+  .row{display:flex;align-items:baseline;gap:12px}
+  .swatch{width:14px;height:14px;border-radius:50%}
+  .meta{font-family:var(--font-mono);font-size:11px;color:var(--muted)}
+</style></head><body>
+<div class="card">
+  <div class="col">
+    <div class="row"><span class="swatch" style="background:#22c55e"></span><span style="color:#22c55e;font-weight:600">ok / voltage</span><span class="meta">#22C55E</span></div>
+    <div class="row"><span class="swatch" style="background:#f59e0b"></span><span style="color:#f59e0b;font-weight:600">warn / current</span><span class="meta">#F59E0B</span></div>
+    <div class="row"><span class="swatch" style="background:#ef4444"></span><span style="color:#ef4444;font-weight:600">err / temp</span><span class="meta">#EF4444</span></div>
+    <div class="row"><span class="swatch" style="background:#3f8cff"></span><span style="color:#3f8cff;font-weight:600">info / accent</span><span class="meta">#3F8CFF</span></div>
+  </div>
+  <div class="col" style="flex:1;min-width:260px">
+    <div style="font-size:12px;color:var(--muted);margin-bottom:4px">Accent usage — border only, never fill</div>
+    <div style="display:flex;gap:8px">
+      <button style="border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:8px;padding:8px 12px;font-size:13px;font-family:inherit;cursor:pointer">Default</button>
+      <button style="border:1px solid #3f8cff;background:var(--panel);color:var(--text);border-radius:8px;padding:8px 12px;font-size:13px;font-family:inherit;cursor:pointer">Hover / Focus</button>
+      <div style="border:1px solid rgba(63,140,255,0.16);background:linear-gradient(180deg,rgba(20,24,31,0.96),rgba(17,19,23,0.96));border-radius:10px;padding:10px 14px;font-size:12px;color:var(--muted)">Active panel · 16 % tint</div>
+    </div>
+  </div>
+</div>
+</body></html>

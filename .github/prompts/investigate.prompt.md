@@ -36,6 +36,7 @@ Find `# Repro` or `# Continue` in the LATEST chat message.
 ## Step 3. Confirm the Problem
 
 - Run the test. To target a single test: `./build_linux/bin/pc_sim_test --gtest_filter=SuiteName.TestName`
+- If the issue only touches `web_viewer/`, use `npm run build:web` instead of `pwsh workflow.ps1` to confirm the change.
 - If the problem reproduces, mark `# TEST [CONFIRMED]` and proceed to Step 4.
 - If it does not reproduce, adjust the test and repeat.
 

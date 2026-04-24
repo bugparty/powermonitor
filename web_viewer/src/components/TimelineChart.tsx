@@ -1,5 +1,4 @@
 import React from "react";
-import type { MouseEvent, WheelEvent } from "react";
 import { Line } from "react-chartjs-2";
 import {
     Chart as ChartJS,
@@ -22,8 +21,6 @@ interface TimelineChartProps {
     points: DataPoint[];
     range: Range;
     downsampleMode: DownsampleMode;
-    onWheel?: (event: WheelEvent<HTMLElement>) => void;
-    onMouseDown?: (event: MouseEvent<HTMLElement>) => void;
     onPointHover: (point: DataPoint | null) => void;
 }
 
@@ -107,8 +104,6 @@ export default function TimelineChart({
     points,
     range,
     downsampleMode,
-    onWheel,
-    onMouseDown,
     onPointHover
 }: TimelineChartProps) {
     function buildChartData(seriesPoints: DataPoint[]) {
@@ -215,35 +210,31 @@ export default function TimelineChart({
         };
     }
 
+    if (!points.length) {
+        return null;
+    }
+
     return (
-        <section className="chart-area">
-            <div
-                className="timeline-stack"
-                aria-label="Power timeline chart"
-                onWheel={onWheel}
-                onMouseDown={onMouseDown}
-            >
-                {!points.length && <div className="timeline-empty">Load a JSON file to view timeline</div>}
-                {points.length > 0 && series.map((sourceSeries, index) => {
-                    const visiblePoints = sourceSeries.points.filter(
-                        (point) => point.timeUs >= range.start && point.timeUs <= range.end
-                    );
-                    return (
-                        <section key={sourceSeries.id} className="timeline-panel">
-                            <header className="timeline-panel-header">
-                                <span className="timeline-panel-title">{sourceSeries.label}</span>
-                                <span className="timeline-panel-meta">{visiblePoints.length} visible samples</span>
-                            </header>
-                            <div className="timeline-panel-chart">
-                                <Line
-                                    data={buildChartData(visiblePoints)}
-                                    options={buildOptions(index === series.length - 1)}
-                                />
-                            </div>
-                        </section>
-                    );
-                })}
-            </div>
-        </section>
+        <>
+            {series.map((sourceSeries, index) => {
+                const visiblePoints = sourceSeries.points.filter(
+                    (point) => point.timeUs >= range.start && point.timeUs <= range.end
+                );
+                return (
+                    <section key={sourceSeries.id} className="timeline-panel">
+                        <header className="timeline-panel-header">
+                            <span className="timeline-panel-title">{sourceSeries.label}</span>
+                            <span className="timeline-panel-meta">{visiblePoints.length} visible samples</span>
+                        </header>
+                        <div className="timeline-panel-chart">
+                            <Line
+                                data={buildChartData(visiblePoints)}
+                                options={buildOptions(index === series.length - 1)}
+                            />
+                        </div>
+                    </section>
+                );
+            })}
+        </>
     );
 }

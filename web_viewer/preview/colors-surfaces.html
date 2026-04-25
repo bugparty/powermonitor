@@ -1,0 +1,89 @@
+<!doctype html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;background:#000;color:#dbe2ee;font-family:var(--font-sans)}
+  .card{padding:16px;display:grid;grid-template-columns:1fr 280px;gap:16px;min-height:300px}
+
+  /* Left: real nested surfaces — each layer physically sits inside the last */
+  .stack{display:flex;flex-direction:column;border-radius:10px;overflow:hidden;border:1px solid #2f3643}
+  .layer{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;position:relative}
+  .layer .nm{font-size:12px;font-weight:600;color:#dbe2ee;font-family:var(--font-mono);letter-spacing:.02em}
+  .layer .hx{font-size:11px;color:#94a0b8;font-family:var(--font-mono)}
+
+  .l-deep{background:#07090c;border-bottom:1px solid #2f3643}
+  .l-bg  {background:#1a1f27;padding:18px 14px 18px 14px;border-bottom:1px solid #2f3643}
+  .l-panel-wrap{padding:14px;background:#1a1f27}
+  .l-panel{background:#181b21;border:1px solid #2f3643;border-radius:8px;padding:12px}
+  .l-panel-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+  .l-raised{background:#14181f;border:1px solid rgba(63,140,255,0.16);border-radius:6px;padding:10px 12px;display:flex;align-items:center;justify-content:space-between}
+
+  /* Right: the 4 line/text tokens as tall horizontal chips, labels readable */
+  .chips{display:flex;flex-direction:column;gap:8px}
+  .chip{border:1px solid #2f3643;border-radius:8px;padding:10px 12px;display:flex;align-items:center;gap:10px;background:#1a1f27}
+  .chip .swatch{width:22px;height:22px;border-radius:4px;flex:none;border:1px solid rgba(255,255,255,0.06)}
+  .chip .meta{display:flex;flex-direction:column;min-width:0}
+  .chip .nm{font-size:12px;font-weight:600;color:#dbe2ee;font-family:var(--font-mono)}
+  .chip .role{font-size:10px;color:#94a0b8}
+  .chip .hx{margin-left:auto;font-size:10px;color:#94a0b8;font-family:var(--font-mono)}
+
+  /* Illustrate the line color as an actual hairline inside its chip */
+  .chip.line .swatch{background:#2f3643;position:relative}
+  .chip.line .demo-line{flex:1;height:1px;background:#2f3643;margin:0 4px}
+
+  /* subtle demo: crosshair dash */
+  .chip.subtle .demo-dash{flex:1;height:0;border-top:1px dashed #6b7280;margin:0 4px}
+</style></head><body>
+<div class="card">
+  <!-- Left: nested surfaces -->
+  <div class="stack" aria-label="Surface layers, nested as they appear in the app">
+    <div class="layer l-deep">
+      <span class="nm">bg-deep</span>
+      <span class="hx">#07090C · topbar / shell</span>
+    </div>
+    <div class="layer l-bg">
+      <span class="nm">bg</span>
+      <span class="hx">#1A1F27 · app surface</span>
+    </div>
+    <div class="l-panel-wrap">
+      <div class="l-panel">
+        <div class="l-panel-row">
+          <span class="nm">panel</span>
+          <span class="hx">#181B21 · card / chart stack</span>
+        </div>
+        <div class="l-raised">
+          <span class="nm">panel-raised</span>
+          <span class="hx">#14181F · inside timeline</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: line & text tokens -->
+  <div class="chips">
+    <div class="chip">
+      <span class="swatch" style="background:#2f3643"></span>
+      <div class="meta"><span class="nm">line</span><span class="role">1 px borders &amp; grid</span></div>
+      <span class="hx">#2F3643</span>
+    </div>
+    <div class="chip subtle">
+      <span class="swatch" style="background:#6b7280"></span>
+      <div class="meta"><span class="nm">subtle</span><span class="role">hover crosshair</span></div>
+      <span class="hx">#6B7280</span>
+    </div>
+    <div class="chip">
+      <span class="swatch" style="background:#94a0b8"></span>
+      <div class="meta"><span class="nm">muted</span><span class="role">axis labels / meta</span></div>
+      <span class="hx">#94A0B8</span>
+    </div>
+    <div class="chip">
+      <span class="swatch" style="background:#dbe2ee"></span>
+      <div class="meta"><span class="nm">text</span><span class="role">primary foreground</span></div>
+      <span class="hx">#DBE2EE</span>
+    </div>
+  </div>
+</div>
+</body></html>

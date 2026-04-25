@@ -1,0 +1,879 @@
+{
+  "schema_version": "2.0",
+  "meta": {
+    "schema_version": "2.0",
+    "protocol_version": "1",
+    "config": {
+      "stream_period_us": 10000
+    },
+    "scenario": "full web viewer capability sample",
+    "has_power": true,
+    "has_latency": true,
+    "has_freqs": true,
+    "has_timespans": true
+  },
+  "sources": {
+    "pico": {
+      "samples": [
+        {
+          "seq": 0,
+          "device_timestamp_unix_us": 1000000,
+          "engineering": {
+            "vbus_v": 12.04,
+            "current_a": 0.38,
+            "power_w": 4.5752,
+            "temp_c": 34.8,
+            "vshunt_v": 0.038,
+            "charge_c": 0.0038,
+            "energy_j": 0.0458
+          },
+          "latency": {
+            "m2d_ns": 4100000,
+            "c2d_ns": 62000000,
+            "p2d_ns": 1800000,
+            "r2d_ns": 11200000
+          },
+          "freqs": {
+            "cpu_cluster0_hz": 729600000,
+            "cpu_cluster1_hz": 1420800000,
+            "gpu_hz": 306000000,
+            "emc_hz": 1600000000
+          }
+        },
+        {
+          "seq": 1,
+          "device_timestamp_unix_us": 1010000,
+          "engineering": {
+            "vbus_v": 12.03,
+            "current_a": 0.42,
+            "power_w": 5.0526,
+            "temp_c": 35.0,
+            "vshunt_v": 0.042,
+            "charge_c": 0.008,
+            "energy_j": 0.0963
+          },
+          "latency": {
+            "m2d_ns": 4700000,
+            "c2d_ns": 64500000,
+            "p2d_ns": 1950000,
+            "r2d_ns": 11800000
+          },
+          "freqs": {
+            "cpu_cluster0_hz": 729600000,
+            "cpu_cluster1_hz": 1420800000,
+            "gpu_hz": 408000000,
+            "emc_hz": 1600000000
+          }
+        },
+        {
+          "seq": 2,
+          "device_timestamp_unix_us": 1020000,
+          "engineering": {
+            "vbus_v": 12.02,
+            "current_a": 0.57,
+            "power_w": 6.8514,
+            "temp_c": 35.4,
+            "vshunt_v": 0.057,
+            "charge_c": 0.0137,
+            "energy_j": 0.1648
+          },
+          "latency": {
+            "m2d_ns": 6900000,
+            "c2d_ns": 91000000,
+            "p2d_ns": 2300000,
+            "r2d_ns": 15600000
+          },
+          "freqs": {
+            "cpu_cluster0_hz": 1190400000,
+            "cpu_cluster1_hz": 1804800000,
+            "gpu_hz": 612000000,
+            "emc_hz": 2133000000
+          }
+        },
+        {
+          "seq": 3,
+          "device_timestamp_unix_us": 1030000,
+          "engineering": {
+            "vbus_v": 11.99,
+            "current_a": 0.84,
+            "power_w": 10.0716,
+            "temp_c": 36.1,
+            "vshunt_v": 0.084,
+            "charge_c": 0.0221,
+            "energy_j": 0.2655
+          },
+          "latency": {
+            "m2d_ns": 9800000,
+            "c2d_ns": 134000000,
+            "p2d_ns": 3100000,
+            "r2d_ns": 21400000
+          },
+          "freqs": {
+            "cpu_cluster0_hz": 1420800000,
+            "cpu_cluster1_hz": 2201600000,
+            "gpu_hz": 918000000,
+            "emc_hz": 3199000000
+          }
+        },
+        {
+          "seq": 4,
+          "device_timestamp_unix_us": 1040000,
+          "engineering": {
+            "vbus_v": 11.97,
+            "current_a": 1.16,
+            "power_w": 13.8852,
+            "temp_c": 37.0,
+            "vshunt_v": 0.116,
+            "charge_c": 0.0337,
+            "energy_j": 0.4043
+          },
+          "latency": {
+            "m2d_ns": 12400000,
+            "c2d_ns": 168000000,
+            "p2d_ns": 4200000,
+            "r2d_ns": 28600000
+          },
+          "freqs": {
+            "cpu_cluster0_hz": 1420800000,
+            "cpu_cluster1_hz": 2201600000,
+            "gpu_hz": 1109000000,
+            "emc_hz": 3199000000
+          }
+        },
+        {
+          "seq": 5,
+          "device_timestamp_unix_us": 1050000,
+          "engineering": {
+            "vbus_v": 11.98,
+            "current_a": 1.08,
+            "power_w": 12.9384,
+            "temp_c": 37.6,
+            "vshunt_v": 0.108,
+            "charge_c": 0.0445,
+            "energy_j": 0.5337
+          },
+          "latency": {
+            "m2d_ns": 10200000,
+            "c2d_ns": 142000000,
+            "p2d_ns": 3800000,
+            "r2d_ns": 25200000
+          },
+          "freqs": {
+            "cpu_cluster0_hz": 1420800000,
+            "cpu_cluster1_hz": 2201600000,
+            "gpu_hz": 918000000,
+            "emc_hz": 3199000000
+          }
+        },
+        {
+          "seq": 6,
+          "device_timestamp_unix_us": 1060000,
+          "engineering": {
+            "vbus_v": 12.0,
+            "current_a": 0.73,
+            "power_w": 8.76,
+            "temp_c": 37.3,
+            "vshunt_v": 0.073,
+            "charge_c": 0.0518,
+            "energy_j": 0.6213
+          },
+          "latency": {
+            "m2d_ns": 7300000,
+            "c2d_ns": 99000000,
+            "p2d_ns": 2550000,
+            "r2d_ns": 16800000
+          },
+          "freqs": {
+            "cpu_cluster0_hz": 1190400000,
+            "cpu_cluster1_hz": 1804800000,
+            "gpu_hz": 612000000,
+            "emc_hz": 2133000000
+          }
+        },
+        {
+          "seq": 7,
+          "device_timestamp_unix_us": 1070000,
+          "engineering": {
+            "vbus_v": 12.01,
+            "current_a": 0.51,
+            "power_w": 6.1251,
+            "temp_c": 36.7,
+            "vshunt_v": 0.051,
+            "charge_c": 0.0569,
+            "energy_j": 0.6826
+          },
+          "latency": {
+            "m2d_ns": 5600000,
+            "c2d_ns": 73000000,
+            "p2d_ns": 2100000,
+            "r2d_ns": 13200000
+          },
+          "freqs": {
+            "cpu_cluster0_hz": 729600000,
+            "cpu_cluster1_hz": 1420800000,
+            "gpu_hz": 408000000,
+            "emc_hz": 1600000000
+          }
+        },
+        {
+          "seq": 8,
+          "device_timestamp_unix_us": 1080000,
+          "engineering": {
+            "vbus_v": 12.05,
+            "current_a": 0.46,
+            "power_w": 5.543,
+            "temp_c": 36.3,
+            "vshunt_v": 0.046,
+            "charge_c": 0.0615,
+            "energy_j": 0.738
+          },
+          "latency": {
+            "m2d_ns": 5000000,
+            "c2d_ns": 69000000,
+            "p2d_ns": 2000000,
+            "r2d_ns": 12600000
+          },
+          "freqs": {
+            "cpu_cluster0_hz": 729600000,
+            "cpu_cluster1_hz": 1420800000,
+            "gpu_hz": 306000000,
+            "emc_hz": 1600000000
+          }
+        },
+        {
+          "seq": 9,
+          "device_timestamp_unix_us": 1090000,
+          "engineering": {
+            "vbus_v": 12.06,
+            "current_a": 0.68,
+            "power_w": 8.2008,
+            "temp_c": 36.6,
+            "vshunt_v": 0.068,
+            "charge_c": 0.0683,
+            "energy_j": 0.82
+          },
+          "latency": {
+            "m2d_ns": 7800000,
+            "c2d_ns": 104000000,
+            "p2d_ns": 2700000,
+            "r2d_ns": 17600000
+          },
+          "freqs": {
+            "cpu_cluster0_hz": 1190400000,
+            "cpu_cluster1_hz": 1804800000,
+            "gpu_hz": 612000000,
+            "emc_hz": 2133000000
+          }
+        },
+        {
+          "seq": 10,
+          "device_timestamp_unix_us": 1100000,
+          "engineering": {
+            "vbus_v": 12.01,
+            "current_a": 1.24,
+            "power_w": 14.8924,
+            "temp_c": 37.9,
+            "vshunt_v": 0.124,
+            "charge_c": 0.0807,
+            "energy_j": 0.9689
+          },
+          "latency": {
+            "m2d_ns": 13600000,
+            "c2d_ns": 188000000,
+            "p2d_ns": 4700000,
+            "r2d_ns": 32400000
+          },
+          "freqs": {
+            "cpu_cluster0_hz": 1420800000,
+            "cpu_cluster1_hz": 2201600000,
+            "gpu_hz": 1109000000,
+            "emc_hz": 3199000000
+          }
+        },
+        {
+          "seq": 11,
+          "device_timestamp_unix_us": 1110000,
+          "engineering": {
+            "vbus_v": 11.96,
+            "current_a": 0.62,
+            "power_w": 7.4152,
+            "temp_c": 37.2,
+            "vshunt_v": 0.062,
+            "charge_c": 0.0869,
+            "energy_j": 1.0431
+          },
+          "latency": {
+            "m2d_ns": 6600000,
+            "c2d_ns": 87000000,
+            "p2d_ns": 2400000,
+            "r2d_ns": 14900000
+          },
+          "freqs": {
+            "cpu_cluster0_hz": 1190400000,
+            "cpu_cluster1_hz": 1804800000,
+            "gpu_hz": 612000000,
+            "emc_hz": 2133000000
+          }
+        }
+      ]
+    },
+    "onboard_cpp": {
+      "samples": [
+        {
+          "seq": 200,
+          "device_timestamp_unix_us": 1004500,
+          "engineering": {
+            "vbus_v": 5.11,
+            "current_a": 0.16,
+            "power_w": 0.8176,
+            "temp_c": 42.1,
+            "vshunt_v": 0.016,
+            "charge_c": 0.0016,
+            "energy_j": 0.0082
+          },
+          "latency": {
+            "m2d_ns": 3200000,
+            "c2d_ns": 51000000,
+            "p2d_ns": 1200000,
+            "r2d_ns": 8600000
+          },
+          "freqs": {
+            "cpu_cluster0_hz": 729600000,
+            "cpu_cluster1_hz": 1190400000,
+            "gpu_hz": 306000000,
+            "emc_hz": 1600000000
+          }
+        },
+        {
+          "seq": 201,
+          "device_timestamp_unix_us": 1014500,
+          "engineering": {
+            "vbus_v": 5.1,
+            "current_a": 0.18,
+            "power_w": 0.918,
+            "temp_c": 42.3,
+            "vshunt_v": 0.018,
+            "charge_c": 0.0034,
+            "energy_j": 0.0174
+          },
+          "latency": {
+            "m2d_ns": 3500000,
+            "c2d_ns": 53000000,
+            "p2d_ns": 1300000,
+            "r2d_ns": 9100000
+          },
+          "freqs": {
+            "cpu_cluster0_hz": 729600000,
+            "cpu_cluster1_hz": 1190400000,
+            "gpu_hz": 306000000,
+            "emc_hz": 1600000000
+          }
+        },
+        {
+          "seq": 202,
+          "device_timestamp_unix_us": 1024500,
+          "engineering": {
+            "vbus_v": 5.08,
+            "current_a": 0.34,
+            "power_w": 1.7272,
+            "temp_c": 42.9,
+            "vshunt_v": 0.034,
+            "charge_c": 0.0068,
+            "energy_j": 0.0347
+          },
+          "latency": {
+            "m2d_ns": 5400000,
+            "c2d_ns": 79000000,
+            "p2d_ns": 1900000,
+            "r2d_ns": 13900000
+          },
+          "freqs": {
+            "cpu_cluster0_hz": 1190400000,
+            "cpu_cluster1_hz": 1804800000,
+            "gpu_hz": 612000000,
+            "emc_hz": 2133000000
+          }
+        },
+        {
+          "seq": 203,
+          "device_timestamp_unix_us": 1034500,
+          "engineering": {
+            "vbus_v": 5.07,
+            "current_a": 0.61,
+            "power_w": 3.0927,
+            "temp_c": 44.2,
+            "vshunt_v": 0.061,
+            "charge_c": 0.0129,
+            "energy_j": 0.0656
+          },
+          "latency": {
+            "m2d_ns": 8700000,
+            "c2d_ns": 122000000,
+            "p2d_ns": 2800000,
+            "r2d_ns": 20800000
+          },
+          "freqs": {
+            "cpu_cluster0_hz": 1420800000,
+            "cpu_cluster1_hz": 2201600000,
+            "gpu_hz": 918000000,
+            "emc_hz": 3199000000
+          }
+        },
+        {
+          "seq": 204,
+          "device_timestamp_unix_us": 1044500,
+          "engineering": {
+            "vbus_v": 5.04,
+            "current_a": 0.82,
+            "power_w": 4.1328,
+            "temp_c": 45.0,
+            "vshunt_v": 0.082,
+            "charge_c": 0.0211,
+            "energy_j": 0.1069
+          },
+          "latency": {
+            "m2d_ns": 10100000,
+            "c2d_ns": 151000000,
+            "p2d_ns": 3600000,
+            "r2d_ns": 24900000
+          },
+          "freqs": {
+            "cpu_cluster0_hz": 1420800000,
+            "cpu_cluster1_hz": 2201600000,
+            "gpu_hz": 1109000000,
+            "emc_hz": 3199000000
+          }
+        },
+        {
+          "seq": 205,
+          "device_timestamp_unix_us": 1054500,
+          "engineering": {
+            "vbus_v": 5.06,
+            "current_a": 0.72,
+            "power_w": 3.6432,
+            "temp_c": 45.4,
+            "vshunt_v": 0.072,
+            "charge_c": 0.0283,
+            "energy_j": 0.1434
+          },
+          "latency": {
+            "m2d_ns": 9300000,
+            "c2d_ns": 134000000,
+            "p2d_ns": 3300000,
+            "r2d_ns": 22100000
+          },
+          "freqs": {
+            "cpu_cluster0_hz": 1420800000,
+            "cpu_cluster1_hz": 2201600000,
+            "gpu_hz": 918000000,
+            "emc_hz": 3199000000
+          }
+        },
+        {
+          "seq": 206,
+          "device_timestamp_unix_us": 1064500,
+          "engineering": {
+            "vbus_v": 5.09,
+            "current_a": 0.44,
+            "power_w": 2.2396,
+            "temp_c": 44.8,
+            "vshunt_v": 0.044,
+            "charge_c": 0.0327,
+            "energy_j": 0.1658
+          },
+          "latency": {
+            "m2d_ns": 6100000,
+            "c2d_ns": 84000000,
+            "p2d_ns": 2100000,
+            "r2d_ns": 14600000
+          },
+          "freqs": {
+            "cpu_cluster0_hz": 1190400000,
+            "cpu_cluster1_hz": 1804800000,
+            "gpu_hz": 612000000,
+            "emc_hz": 2133000000
+          }
+        },
+        {
+          "seq": 207,
+          "device_timestamp_unix_us": 1074500,
+          "engineering": {
+            "vbus_v": 5.1,
+            "current_a": 0.24,
+            "power_w": 1.224,
+            "temp_c": 44.1,
+            "vshunt_v": 0.024,
+            "charge_c": 0.0351,
+            "energy_j": 0.178
+          },
+          "latency": {
+            "m2d_ns": 4200000,
+            "c2d_ns": 63000000,
+            "p2d_ns": 1500000,
+            "r2d_ns": 10400000
+          },
+          "freqs": {
+            "cpu_cluster0_hz": 729600000,
+            "cpu_cluster1_hz": 1190400000,
+            "gpu_hz": 306000000,
+            "emc_hz": 1600000000
+          }
+        },
+        {
+          "seq": 208,
+          "device_timestamp_unix_us": 1084500,
+          "engineering": {
+            "vbus_v": 5.12,
+            "current_a": 0.2,
+            "power_w": 1.024,
+            "temp_c": 43.6,
+            "vshunt_v": 0.02,
+            "charge_c": 0.0371,
+            "energy_j": 0.1882
+          },
+          "latency": {
+            "m2d_ns": 3800000,
+            "c2d_ns": 57000000,
+            "p2d_ns": 1400000,
+            "r2d_ns": 9800000
+          },
+          "freqs": {
+            "cpu_cluster0_hz": 729600000,
+            "cpu_cluster1_hz": 1190400000,
+            "gpu_hz": 306000000,
+            "emc_hz": 1600000000
+          }
+        },
+        {
+          "seq": 209,
+          "device_timestamp_unix_us": 1094500,
+          "engineering": {
+            "vbus_v": 5.09,
+            "current_a": 0.39,
+            "power_w": 1.9851,
+            "temp_c": 43.9,
+            "vshunt_v": 0.039,
+            "charge_c": 0.041,
+            "energy_j": 0.208
+          },
+          "latency": {
+            "m2d_ns": 5900000,
+            "c2d_ns": 87000000,
+            "p2d_ns": 2200000,
+            "r2d_ns": 15100000
+          },
+          "freqs": {
+            "cpu_cluster0_hz": 1190400000,
+            "cpu_cluster1_hz": 1804800000,
+            "gpu_hz": 612000000,
+            "emc_hz": 2133000000
+          }
+        },
+        {
+          "seq": 210,
+          "device_timestamp_unix_us": 1104500,
+          "engineering": {
+            "vbus_v": 5.05,
+            "current_a": 0.9,
+            "power_w": 4.545,
+            "temp_c": 45.6,
+            "vshunt_v": 0.09,
+            "charge_c": 0.05,
+            "energy_j": 0.2535
+          },
+          "latency": {
+            "m2d_ns": 11600000,
+            "c2d_ns": 173000000,
+            "p2d_ns": 4100000,
+            "r2d_ns": 29400000
+          },
+          "freqs": {
+            "cpu_cluster0_hz": 1420800000,
+            "cpu_cluster1_hz": 2201600000,
+            "gpu_hz": 1109000000,
+            "emc_hz": 3199000000
+          }
+        },
+        {
+          "seq": 211,
+          "device_timestamp_unix_us": 1114500,
+          "engineering": {
+            "vbus_v": 5.08,
+            "current_a": 0.36,
+            "power_w": 1.8288,
+            "temp_c": 44.7,
+            "vshunt_v": 0.036,
+            "charge_c": 0.0536,
+            "energy_j": 0.2718
+          },
+          "latency": {
+            "m2d_ns": 5200000,
+            "c2d_ns": 76000000,
+            "p2d_ns": 1800000,
+            "r2d_ns": 12700000
+          },
+          "freqs": {
+            "cpu_cluster0_hz": 1190400000,
+            "cpu_cluster1_hz": 1804800000,
+            "gpu_hz": 612000000,
+            "emc_hz": 2133000000
+          }
+        }
+      ]
+    },
+    "host_latency_only": {
+      "samples": [
+        {
+          "seq": 400,
+          "host_timestamp_us": 1002500,
+          "power_w": 0.05,
+          "latency": {
+            "m2d_ns": 2500000,
+            "c2d_ns": 48000000,
+            "p2d_ns": 900000,
+            "r2d_ns": 7800000
+          },
+          "freqs": {
+            "cpu_cluster0_hz": 729600000,
+            "cpu_cluster1_hz": 1190400000,
+            "gpu_hz": 306000000,
+            "emc_hz": 1600000000
+          }
+        },
+        {
+          "seq": 401,
+          "host_timestamp_us": 1027500,
+          "power_w": 0.07,
+          "latency": {
+            "m2d_ns": 7400000,
+            "c2d_ns": 116000000,
+            "p2d_ns": 2600000,
+            "r2d_ns": 18400000
+          },
+          "freqs": {
+            "cpu_cluster0_hz": 1190400000,
+            "cpu_cluster1_hz": 1804800000,
+            "gpu_hz": 612000000,
+            "emc_hz": 2133000000
+          }
+        },
+        {
+          "seq": 402,
+          "host_timestamp_us": 1052500,
+          "power_w": 0.06,
+          "latency": {
+            "m2d_ns": 10200000,
+            "c2d_ns": 151000000,
+            "p2d_ns": 3600000,
+            "r2d_ns": 24800000
+          },
+          "freqs": {
+            "cpu_cluster0_hz": 1420800000,
+            "cpu_cluster1_hz": 2201600000,
+            "gpu_hz": 1109000000,
+            "emc_hz": 3199000000
+          }
+        },
+        {
+          "seq": 403,
+          "host_timestamp_us": 1077500,
+          "power_w": 0.04,
+          "latency": {
+            "m2d_ns": 3900000,
+            "c2d_ns": 59000000,
+            "p2d_ns": 1400000,
+            "r2d_ns": 9600000
+          },
+          "freqs": {
+            "cpu_cluster0_hz": 729600000,
+            "cpu_cluster1_hz": 1190400000,
+            "gpu_hz": 306000000,
+            "emc_hz": 1600000000
+          }
+        },
+        {
+          "seq": 404,
+          "host_timestamp_us": 1102500,
+          "power_w": 0.08,
+          "latency": {
+            "m2d_ns": 12900000,
+            "c2d_ns": 196000000,
+            "p2d_ns": 4900000,
+            "r2d_ns": 33800000
+          },
+          "freqs": {
+            "cpu_cluster0_hz": 1420800000,
+            "cpu_cluster1_hz": 2201600000,
+            "gpu_hz": 1109000000,
+            "emc_hz": 3199000000
+          }
+        }
+      ]
+    }
+  },
+  "timespans": {
+    "pipeline": {
+      "label": "render pipeline · overlapping spans",
+      "lane_labels": [
+        "camera",
+        "tracking",
+        "prediction",
+        "render",
+        "display"
+      ],
+      "spans": [
+        {
+          "id": "camera_0",
+          "lane": 0,
+          "start_us": 1001000,
+          "end_us": 1012000,
+          "color": "#06b6d4",
+          "label": "cam 0",
+          "metadata": {
+            "frame": 0,
+            "source": "zed-mini"
+          }
+        },
+        {
+          "id": "camera_1",
+          "lane": 0,
+          "start_us": 1021000,
+          "end_us": 1034000,
+          "color": "#06b6d4",
+          "label": "cam 1",
+          "metadata": {
+            "frame": 1,
+            "source": "zed-mini"
+          }
+        },
+        {
+          "id": "tracking_0",
+          "lane": 1,
+          "start_us": 1010000,
+          "end_us": 1046000,
+          "color": "#a855f7",
+          "label": "vio 0",
+          "metadata": {
+            "iteration_no": 18,
+            "feature_count": 214
+          }
+        },
+        {
+          "id": "tracking_overlap_1",
+          "lane": 1,
+          "start_us": 1032000,
+          "end_us": 1069000,
+          "color": "#8b5cf6",
+          "label": "vio 1",
+          "metadata": {
+            "iteration_no": 19,
+            "feature_count": 198
+          }
+        },
+        {
+          "id": "prediction_0",
+          "lane": 2,
+          "start_us": 1040000,
+          "end_us": 1047000,
+          "color": "#f97316",
+          "label": "pose"
+        },
+        {
+          "id": "render_0",
+          "lane": 3,
+          "start_us": 1047000,
+          "end_us": 1066000,
+          "color": "#22c55e",
+          "label": "draw"
+        },
+        {
+          "id": "render_overlap_1",
+          "lane": 3,
+          "start_us": 1057000,
+          "end_us": 1084000,
+          "color": "#f59e0b",
+          "label": "post"
+        },
+        {
+          "id": "display_0",
+          "lane": 4,
+          "start_us": 1069000,
+          "end_us": 1074000,
+          "color": "#3b82f6",
+          "label": "scan"
+        },
+        {
+          "id": "display_1",
+          "lane": 4,
+          "start_us": 1102000,
+          "end_us": 1113000,
+          "color": "#ef4444",
+          "label": "miss"
+        }
+      ]
+    },
+    "system_activity": {
+      "label": "system activity · long and short tasks",
+      "lane_labels": [
+        "sampler",
+        "serializer",
+        "usb",
+        "logger"
+      ],
+      "spans": [
+        {
+          "id": "sample_burst_0",
+          "lane": 0,
+          "start_us": 1000000,
+          "end_us": 1115000,
+          "color": "#22c55e",
+          "label": "sample burst"
+        },
+        {
+          "id": "pack_0",
+          "lane": 1,
+          "start_us": 1006000,
+          "end_us": 1008200,
+          "color": "#a855f7",
+          "label": "pack"
+        },
+        {
+          "id": "pack_1",
+          "lane": 1,
+          "start_us": 1038000,
+          "end_us": 1040500,
+          "color": "#a855f7",
+          "label": "pack"
+        },
+        {
+          "id": "usb_tx_0",
+          "lane": 2,
+          "start_us": 1012000,
+          "end_us": 1029000,
+          "color": "#06b6d4",
+          "label": "usb"
+        },
+        {
+          "id": "usb_retry_0",
+          "lane": 2,
+          "start_us": 1023000,
+          "end_us": 1031000,
+          "color": "#ef4444",
+          "label": "retry"
+        },
+        {
+          "id": "log_flush_0",
+          "lane": 3,
+          "start_us": 1086000,
+          "end_us": 1112000,
+          "color": "#f97316",
+          "label": "flush",
+          "metadata": {
+            "bytes": 65536,
+            "path": "captures/full_capability_sample.json"
+          }
+        }
+      ]
+    }
+  }
+}

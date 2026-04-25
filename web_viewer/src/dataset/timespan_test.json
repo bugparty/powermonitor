@@ -1,0 +1,36 @@
+{
+  "schema_version": "2.0",
+  "meta": {
+    "has_timespans": true,
+    "has_power": false,
+    "has_latency": false
+  },
+  "sources": {},
+  "timespans": {
+    "threadloop": {
+      "label": "scheduling · per-plugin task spans",
+      "lane_labels": ["core 0", "core 1", "core 2", "core 3", "core 4", "core 5", "core 6", "core 7"],
+      "spans": [
+        {"id": "T0", "lane": 0, "start_us": 1000000, "end_us": 1236000, "color": "#22c55e", "label": "T0"},
+        {"id": "T1", "lane": 0, "start_us": 1240000, "end_us": 1256000, "color": "#22c55e"},
+        {"id": "T2", "lane": 0, "start_us": 1260000, "end_us": 1276000, "color": "#22c55e"},
+        {"id": "T3", "lane": 0, "start_us": 1280000, "end_us": 3340000, "color": "#22c55e", "label": "T29"},
+        {"id": "T4", "lane": 1, "start_us": 3900000, "end_us": 5860000, "color": "#f59e0b", "label": "T39"},
+        {"id": "T5", "lane": 1, "start_us": 5860000, "end_us": 6260000, "color": "#f59e0b"},
+        {"id": "T6", "lane": 2, "start_us": 1086000, "end_us": 1642000, "color": "#22c55e", "label": "T27"},
+        {"id": "T7", "lane": 2, "start_us": 1642000, "end_us": 2042000, "color": "#22c55e"},
+        {"id": "T8", "lane": 2, "start_us": 3140000, "end_us": 4140000, "color": "#f59e0b", "label": "T31"},
+        {"id": "T9", "lane": 2, "start_us": 5500000, "end_us": 6280000, "color": "#f59e0b"},
+        {"id": "T10", "lane": 3, "start_us": 1000000, "end_us": 3360000, "color": "#22c55e", "label": "T0"},
+        {"id": "T11", "lane": 3, "start_us": 3140000, "end_us": 3540000, "color": "#22c55e"},
+        {"id": "T12", "lane": 3, "start_us": 3540000, "end_us": 4420000, "color": "#22c55e"},
+        {"id": "T13", "lane": 4, "start_us": 3140000, "end_us": 4140000, "color": "#f59e0b", "label": "T38"},
+        {"id": "T14", "lane": 5, "start_us": 1000000, "end_us": 1620000, "color": "#22c55e"},
+        {"id": "T15", "lane": 5, "start_us": 2360000, "end_us": 6280000, "color": "#f59e0b", "label": "T34"},
+        {"id": "T16", "lane": 6, "start_us": 1000000, "end_us": 2400000, "color": "#22c55e", "label": "T25"},
+        {"id": "T17", "lane": 6, "start_us": 4720000, "end_us": 6280000, "color": "#f59e0b", "label": "T35"},
+        {"id": "T18", "lane": 7, "start_us": 1000000, "end_us": 1100000, "color": "#22c55e"}
+      ]
+    }
+  }
+}

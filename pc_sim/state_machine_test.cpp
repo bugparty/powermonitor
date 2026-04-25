@@ -488,7 +488,7 @@ TEST_F(ParserStateMachineTest, Integration_ByteByByteFeed) {
 }
 
 TEST_F(ParserStateMachineTest, Integration_LengthValidation) {
-    // Test 7.3: Invalid length handling
+    // Test: Invalid length handling
     std::vector<uint8_t> bad_len_frame = {
         0xAA, 0x55,           // SOF
         0x01,                 // VER
@@ -519,4 +519,240 @@ TEST_F(ParserStateMachineTest, Integration_LengthValidation) {
     EXPECT_EQ(parser->get_state(), protocol::Parser::State::kWaitSof0);
     EXPECT_EQ(parser->len_fail_count(), 2);
     EXPECT_EQ(frame_count, 0);
+}
+
+// ===== Test 7.2: Communication with Mixed Frame Types =====
+// Reference: docs/pc_sim/state_machine_tests.md Test 7.2
+// Objective: Test realistic communication scenario with all message types
+
+TEST_F(ParserStateMachineTest, Integration_MixedFrameTypesRealistic) {
+    // Simulate a realistic communication session:
+    // 1. PING command (CMD frame) -> PING response (RSP frame)
+    // 2. SET_CFG command -> RSP + EVT (CFG_REPORT)
+    // 3. STREAM_START -> continuous DATA frames
+    // 4. STREAM_STOP
+    // 5. Inject garbage and corrupted frames throughout
+
+    int expected_frames = 0;
+
+    // --- Step 1: PING command and response ---
+    // Client sends PING (CMD, MSGID=0x01)
+    TestFrameBuilder ping_cmd;
+    ping_cmd.begin(protocol::FrameType::kCmd, 0x01, 0x01); // ACK_REQ
+    ping_cmd.append_msgid(0x01); // PING
+    parser->feed(ping_cmd.finalize());
+    expected_frames++;
+
+    // Device responds with PING_RSP (RSP, MSGID=0x02)
+    TestFrameBuilder ping_rsp;
+    ping_rsp.begin(protocol::FrameType::kRsp, 0x01, 0x00);
+    ping_rsp.append_msgid(0x02); // PING_RSP
+    ping_rsp.append_u8(0x00);    // status = OK
+    parser->feed(ping_rsp.finalize());
+    expected_frames++;
+
+    // --- Step 2: SET_CFG command with garbage injection ---
+    // Inject some garbage bytes
+    uint8_t garbage1[] = {0xDE, 0xAD, 0xBE, 0xEF};
+    parser->feed(garbage1, sizeof(garbage1));
+    // No frame should be dispatched for garbage
+
+    // Client sends SET_CFG (CMD, MSGID=0x10)
+    TestFrameBuilder setcfg_cmd;
+    setcfg_cmd.begin(protocol::FrameType::kCmd, 0x02, 0x01);
+    setcfg_cmd.append_msgid(0x10); // SET_CFG
+    setcfg_cmd.append_u8(0x01);    // sample_rate = 1000
+    setcfg_cmd.append_u8(0xE8);
+    setcfg_cmd.append_u8(0x03);
+    parser->feed(setcfg_cmd.finalize());
+    expected_frames++;
+
+    // Device responds with RSP
+    TestFrameBuilder setcfg_rsp;
+    setcfg_rsp.begin(protocol::FrameType::kRsp, 0x02, 0x00);
+    setcfg_rsp.append_msgid(0x02); // generic RSP
+    setcfg_rsp.append_u8(0x00);    // status = OK
+    parser->feed(setcfg_rsp.finalize());
+    expected_frames++;
+
+    // Device also sends CFG_REPORT (EVT, MSGID=0x90)
+    TestFrameBuilder cfg_evt;
+    cfg_evt.begin(protocol::FrameType::kEvt, 0x00, 0x00);
+    cfg_evt.append_msgid(0x90); // CFG_REPORT
+    cfg_evt.append_u8(0x01);    // sample_rate
+    cfg_evt.append_u8(0xE8);
+    cfg_evt.append_u8(0x03);
+    cfg_evt.append_u8(0x00);    // mode
+    parser->feed(cfg_evt.finalize());
+    expected_frames++;
+
+    // --- Step 3: STREAM_START and DATA frames ---
+    // Client sends STREAM_START (CMD, MSGID=0x20)
+    TestFrameBuilder stream_start;
+    stream_start.begin(protocol::FrameType::kCmd, 0x03, 0x00);
+    stream_start.append_msgid(0x20); // STREAM_START
+    parser->feed(stream_start.finalize());
+    expected_frames++;
+
+    // Inject a corrupted frame (valid structure but bad CRC)
+    // LEN=4 means: MSGID(1) + 3 data bytes = 4 bytes payload, then 2-byte CRC
+    std::vector<uint8_t> corrupted = {
+        0xAA, 0x55,           // SOF
+        0x01,                 // VER
+        0x03,                 // TYPE (DATA)
+        0x00,                 // FLAGS
+        0x10,                 // SEQ
+        0x04, 0x00,           // LEN = 4
+        0x80,                 // MSGID
+        0x11, 0x22, 0x33,     // 3 data bytes
+        0xFF, 0xFF            // Intentionally bad CRC
+    };
+    parser->feed(corrupted);
+    // This should increment CRC fail count, not frame count
+
+    // Device sends multiple DATA_SAMPLE frames (DATA, MSGID=0x80)
+    for (int i = 0; i < 10; i++) {
+        TestFrameBuilder data_sample;
+        data_sample.begin(protocol::FrameType::kData, static_cast<uint8_t>(i & 0xFF), 0x00);
+        data_sample.append_msgid(0x80); // DATA_SAMPLE
+        // 16 bytes of sample data
+        for (int j = 0; j < 16; j++) {
+            data_sample.append_u8(static_cast<uint8_t>((i * 16 + j) & 0xFF));
+        }
+        parser->feed(data_sample.finalize());
+        expected_frames++;
+    }
+
+    // --- Step 4: STREAM_STOP ---
+    TestFrameBuilder stream_stop;
+    stream_stop.begin(protocol::FrameType::kCmd, 0x04, 0x00);
+    stream_stop.append_msgid(0x21); // STREAM_STOP
+    parser->feed(stream_stop.finalize());
+    expected_frames++;
+
+    // --- Verify results ---
+    EXPECT_EQ(frame_count, expected_frames);
+    EXPECT_EQ(parser->crc_fail_count(), 1); // One corrupted frame
+    EXPECT_EQ(parser->get_state(), protocol::Parser::State::kWaitSof0);
+
+    // Verify last frame was STREAM_STOP command
+    EXPECT_EQ(last_frame.msgid, 0x21);
+    EXPECT_EQ(last_frame.type, protocol::FrameType::kCmd);
+}
+
+// ===== Test 7.3: Stress Test - Rapid State Changes =====
+// Reference: docs/pc_sim/state_machine_tests.md Test 7.3
+// Objective: Test parser robustness under rapid state transitions
+
+TEST_F(ParserStateMachineTest, Integration_StressRapidStateChanges) {
+    // Rapidly send alternating valid and invalid frames
+    // Inject garbage bytes between frames
+    // Send frames with various CRC errors
+    // Monitor parser state and verify no crashes or deadlocks
+
+    int valid_frames_sent = 0;
+    int crc_errors_sent = 0;
+
+    // Use a fixed pattern for reproducibility
+    const int NUM_ITERATIONS = 1000;
+
+    for (int i = 0; i < NUM_ITERATIONS; i++) {
+        uint8_t pattern = static_cast<uint8_t>(i % 6); // 6 patterns (removed incomplete frame)
+
+        switch (pattern) {
+            case 0: {
+                // Valid CMD frame
+                TestFrameBuilder fb;
+                fb.begin(protocol::FrameType::kCmd, static_cast<uint8_t>(i & 0xFF), 0x00);
+                fb.append_msgid(0x01);
+                parser->feed(fb.finalize());
+                valid_frames_sent++;
+                break;
+            }
+            case 1: {
+                // Valid RSP frame
+                TestFrameBuilder fb;
+                fb.begin(protocol::FrameType::kRsp, static_cast<uint8_t>(i & 0xFF), 0x00);
+                fb.append_msgid(0x02);
+                fb.append_u8(0x00);
+                parser->feed(fb.finalize());
+                valid_frames_sent++;
+                break;
+            }
+            case 2: {
+                // Valid DATA frame
+                TestFrameBuilder fb;
+                fb.begin(protocol::FrameType::kData, static_cast<uint8_t>(i & 0xFF), 0x00);
+                fb.append_msgid(0x80);
+                for (int j = 0; j < 16; j++) {
+                    fb.append_u8(static_cast<uint8_t>(j));
+                }
+                parser->feed(fb.finalize());
+                valid_frames_sent++;
+                break;
+            }
+            case 3: {
+                // Invalid CRC frame (complete frame with bad CRC)
+                std::vector<uint8_t> bad_crc = {
+                    0xAA, 0x55,           // SOF
+                    0x01,                 // VER
+                    0x01,                 // TYPE (CMD)
+                    0x00,                 // FLAGS
+                    static_cast<uint8_t>(i & 0xFF), // SEQ
+                    0x01, 0x00,           // LEN = 1
+                    0x01,                 // MSGID
+                    0xFF, 0xFF            // Invalid CRC
+                };
+                parser->feed(bad_crc);
+                crc_errors_sent++;
+                break;
+            }
+            case 4: {
+                // Garbage bytes (parser should ignore and stay in WAIT_SOF0)
+                uint8_t garbage[] = {0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0};
+                parser->feed(garbage, sizeof(garbage));
+                break;
+            }
+            case 5: {
+                // Valid EVT frame
+                TestFrameBuilder fb;
+                fb.begin(protocol::FrameType::kEvt, static_cast<uint8_t>(i & 0xFF), 0x00);
+                fb.append_msgid(0x90);
+                fb.append_u8(0x01);
+                parser->feed(fb.finalize());
+                valid_frames_sent++;
+                break;
+            }
+        }
+
+        // Periodically check parser state - should never crash
+        if (i % 100 == 0) {
+            auto state = parser->get_state();
+            EXPECT_TRUE(
+                state == protocol::Parser::State::kWaitSof0 ||
+                state == protocol::Parser::State::kReadPayload ||
+                state == protocol::Parser::State::kReadHeader ||
+                state == protocol::Parser::State::kWaitSof1
+            ) << "Parser in unexpected state at iteration " << i;
+        }
+    }
+
+    // Send a final valid frame to ensure parser can recover
+    TestFrameBuilder final_frame;
+    final_frame.begin(protocol::FrameType::kCmd, 0xFF, 0x00);
+    final_frame.append_msgid(0x01);
+    parser->feed(final_frame.finalize());
+    valid_frames_sent++;
+
+    // Verify core expectations:
+    // 1. All valid frames should be dispatched
+    EXPECT_EQ(frame_count, valid_frames_sent);
+
+    // 2. CRC failures should match what we sent
+    EXPECT_EQ(parser->crc_fail_count(), crc_errors_sent);
+
+    // 3. Parser should be in clean state at the end
+    EXPECT_EQ(parser->get_state(), protocol::Parser::State::kWaitSof0);
+
+    // 4. No memory corruption or crashes occurred (implicit in test completing)
 }

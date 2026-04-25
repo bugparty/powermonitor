@@ -1,9 +1,12 @@
 #include "session.h"
+#include "onboard_sampler.h"
 
+#include <algorithm>
 #include <ctime>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
+#include <cmath>
 
 namespace powermonitor {
 namespace client {
@@ -44,6 +47,11 @@ nlohmann::json counts_to_json(const std::array<uint64_t, 256>& counts) {
 void Session::add_sample(const Sample& sample) {
     std::lock_guard<std::mutex> lock(mutex_);
     samples_.push_back(sample_to_json(sample));
+}
+
+void Session::add_onboard_sample(const OnboardSample& sample) {
+    std::lock_guard<std::mutex> lock(onboard_mutex_);
+    onboard_samples_.push_back(sample);
 }
 
 void Session::save(const std::string& filepath) const {
@@ -140,6 +148,142 @@ nlohmann::json Session::build_meta_json() const {
     meta["stats"]["io_errors"] = stats_.io_errors;
 
     return meta;
+}
+
+void Session::save_bundle(const std::string& filepath) const {
+    nlohmann::json root;
+    root["schema_version"] = "power-bundle/v1";
+    root["sources"] = nlohmann::json::object();
+
+    // Add Pico source
+    nlohmann::json pico_source;
+    pico_source["format"] = "powermonitor_json/v1";
+    pico_source["enabled"] = true;
+    pico_source["meta"] = build_meta_json();
+
+    // Compute Pico summary
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!samples_.empty()) {
+            std::vector<double> powers_w;
+            for (const auto& s : samples_) {
+                if (s.contains("engineering") && s["engineering"].contains("power_w")) {
+                    powers_w.push_back(s["engineering"]["power_w"].get<double>());
+                }
+            }
+
+            if (!powers_w.empty()) {
+                std::sort(powers_w.begin(), powers_w.end());
+                double sum = 0.0;
+                for (double p : powers_w) sum += p;
+
+                pico_source["summary"]["sample_count"] = powers_w.size();
+                pico_source["summary"]["mean_w"] = sum / powers_w.size();
+                pico_source["summary"]["p50_w"] = powers_w[powers_w.size() / 2];
+                pico_source["summary"]["p95_w"] = powers_w[static_cast<size_t>(0.95 * (powers_w.size() - 1))];
+
+                // Energy (assume 1kHz sampling)
+                double duration_s = powers_w.size() / 1000.0;
+                pico_source["summary"]["energy_j"] = (sum / powers_w.size()) * duration_s;
+            }
+        }
+
+        pico_source["samples"] = nlohmann::json::array();
+        for (const auto& sample : samples_) {
+            pico_source["samples"].push_back(sample);
+        }
+    }
+
+    root["sources"]["pico"] = pico_source;
+
+    // Add onboard source
+    root["sources"]["onboard_cpp"] = build_onboard_source_json();
+
+    // Write to file
+    std::ofstream file(filepath);
+    if (!file) {
+        throw std::runtime_error("Failed to open output file: " + filepath);
+    }
+
+    file << std::setw(2) << root << std::endl;
+}
+
+nlohmann::json Session::build_onboard_source_json() const {
+    nlohmann::json onboard_source;
+    onboard_source["format"] = "onboard_csv/v1";
+    onboard_source["enabled"] = true;
+
+    onboard_source["meta"]["source"] = onboard_meta_.source;
+    onboard_source["meta"]["hwmon_path"] = onboard_meta_.hwmon_path;
+    onboard_source["meta"]["columns"] = onboard_meta_.columns;
+
+    // Onboard power summary disabled - use Pico for power measurement
+    // OnboardSummary summary = compute_onboard_summary();
+    onboard_source["summary"]["sample_count"] = onboard_samples_.size();
+
+    // Add samples
+    onboard_source["samples"] = nlohmann::json::array();
+    {
+        std::lock_guard<std::mutex> lock(onboard_mutex_);
+        for (const auto& sample : onboard_samples_) {
+            nlohmann::json j;
+            j["mono_ns"] = sample.mono_ns;
+            j["unix_ns"] = sample.unix_ns;
+            // Onboard power rails disabled - use Pico for power measurement
+            // j["rails"]["vdd_in_w"] = sample.vdd_in_mw / 1000.0;
+            // j["rails"]["vdd_cpu_gpu_cv_w"] = sample.vdd_cpu_gpu_cv_mw / 1000.0;
+            // j["rails"]["vdd_soc_w"] = sample.vdd_soc_mw / 1000.0;
+            // j["power_w"] = sample.total_mw / 1000.0;
+            j["freqs"]["gpu_hz"] = sample.gpu_freq_hz;
+            j["freqs"]["cpu_cluster0_hz"] = sample.cpu_cluster0_freq_hz;
+            j["freqs"]["cpu_cluster1_hz"] = sample.cpu_cluster1_freq_hz;
+            j["freqs"]["emc_hz"] = sample.emc_freq_hz;
+            j["temps"]["cpu_mc"] = sample.temp_cpu_mc;
+            j["temps"]["gpu_mc"] = sample.temp_gpu_mc;
+            j["temps"]["soc0_mc"] = sample.temp_soc0_mc;
+            j["temps"]["soc1_mc"] = sample.temp_soc1_mc;
+            j["temps"]["soc2_mc"] = sample.temp_soc2_mc;
+            j["temps"]["tj_mc"] = sample.temp_tj_mc;
+            j["fan_rpm"] = sample.fan_rpm;
+            onboard_source["samples"].push_back(j);
+        }
+    }
+
+    return onboard_source;
+}
+
+Session::OnboardSummary Session::compute_onboard_summary() const {
+    OnboardSummary summary;
+
+    std::lock_guard<std::mutex> lock(onboard_mutex_);
+    if (onboard_samples_.empty()) {
+        return summary;
+    }
+
+    std::vector<double> powers_w;
+    powers_w.reserve(onboard_samples_.size());
+
+    for (const auto& sample : onboard_samples_) {
+        powers_w.push_back(sample.total_mw / 1000.0);
+    }
+
+    std::sort(powers_w.begin(), powers_w.end());
+
+    double sum = 0.0;
+    for (double p : powers_w) {
+        sum += p;
+    }
+
+    summary.sample_count = powers_w.size();
+    summary.mean_w = sum / powers_w.size();
+    summary.p50_w = powers_w[powers_w.size() / 2];
+    summary.p95_w = powers_w[static_cast<size_t>(0.95 * (powers_w.size() - 1))];
+
+    // Energy: mean power × duration (assume 1kHz sampling)
+    double duration_s = powers_w.size() / 1000.0;
+    summary.energy_j = summary.mean_w * duration_s;
+
+    return summary;
 }
 
 }  // namespace client

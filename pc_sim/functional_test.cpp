@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "node/device_node.h"
 #include "node/pc_node.h"
+#include "protocol/frame_builder.h"
 #include "sim/event_loop.h"
 #include "sim/virtual_link.h"
 
@@ -341,4 +342,132 @@ TEST_F(PowerMonitorTest, DataTimestampsMonotonicallyIncreasing) {
 
     pc->send_stream_stop(loop.now_us());
     RunSimulation(100'000, 500);
+}
+
+// ===========================================================================
+// Orphan RSP and Error RSP fault-injection tests
+// ===========================================================================
+
+// Fixture for fault-injection tests: PC only (no device), clean link.
+// Allows precise control over what frames the PC receives.
+class FaultInjectionTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        sim::LinkConfig clean_config;
+        clean_config.drop_prob = 0.0;
+        link.set_pc_to_dev_config(clean_config);
+        link.set_dev_to_pc_config(clean_config);
+        pc = std::make_unique<node::PCNode>(&link.pc());
+    }
+
+    void RunSimulation(uint64_t duration_us, uint64_t tick_interval_us) {
+        loop.run_for(duration_us, tick_interval_us, [&](uint64_t now_us) {
+            link.pump(now_us);
+            pc->tick(now_us);
+            // No device — we inject frames manually.
+        });
+    }
+
+    // Inject a raw frame from device to PC.
+    void InjectFrame(const std::vector<uint8_t> &frame, uint64_t now_us) {
+        link.device().write(frame, now_us);
+    }
+
+    sim::VirtualLink link;
+    sim::EventLoop loop;
+    std::unique_ptr<node::PCNode> pc;
+};
+
+// Test that a RSP with no matching pending command increments orphan_rsp_count.
+// This simulates a "late" or spurious RSP arriving at the PC.
+TEST_F(FaultInjectionTest, OrphanRspDetected) {
+    // Build a RSP frame with seq=0x42 (not in pending_ map)
+    // RSP payload: orig_msgid (1B) + status (1B)
+    std::vector<uint8_t> rsp_payload;
+    rsp_payload.push_back(0x01);  // orig_msgid = PING
+    rsp_payload.push_back(0x00);  // status = OK
+    auto rsp_frame = protocol::build_frame(
+        protocol::FrameType::kRsp, 0, 0x42, 0x01, rsp_payload);
+
+    // Inject the RSP frame directly from device to PC via VirtualLink
+    InjectFrame(rsp_frame, loop.now_us());
+
+    // Run briefly to let the frame be delivered and parsed
+    RunSimulation(10'000, 500);
+
+    EXPECT_EQ(pc->orphan_rsp_count(), 1)
+        << "RSP with unmatched seq should increment orphan_rsp_count";
+    EXPECT_EQ(pc->error_rsp_count(), 0)
+        << "OK status should not increment error_rsp_count";
+}
+
+// Test that a RSP with non-OK status increments error_rsp_count.
+// We send a command to create a pending entry, then inject an error RSP.
+TEST_F(FaultInjectionTest, ErrorRspDetected) {
+    // Send PING command - this creates a pending entry with seq=0, msgid=PING
+    pc->send_ping(loop.now_us());
+    const uint8_t expected_seq = 0;  // First command uses seq=0
+
+    // Build an error RSP with matching seq but non-OK status
+    std::vector<uint8_t> rsp_payload;
+    rsp_payload.push_back(0x01);  // orig_msgid = PING
+    rsp_payload.push_back(0x05);  // status = ERR_HW (hardware fault)
+    auto rsp_frame = protocol::build_frame(
+        protocol::FrameType::kRsp, 0, expected_seq, 0x01, rsp_payload);
+
+    // Inject the error RSP directly from device endpoint
+    InjectFrame(rsp_frame, loop.now_us());
+
+    // Run briefly to let the frame be delivered and parsed
+    RunSimulation(10'000, 500);
+
+    EXPECT_EQ(pc->orphan_rsp_count(), 0)
+        << "RSP with matching seq/msgid should not increment orphan_rsp_count";
+    EXPECT_EQ(pc->error_rsp_count(), 1)
+        << "RSP with non-OK status should increment error_rsp_count";
+    EXPECT_EQ(pc->timeout_count(), 0)
+        << "Error RSP should complete the command without timeout";
+}
+
+// Test orphan_rsp_count when orig_msgid mismatches the pending command.
+// We send PING, then inject a RSP with correct seq but wrong orig_msgid.
+TEST_F(FaultInjectionTest, OrphanRspDetectedOnMsgidMismatch) {
+    // Send PING command - this creates a pending entry with seq=0, msgid=PING
+    pc->send_ping(loop.now_us());
+    const uint8_t expected_seq = 0;  // First command uses seq=0
+
+    // Build a RSP with matching seq but different orig_msgid
+    std::vector<uint8_t> rsp_payload;
+    rsp_payload.push_back(0x10);  // orig_msgid = SET_CFG (not PING)
+    rsp_payload.push_back(0x00);  // status = OK
+    auto rsp_frame = protocol::build_frame(
+        protocol::FrameType::kRsp, 0, expected_seq, 0x10, rsp_payload);
+
+    // Inject the mismatched RSP
+    InjectFrame(rsp_frame, loop.now_us());
+
+    RunSimulation(10'000, 500);
+
+    EXPECT_EQ(pc->orphan_rsp_count(), 1)
+        << "RSP with orig_msgid mismatch should increment orphan_rsp_count";
+    EXPECT_EQ(pc->error_rsp_count(), 0)
+        << "Orphan RSP should not increment error_rsp_count";
+}
+
+// Test multiple orphan RSPs are counted correctly.
+TEST_F(FaultInjectionTest, MultipleOrphanRspsCounted) {
+    // Inject several orphan RSPs with different seq values
+    for (uint8_t seq = 0; seq < 5; ++seq) {
+        std::vector<uint8_t> rsp_payload;
+        rsp_payload.push_back(0x01);  // orig_msgid = PING
+        rsp_payload.push_back(0x00);  // status = OK
+        auto rsp_frame = protocol::build_frame(
+            protocol::FrameType::kRsp, 0, seq, 0x01, rsp_payload);
+        InjectFrame(rsp_frame, loop.now_us());
+    }
+
+    RunSimulation(10'000, 500);
+
+    EXPECT_EQ(pc->orphan_rsp_count(), 5)
+        << "Each orphan RSP should be counted";
 }

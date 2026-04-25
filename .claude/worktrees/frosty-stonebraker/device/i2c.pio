@@ -1,0 +1,124 @@
+;
+; Copyright (c) 2020 Raspberry Pi (Trading) Ltd.
+; SPDX-License-Identifier: BSD-3-Clause
+;
+; Adapted from pico-examples/pio/i2c for use in powermonitor.
+; See: https://github.com/raspberrypi/pico-examples/tree/master/pio/i2c
+;
+.pio_version 0
+
+.program i2c
+.side_set 1 opt pindirs
+
+; TX Encoding:
+; | 15:10 | 9     | 8:1  | 0   |
+; | Instr | Final | Data | NAK |
+;
+; Instr > 0: next n+1 words are raw PIO instructions (START/STOP/REPSTART)
+; Instr == 0: shift out 8 data bits, then handle ACK bit.
+; Final: set for last byte in a transfer (ignore NAK).
+; NAK: set to send NACK on reads (last received byte).
+;
+; Autopull threshold=16, autopush threshold=8.
+; TX FIFO written as 16-bit halfwords.
+;
+; Pin mapping (SCL must be SDA + 1):
+;   OUT/IN/JMP pin: SDA
+;   side-set: SCL
+;   OE outputs inverted in system IO (open-drain)
+
+do_nack:
+    jmp y-- entry_point        ; Continue if NAK was expected
+    irq wait 0 rel             ; Otherwise raise IRQ, halt
+
+do_byte:
+    set x, 7                   ; 8 bits per byte
+bitloop:
+    out pindirs, 1         [7] ; Drive SDA (write) or release (read = 0xFF)
+    nop             side 1 [2] ; SCL rising edge
+    wait 1 pin, 1          [4] ; Clock stretch support
+    in pins, 1             [7] ; Sample SDA in middle of SCL high
+    jmp x-- bitloop side 0 [7] ; SCL falling edge
+
+    ; ACK/NAK bit
+    out pindirs, 1         [7] ; Provide ACK (reads) or sample it (writes)
+    nop             side 1 [7] ; SCL rising edge
+    wait 1 pin, 1          [7] ; Clock stretch support
+    jmp pin do_nack side 0 [2] ; Test SDA: ACK=low (fall through), NAK=high (jump)
+
+public entry_point:
+.wrap_target
+    out x, 6                   ; Unpack Instr count
+    out y, 1                   ; Unpack NAK-ignore bit
+    jmp !x do_byte             ; Instr==0: data record
+    out null, 32               ; Instr>0: discard remainder of OSR
+do_exec:
+    out exec, 16               ; Execute one PIO instruction per FIFO word
+    jmp x-- do_exec            ; Repeat n+1 times
+.wrap
+
+% c-sdk {
+#include "hardware/clocks.h"
+#include "hardware/gpio.h"
+
+static inline void i2c_program_init(PIO pio, uint sm, uint offset,
+                                    uint pin_sda, uint pin_scl) {
+    // SCL must be SDA + 1
+    assert(pin_scl == pin_sda + 1);
+
+    pio_sm_config c = i2c_program_get_default_config(offset);
+
+    sm_config_set_out_pins(&c, pin_sda, 1);
+    sm_config_set_set_pins(&c, pin_sda, 1);
+    sm_config_set_in_pins(&c, pin_sda);
+    sm_config_set_sideset_pins(&c, pin_scl);
+    sm_config_set_jmp_pin(&c, pin_sda);
+
+    sm_config_set_out_shift(&c, false, true, 16);  // autopull, 16-bit
+    sm_config_set_in_shift(&c, false, true, 8);    // autopush, 8-bit
+
+    // clkdiv: each bit = 32 PIO cycles; set for ~1 MHz I2C
+    float div = (float)clock_get_hz(clk_sys) / (32 * 1000000);
+    sm_config_set_clkdiv(&c, div);
+
+    // Pull both pins high via pull-ups, then hand to PIO with OE inversion
+    gpio_pull_up(pin_scl);
+    gpio_pull_up(pin_sda);
+    uint32_t both_pins = (1u << pin_sda) | (1u << pin_scl);
+    pio_sm_set_pins_with_mask(pio, sm, both_pins, both_pins);
+    pio_sm_set_pindirs_with_mask(pio, sm, both_pins, both_pins);
+    pio_gpio_init(pio, pin_sda);
+    gpio_set_oeover(pin_sda, GPIO_OVERRIDE_INVERT);
+    pio_gpio_init(pio, pin_scl);
+    gpio_set_oeover(pin_scl, GPIO_OVERRIDE_INVERT);
+    pio_sm_set_pins_with_mask(pio, sm, 0, both_pins);
+
+    // Clear IRQ before starting
+    pio_set_irq0_source_enabled(pio, (enum pio_interrupt_source)((uint)pis_interrupt0 + sm), false);
+    pio_set_irq1_source_enabled(pio, (enum pio_interrupt_source)((uint)pis_interrupt0 + sm), false);
+    pio_interrupt_clear(pio, sm);
+
+    pio_sm_init(pio, sm, offset + i2c_offset_entry_point, &c);
+    pio_sm_set_enabled(pio, sm, true);
+}
+%}
+
+
+; Instruction table for START / STOP / REPSTART sequences.
+; Software selects and injects these via the Instr mechanism above.
+.program set_scl_sda
+.side_set 1 opt
+
+    set pindirs, 0 side 0 [7] ; SCL=0, SDA=0
+    set pindirs, 1 side 0 [7] ; SCL=0, SDA=1
+    set pindirs, 0 side 1 [7] ; SCL=1, SDA=0
+    set pindirs, 1 side 1 [7] ; SCL=1, SDA=1
+
+% c-sdk {
+enum {
+    I2C_SC0_SD0 = 0,
+    I2C_SC0_SD1,
+    I2C_SC1_SD0,
+    I2C_SC1_SD1,
+};
+%}

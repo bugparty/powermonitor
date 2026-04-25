@@ -24,7 +24,10 @@
       "Bash(./build_pc_test/pc_sim_test --gtest_filter=\"ParserStateMachine.WAIT_SOF0*\")",
       "Bash(./build_pc_test/pc_sim_test --gtest_list_tests)",
       "Bash(./build_pc_test/pc_sim_test --gtest_filter=\"ParserStateMachineTest.WAIT_SOF0*\" 2>&1:*)",
-      "Bash(./build_pc_test/pc_sim_test:*)"
+      "Bash(./build_pc_test/pc_sim_test:*)",
+      "Read(//d/boxr_research/powermonitor/GacUI-master/**)",
+      "Read(//d/boxr_research/**)",
+      "Bash(gh pr:*)"
     ],
     "deny": [],
     "ask": []

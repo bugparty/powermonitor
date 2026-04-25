@@ -1,0 +1,24 @@
+<!doctype html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-sans);padding:0}
+  .row{padding:10px 16px;border-bottom:1px solid var(--line);display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+  .title{color:var(--muted);font-size:13px}
+  .list{display:flex;gap:8px;list-style:none;margin:0;padding:0;flex-wrap:wrap}
+  .item{border:1px solid var(--line);border-radius:8px;padding:6px 10px;background:var(--panel);cursor:grab;user-select:none;display:inline-flex;align-items:center;gap:8px;font-size:12px}
+  .item.hover{border-color:#3f8cff}
+  .item input{margin:0}
+  .dot{width:10px;height:10px;border-radius:50%}
+</style></head><body>
+<div class="row">
+  <span class="title">Tracks (drag to reorder)</span>
+  <ul class="list">
+    <li class="item"><input type="checkbox" checked><span class="dot" style="background:#22c55e"></span>Voltage (V)</li>
+    <li class="item hover"><input type="checkbox" checked><span class="dot" style="background:#f59e0b"></span>Current (A)</li>
+    <li class="item"><input type="checkbox" checked><span class="dot" style="background:#a855f7"></span>Power (W)</li>
+    <li class="item"><input type="checkbox"><span class="dot" style="background:#ef4444"></span>Temperature (°C)</li>
+    <li class="item"><input type="checkbox"><span class="dot" style="background:#06b6d4"></span>Shunt Voltage (V)</li>
+  </ul>
+</div>
+</body></html>

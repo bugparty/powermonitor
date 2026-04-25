@@ -55,3 +55,5 @@ Thumbs.db
 linuxbuild/
 build_linux/
 build_vs/
+GacUI-master
+._.DS_Store

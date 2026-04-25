@@ -339,8 +339,8 @@ main() {
     echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
     echo ""
     print_info "You can now build and test the project:"
-    echo "  ./test.sh          # Run all tests"
-    echo "  ./test.sh --clean  # Clean build and run tests"
+    echo "  pwsh workflow.ps1              # Run all tests"
+    echo "  pwsh workflow.ps1 -Clean      # Clean build and run tests"
 }
 
 # Run main

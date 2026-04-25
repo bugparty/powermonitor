@@ -1,0 +1,87 @@
+<!doctype html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-sans);padding:14px}
+  .panel{border:1px solid rgba(63,140,255,0.16);border-radius:10px;background:linear-gradient(180deg,rgba(20,24,31,0.96),rgba(17,19,23,0.96));overflow:hidden}
+  .head{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid rgba(47,54,67,0.8)}
+  .title{font-size:13px;font-weight:600;color:var(--text)}
+  .meta{font-size:12px;color:var(--muted);font-family:var(--font-mono)}
+  .body{padding:8px 10px 12px}
+</style></head><body>
+<div class="panel">
+  <div class="head"><span class="title">scheduling · per-core task spans</span><span class="meta">17 visible spans · 8 lanes</span></div>
+  <div class="body">
+    <svg viewBox="0 0 640 240" preserveAspectRatio="none" style="width:100%;height:230px;display:block">
+      <g font-family="JetBrains Mono, monospace" font-size="10.5" fill="#94a0b8">
+        <text x="70" y="25" text-anchor="end">core 0</text>
+        <text x="70" y="51" text-anchor="end">core 1</text>
+        <text x="70" y="77" text-anchor="end">core 2</text>
+        <text x="70" y="103" text-anchor="end">core 3</text>
+        <text x="70" y="129" text-anchor="end">core 4</text>
+        <text x="70" y="155" text-anchor="end">core 5</text>
+        <text x="70" y="181" text-anchor="end">core 6</text>
+        <text x="70" y="207" text-anchor="end">core 7</text>
+      </g>
+      <g stroke="rgba(47,54,67,0.55)" stroke-width="1">
+        <line x1="78" y1="8" x2="628" y2="8"/>
+        <line x1="78" y1="34" x2="628" y2="34"/>
+        <line x1="78" y1="60" x2="628" y2="60"/>
+        <line x1="78" y1="86" x2="628" y2="86"/>
+        <line x1="78" y1="112" x2="628" y2="112"/>
+        <line x1="78" y1="138" x2="628" y2="138"/>
+        <line x1="78" y1="164" x2="628" y2="164"/>
+        <line x1="78" y1="190" x2="628" y2="190"/>
+        <line x1="78" y1="216" x2="628" y2="216"/>
+      </g>
+      <!-- core 0: 4 bars -->
+      <rect x="78"  y="11" width="24" height="20" rx="3" fill="#22c55e" fill-opacity="0.72" stroke="#22c55e"/>
+      <rect x="102" y="11" width="16" height="20" rx="3" fill="#22c55e" fill-opacity="0.72" stroke="#22c55e"/>
+      <rect x="118" y="11" width="16" height="20" rx="3" fill="#22c55e" fill-opacity="0.72" stroke="#22c55e"/>
+      <rect x="134" y="11" width="206" height="20" rx="3" fill="#22c55e" fill-opacity="0.72" stroke="#22c55e"/>
+      <text x="140" y="25" font-size="10.5" font-family="JetBrains Mono, monospace" font-weight="600" fill="#0b0d10">T29</text>
+      <!-- core 1 -->
+      <rect x="390" y="37" width="196" height="20" rx="3" fill="#f59e0b" fill-opacity="0.72" stroke="#f59e0b"/>
+      <text x="396" y="51" font-size="10.5" font-family="JetBrains Mono, monospace" font-weight="600" fill="#0b0d10">T39</text>
+      <rect x="586" y="37" width="40" height="20" rx="3" fill="#f59e0b" fill-opacity="0.72" stroke="#f59e0b"/>
+      <!-- core 2 -->
+      <rect x="86"  y="63" width="56" height="20" rx="3" fill="#22c55e" fill-opacity="0.72" stroke="#22c55e"/>
+      <text x="92" y="77" font-size="10.5" font-family="JetBrains Mono, monospace" font-weight="600" fill="#0b0d10">T27</text>
+      <rect x="142" y="63" width="40" height="20" rx="3" fill="#22c55e" fill-opacity="0.72" stroke="#22c55e"/>
+      <rect x="314" y="63" width="100" height="20" rx="3" fill="#f59e0b" fill-opacity="0.72" stroke="#f59e0b"/>
+      <text x="320" y="77" font-size="10.5" font-family="JetBrains Mono, monospace" font-weight="600" fill="#0b0d10">T31</text>
+      <rect x="550" y="63" width="78" height="20" rx="3" fill="#f59e0b" fill-opacity="0.72" stroke="#f59e0b"/>
+      <!-- core 3 -->
+      <rect x="78"  y="89" width="236" height="20" rx="3" fill="#22c55e" fill-opacity="0.72" stroke="#22c55e"/>
+      <text x="84" y="103" font-size="10.5" font-family="JetBrains Mono, monospace" font-weight="600" fill="#0b0d10">T0</text>
+      <rect x="314" y="89" width="40" height="20" rx="3" fill="#22c55e" fill-opacity="0.72" stroke="#22c55e"/>
+      <rect x="354" y="89" width="88" height="20" rx="3" fill="#22c55e" fill-opacity="0.72" stroke="#22c55e"/>
+      <!-- core 4 -->
+      <rect x="314" y="115" width="100" height="20" rx="3" fill="#f59e0b" fill-opacity="0.72" stroke="#f59e0b"/>
+      <text x="320" y="129" font-size="10.5" font-family="JetBrains Mono, monospace" font-weight="600" fill="#0b0d10">T38</text>
+      <!-- core 5 -->
+      <rect x="78"  y="141" width="62" height="20" rx="3" fill="#22c55e" fill-opacity="0.72" stroke="#22c55e"/>
+      <rect x="236" y="141" width="392" height="20" rx="3" fill="#f59e0b" fill-opacity="0.72" stroke="#f59e0b"/>
+      <text x="242" y="155" font-size="10.5" font-family="JetBrains Mono, monospace" font-weight="600" fill="#0b0d10">T34</text>
+      <!-- core 6 -->
+      <rect x="78"  y="167" width="140" height="20" rx="3" fill="#22c55e" fill-opacity="0.72" stroke="#22c55e"/>
+      <text x="84" y="181" font-size="10.5" font-family="JetBrains Mono, monospace" font-weight="600" fill="#0b0d10">T25</text>
+      <rect x="472" y="167" width="156" height="20" rx="3" fill="#f59e0b" fill-opacity="0.72" stroke="#f59e0b"/>
+      <text x="478" y="181" font-size="10.5" font-family="JetBrains Mono, monospace" font-weight="600" fill="#0b0d10">T35</text>
+      <!-- core 7 -->
+      <rect x="78" y="193" width="10" height="20" rx="3" fill="#22c55e" fill-opacity="0.72" stroke="#22c55e"/>
+      <!-- hover crosshair -->
+      <line x1="360" y1="8" x2="360" y2="216" stroke="#6b7280" stroke-width="1" stroke-dasharray="4 3"/>
+      <!-- axis ticks -->
+      <g font-family="JetBrains Mono, monospace" font-size="10" fill="#94a0b8" text-anchor="middle">
+        <text x="78"  y="232">0.000 s</text>
+        <text x="188" y="232">1.400 s</text>
+        <text x="298" y="232">2.800 s</text>
+        <text x="408" y="232">4.200 s</text>
+        <text x="518" y="232">5.600 s</text>
+        <text x="628" y="232">7.000 s</text>
+      </g>
+    </svg>
+  </div>
+</div>
+</body></html>

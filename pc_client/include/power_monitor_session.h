@@ -5,11 +5,13 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "protocol/frame_builder.h"
 #include "sample_queue.h"
 #include "session.h"
+#include "shm_power_ring_buffer.h"
 
 namespace serial {
 class Serial;
@@ -21,6 +23,8 @@ namespace client {
 class ResponseQueue;
 class ReadThread;
 class Session;
+class OnboardSampler;
+class OnboardSampleQueue;
 struct ThreadStats;
 
 class PowerMonitorSession {
@@ -42,6 +46,19 @@ public:
         std::vector<std::string> run_tags;
         std::string vid_hex = "0x0000";
         std::string pid_hex = "0x0000";
+        int read_thread_core = -1;
+        int proc_thread_core = -1;
+        int rt_prio = -1;
+
+        // Onboard sampler options
+        bool onboard_enabled = false;
+        std::string onboard_hwmon_path = "/sys/class/hwmon/hwmon1";
+        uint64_t onboard_period_us = 1000;
+        int onboard_cpu_core = -1;
+        int onboard_rt_prio = -1;
+
+        // Path to jetson_freq_reader kernel module procfs output
+        std::string onboard_jetson_freq_path = "/proc/jetson_freqs";
     };
 
     explicit PowerMonitorSession(const Options& options);
@@ -74,6 +91,7 @@ private:
                                  bool try_lock_command = false);
 
     void process_samples_loop();
+    void process_onboard_loop();
     int run_tui_loop();
     bool save_snapshot(const std::string& path);
     void append_log(const std::string& message);
@@ -81,6 +99,8 @@ private:
     void save_and_exit();
     void emit_time_sync_debug(const std::string& message);
     void maybe_debug_time_sync_sample(const SampleQueue::Sample& sample);
+    void export_pico_power_sample(const Session::Sample& sample);
+    void export_onboard_power_sample(const OnboardSample& sample);
 
     struct UiState {
         mutable std::mutex mutex;
@@ -111,6 +131,10 @@ private:
      std::unique_ptr<Session> session_;
      std::unique_ptr<ThreadStats> stats_;
 
+     // Onboard sampler
+     std::shared_ptr<OnboardSampleQueue> onboard_queue_;
+     std::unique_ptr<OnboardSampler> onboard_sampler_;
+     std::thread onboard_proc_thread_;
 
      std::atomic<bool> stop_requested_{false};
      std::atomic<bool> interrupted_{false};
@@ -126,6 +150,7 @@ private:
      std::mutex command_mutex_;
      mutable size_t last_stats_width_ = 0;
      UiState ui_state_;
+     ShmPowerRingBuffer power_ring_buffer_;
   };
 
 

@@ -1,0 +1,183 @@
+diff --git a/web_viewer/index.html b/web_viewer/index.html
+index e7449c8..ef87fcf 100644
+--- a/web_viewer/index.html
++++ b/web_viewer/index.html
+@@ -4,6 +4,9 @@
+     <meta charset="UTF-8">
+     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+     <title>Power Monitor Timeline Viewer</title>
++    <link rel="preconnect" href="https://fonts.googleapis.com">
++    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
++    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+ </head>
+ <body>
+     <div id="root"></div>
+diff --git a/web_viewer/styles.css b/web_viewer/styles.css
+index e5a71e4..c89eefb 100644
+--- a/web_viewer/styles.css
++++ b/web_viewer/styles.css
+@@ -1,14 +1,53 @@
+ :root {
+     color-scheme: dark;
+-    --bg: #111317;
+-    --panel: #181b21;
+-    --line: #2f3643;
+-    --text: #dbe2ee;
+-    --muted: #94a0b8;
+-    --accent: #3f8cff;
+-    --voltage: #22c55e;
+-    --current: #f59e0b;
+-    --power: #a855f7;
++
++    /* Surfaces */
++    --bg:           #111317;
++    --bg-deep:      #0b0d10;   /* topbar — nudged darker for clearer contrast */
++    --panel:        #181b21;
++    --panel-raised: #14181f;
++
++    /* Lines & text */
++    --line:      #2f3643;
++    --line-soft: rgba(47, 54, 67, 0.55);
++    --text:      #dbe2ee;
++    --muted:     #94a0b8;
++    --subtle:    #6b7280;
++
++    /* Accent */
++    --accent:      #3f8cff;
++    --accent-soft: rgba(63, 140, 255, 0.16);
++
++    /* Signals (one per metric — legend dot → chip → chart stroke) */
++    --sig-voltage: #22c55e;
++    --sig-current: #f59e0b;
++    --sig-power:   #a855f7;
++    --sig-temp:    #ef4444;
++    --sig-vshunt:  #06b6d4;
++    --sig-charge:  #f97316;
++    --sig-energy:  #3b82f6;
++
++    /* Back-compat aliases (existing code references these) */
++    --voltage: var(--sig-voltage);
++    --current: var(--sig-current);
++    --power:   var(--sig-power);
++
++    /* Status */
++    --ok:   #22c55e;
++    --warn: #f59e0b;
++    --err:  #ef4444;
++    --info: #3f8cff;
++
++    /* Spacing / radii */
++    --radius-sm: 6px;
++    --radius-md: 8px;
++    --radius-lg: 10px;
++    --space-1: 4px; --space-2: 6px; --space-3: 8px; --space-4: 10px;
++    --space-5: 12px; --space-6: 14px; --space-7: 16px;
++
++    /* Type */
++    --font-sans: Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
++    --font-mono: "JetBrains Mono", "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
+ }
+ 
+ * {
+@@ -19,7 +58,7 @@ body {
+     margin: 0;
+     background: var(--bg);
+     color: var(--text);
+-    font-family: Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
++    font-family: var(--font-sans);
+     min-height: 100vh;
+ }
+ 
+@@ -34,7 +73,7 @@ body {
+     justify-content: space-between;
+     align-items: center;
+     gap: 12px;
+-    background: #0f1115;
++    background: var(--bg-deep);
+ }
+ 
+ .topbar h1 {
+@@ -59,6 +98,7 @@ select {
+     padding: 8px 12px;
+     cursor: pointer;
+     font-size: 13px;
++    transition: border-color 80ms ease-out;
+ }
+ 
+ .file-button:hover,
+@@ -67,6 +107,14 @@ select:hover {
+     border-color: var(--accent);
+ }
+ 
++.file-button:focus-visible,
++button:focus-visible,
++select:focus-visible {
++    outline: none;
++    border-color: var(--accent);
++    box-shadow: 0 0 0 2px var(--accent-soft);
++}
++
+ #json-file {
+     display: none;
+ }
+@@ -76,6 +124,7 @@ select:hover {
+     border-bottom: 1px solid var(--line);
+     color: var(--muted);
+     font-size: 13px;
++    font-family: var(--font-mono);
+ }
+ 
+ .track-control-row {
+@@ -128,6 +177,11 @@ select:hover {
+     display: inline-block;
+ }
+ 
++.track-item:hover {
++    border-color: var(--accent);
++    transition: border-color 80ms ease-out;
++}
++
+ .chart-area {
+     padding: 12px;
+ }
+@@ -168,6 +222,7 @@ select:hover {
+ .timeline-panel-meta {
+     font-size: 12px;
+     color: var(--muted);
++    font-family: var(--font-mono);
+ }
+ 
+ .timeline-panel-chart {
+@@ -177,19 +232,29 @@ select:hover {
+ 
+ .timeline-empty {
+     width: 100%;
+-    height: min(78vh, 740px);
++    min-height: min(78vh, 740px);
+     display: flex;
+     align-items: center;
+     justify-content: center;
+-    color: #94a0b8;
+-    font-size: 16px;
++    padding: 40px;
++}
++.timeline-empty-card {
++    border: 1px dashed var(--line);
++    border-radius: var(--radius-lg);
++    padding: 36px 48px;
++    display: flex; flex-direction: column; align-items: center; gap: 10px;
++    background: var(--panel);
+ }
++.timeline-empty-title { font-size: 15px; font-weight: 600; }
++.timeline-empty-sub   { color: var(--muted); font-size: 13px; }
++.timeline-empty-hint  { color: var(--subtle); font-size: 11px; font-family: var(--font-mono); margin-top: 4px; }
+ 
+ .status-row {
+     border-top: 1px solid var(--line);
+     color: var(--muted);
+     padding: 10px 16px;
+     font-size: 12px;
++    font-family: var(--font-mono);
+ }
+ 
+ .track-label {

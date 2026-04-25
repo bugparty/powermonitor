@@ -41,9 +41,7 @@ class OnboardSampleQueue;
  *   - period_us: INA thread sampling period in microseconds (default: 1000 = 1 kHz)
  *   - cpu_core: CPU core affinity for INA thread (-1 = no affinity)
  *   - rt_prio: Real-time priority for INA thread (-1 = disabled)
- *   - cpu_cluster0_freq_path: Full path to CPU cluster 0 freq (empty = skip)
- *   - cpu_cluster1_freq_path: Full path to CPU cluster 1 freq (empty = skip)
- *   - emc_freq_path: Full path to EMC freq (empty = skip)
+ *   - jetson_freq_path: Path to /proc/jetson_freqs (requires kernel module)
  */
 class OnboardSampler {
 public:
@@ -53,10 +51,8 @@ public:
         int cpu_core = -1;          // CPU core affinity for INA thread (-1 = disabled)
         int rt_prio = -1;           // RT priority for INA thread (-1 = disabled)
 
-        // Paths for privileged freq reads (leave empty to skip)
-        std::string cpu_cluster0_freq_path;
-        std::string cpu_cluster1_freq_path;
-        std::string emc_freq_path;
+        // Path to jetson_freq_reader kernel module procfs output
+        std::string jetson_freq_path = "/proc/jetson_freqs";
     };
 
     /**

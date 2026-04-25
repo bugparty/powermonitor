@@ -270,9 +270,7 @@ int PowerMonitorSession::run() {
         onboard_cfg.period_us = options_.onboard_period_us;
         onboard_cfg.cpu_core = options_.onboard_cpu_core;
         onboard_cfg.rt_prio = options_.onboard_rt_prio;
-        onboard_cfg.cpu_cluster0_freq_path = options_.onboard_cpu_cluster0_freq_path;
-        onboard_cfg.cpu_cluster1_freq_path = options_.onboard_cpu_cluster1_freq_path;
-        onboard_cfg.emc_freq_path = options_.onboard_emc_freq_path;
+        onboard_cfg.jetson_freq_path = options_.onboard_jetson_freq_path;
 
         onboard_sampler_ = std::make_unique<OnboardSampler>(onboard_cfg, onboard_queue_);
 

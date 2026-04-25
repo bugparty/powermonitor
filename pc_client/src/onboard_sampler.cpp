@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <sched.h>
+#include <stdio.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
@@ -39,8 +40,35 @@ timespec ns_to_ts(int64_t ns) {
 
 }  // anonymous namespace (now_ns, ns_to_ts)
 
+// ── Kernel module frequency reader ─────────────────────────────────────────
+// Reads /proc/jetson_freqs: "cpu0_hz cpu4_hz gpu_hz emc_hz read_time_ns"
+struct JetsonFreqs {
+    int64_t cpu0_hz = -1;
+    int64_t cpu4_hz = -1;
+    int64_t gpu_hz  = -1;
+    int64_t emc_hz  = -1;
+};
+
+std::optional<JetsonFreqs> read_jetson_freqs(const std::string& path) {
+    int fd = ::open(path.c_str(), O_RDONLY);
+    if (fd < 0) return std::nullopt;
+
+    char buf[128] = {};
+    ssize_t n = ::read(fd, buf, sizeof(buf) - 1);
+    ::close(fd);
+    if (n <= 0) return std::nullopt;
+
+    JetsonFreqs f;
+    int64_t read_time_ns = 0;
+    if (sscanf(buf, "%ld %ld %ld %ld %ld",
+               &f.cpu0_hz, &f.cpu4_hz, &f.gpu_hz, &f.emc_hz, &read_time_ns) != 5) {
+        return std::nullopt;
+    }
+    return f;
+}
+
 // Read integer from sysfs via plain open/read (no sudo subprocess).
-// Thread-safe; called from both the INA and the telemetry thread.
+// Thread-safe; used for temperature and fan readings.
 std::optional<int64_t> sysfs_read(const std::string& path) {
     int fd = ::open(path.c_str(), O_RDONLY);
     if (fd < 0) return std::nullopt;
@@ -87,17 +115,18 @@ bool OnboardSampler::start() {
 
     // Initialize shared_sample_ with first telemetry read to avoid -1 stale data
     {
-        const std::string gpu_freq_path =
-            "/sys/devices/platform/bus@0/17000000.gpu/devfreq/17000000.gpu/cur_freq";
-        const bool has_cpu0 = !config_.cpu_cluster0_freq_path.empty();
-        const bool has_cpu1 = !config_.cpu_cluster1_freq_path.empty();
-        const bool has_emc  = !config_.emc_freq_path.empty();
+        auto freqs = read_jetson_freqs(config_.jetson_freq_path);
+        if (!freqs) {
+            last_error_ = "Cannot read " + config_.jetson_freq_path +
+                          " — is jetson_freq_reader kernel module loaded? (sudo insmod jetson_freq_reader.ko)";
+            return false;
+        }
 
         std::lock_guard<std::mutex> lock(shared_mutex_);
-        shared_sample_.gpu_freq_hz = sysfs_read(gpu_freq_path).value_or(-1);
-        shared_sample_.cpu_cluster0_freq_hz = has_cpu0 ? sysfs_read(config_.cpu_cluster0_freq_path).value_or(-1) : -1;
-        shared_sample_.cpu_cluster1_freq_hz = has_cpu1 ? sysfs_read(config_.cpu_cluster1_freq_path).value_or(-1) : -1;
-        shared_sample_.emc_freq_hz = has_emc ? sysfs_read(config_.emc_freq_path).value_or(-1) : -1;
+        shared_sample_.gpu_freq_hz         = freqs->gpu_hz;
+        shared_sample_.cpu_cluster0_freq_hz = freqs->cpu0_hz;
+        shared_sample_.cpu_cluster1_freq_hz = freqs->cpu4_hz;
+        shared_sample_.emc_freq_hz          = freqs->emc_hz;
         shared_sample_.temp_cpu_mc = sysfs_read("/sys/class/thermal/thermal_zone0/temp").value_or(-1);
         shared_sample_.temp_gpu_mc = sysfs_read("/sys/class/thermal/thermal_zone1/temp").value_or(-1);
         shared_sample_.temp_soc0_mc = sysfs_read("/sys/class/thermal/thermal_zone5/temp").value_or(-1);
@@ -210,25 +239,14 @@ void OnboardSampler::ina_loop() {
 // is done unlocked so it can overlap with the INA thread's idle/sleep time.
 // ─────────────────────────────────────────────────────────────────────────────
 void OnboardSampler::telemetry_loop() {
-    // ── GPU freq (devfreq, world-readable) ────────────────────────────────
-    const std::string gpu_freq_path =
-        "/sys/devices/platform/bus@0/17000000.gpu/devfreq/17000000.gpu/cur_freq";
-
-    // ── CPU / EMC freq (require root — binary must run via sudo) ─────────
-    const bool has_cpu0 = !config_.cpu_cluster0_freq_path.empty();
-    const bool has_cpu1 = !config_.cpu_cluster1_freq_path.empty();
-    const bool has_emc  = !config_.emc_freq_path.empty();
-
     const int64_t period_ns = 100000000LL;  // 100 ms = 10 Hz
     int64_t next_tick = now_ns(CLOCK_MONOTONIC);
 
     while (!stop_requested_.load()) {
-        // ── I/O outside the lock (~2.7 ms total) ─────────────────────────
-        int64_t gpu_hz   = sysfs_read(gpu_freq_path).value_or(-1);
-        int64_t cpu0_hz  = has_cpu0 ? sysfs_read(config_.cpu_cluster0_freq_path).value_or(-1) : -1;
-        int64_t cpu1_hz  = has_cpu1 ? sysfs_read(config_.cpu_cluster1_freq_path).value_or(-1) : -1;
-        int64_t emc_hz   = has_emc  ? sysfs_read(config_.emc_freq_path).value_or(-1)        : -1;
+        // ── Frequency read via kernel module (~1.2 µs) ────────────────────
+        auto freqs = read_jetson_freqs(config_.jetson_freq_path);
 
+        // ── Thermal + fan still via sysfs ────────────────────────────────
         int64_t t_cpu  = sysfs_read("/sys/class/thermal/thermal_zone0/temp").value_or(-1);
         int64_t t_gpu  = sysfs_read("/sys/class/thermal/thermal_zone1/temp").value_or(-1);
         int64_t t_soc0 = sysfs_read("/sys/class/thermal/thermal_zone5/temp").value_or(-1);
@@ -240,10 +258,12 @@ void OnboardSampler::telemetry_loop() {
         // ── Write into shared sample under lock (very brief) ─────────────
         {
             std::lock_guard<std::mutex> lock(shared_mutex_);
-            shared_sample_.gpu_freq_hz         = gpu_hz;
-            shared_sample_.cpu_cluster0_freq_hz = cpu0_hz;
-            shared_sample_.cpu_cluster1_freq_hz = cpu1_hz;
-            shared_sample_.emc_freq_hz          = emc_hz;
+            if (freqs) {
+                shared_sample_.gpu_freq_hz         = freqs->gpu_hz;
+                shared_sample_.cpu_cluster0_freq_hz = freqs->cpu0_hz;
+                shared_sample_.cpu_cluster1_freq_hz = freqs->cpu4_hz;
+                shared_sample_.emc_freq_hz          = freqs->emc_hz;
+            }
             shared_sample_.temp_cpu_mc          = t_cpu;
             shared_sample_.temp_gpu_mc          = t_gpu;
             shared_sample_.temp_soc0_mc         = t_soc0;

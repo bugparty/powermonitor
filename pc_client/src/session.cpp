@@ -217,13 +217,9 @@ nlohmann::json Session::build_onboard_source_json() const {
     onboard_source["meta"]["hwmon_path"] = onboard_meta_.hwmon_path;
     onboard_source["meta"]["columns"] = onboard_meta_.columns;
 
-    // Compute summary
-    OnboardSummary summary = compute_onboard_summary();
-    onboard_source["summary"]["sample_count"] = summary.sample_count;
-    onboard_source["summary"]["mean_w"] = summary.mean_w;
-    onboard_source["summary"]["p50_w"] = summary.p50_w;
-    onboard_source["summary"]["p95_w"] = summary.p95_w;
-    onboard_source["summary"]["energy_j"] = summary.energy_j;
+    // Onboard power summary disabled - use Pico for power measurement
+    // OnboardSummary summary = compute_onboard_summary();
+    onboard_source["summary"]["sample_count"] = onboard_samples_.size();
 
     // Add samples
     onboard_source["samples"] = nlohmann::json::array();
@@ -233,10 +229,11 @@ nlohmann::json Session::build_onboard_source_json() const {
             nlohmann::json j;
             j["mono_ns"] = sample.mono_ns;
             j["unix_ns"] = sample.unix_ns;
-            j["rails"]["vdd_in_w"] = sample.vdd_in_mw / 1000.0;
-            j["rails"]["vdd_cpu_gpu_cv_w"] = sample.vdd_cpu_gpu_cv_mw / 1000.0;
-            j["rails"]["vdd_soc_w"] = sample.vdd_soc_mw / 1000.0;
-            j["power_w"] = sample.total_mw / 1000.0;
+            // Onboard power rails disabled - use Pico for power measurement
+            // j["rails"]["vdd_in_w"] = sample.vdd_in_mw / 1000.0;
+            // j["rails"]["vdd_cpu_gpu_cv_w"] = sample.vdd_cpu_gpu_cv_mw / 1000.0;
+            // j["rails"]["vdd_soc_w"] = sample.vdd_soc_mw / 1000.0;
+            // j["power_w"] = sample.total_mw / 1000.0;
             j["freqs"]["gpu_hz"] = sample.gpu_freq_hz;
             j["freqs"]["cpu_cluster0_hz"] = sample.cpu_cluster0_freq_hz;
             j["freqs"]["cpu_cluster1_hz"] = sample.cpu_cluster1_freq_hz;

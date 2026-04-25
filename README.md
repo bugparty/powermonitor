@@ -26,6 +26,9 @@ powermonitor/
 │   ├── INA228.cpp/hpp  # INA228 sensor driver
 │   ├── powermonitor.cpp # Main device firmware
 │   └── CMakeLists.txt  # Pico SDK build configuration
+├── jetson_freq_reader/  # Kernel module for CPU/GPU/EMC frequency reading
+│   ├── jetson_freq_reader.c
+│   └── Makefile
 ├── pc_client/          # PC-side serial client
 │   ├── include/        # Headers (serial, protocol, onboard sampler, etc.)
 │   └── src/            # Source files
@@ -177,6 +180,26 @@ npm run build:web
 ```
 
 See `docs/pc_client/jetson_nano_dual_source_capture.md` for the Jetson Nano integrated capture design and `docs/pc_client/power_bundle_schema.md` for the multi-source JSON format.
+
+### Jetson Frequency Reader Kernel Module
+
+The onboard sampler requires the `jetson_freq_reader` kernel module for CPU/GPU/EMC frequency telemetry. It provides atomic frequency snapshots via `/proc/jetson_freqs` with a single read (~1.2 µs vs. ~2.7 ms for 4 separate sysfs reads).
+
+```bash
+# Build on Jetson Nano
+cd powermonitor/jetson_freq_reader
+make
+
+# Load kernel module (required before running powermonitor)
+sudo insmod jetson_freq_reader.ko
+
+# Verify
+cat /proc/jetson_freqs
+# Output: cpu0_hz cpu4_hz gpu_hz emc_hz read_time_ns
+
+# Unload
+sudo rmmod jetson_freq_reader
+```
 
 
 ## Protocol Overview

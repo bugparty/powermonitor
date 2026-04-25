@@ -57,10 +57,8 @@ public:
         int onboard_cpu_core = -1;
         int onboard_rt_prio = -1;
 
-        // Privileged sysfs paths for CPU/EMC freq (leave empty to skip)
-        std::string onboard_cpu_cluster0_freq_path;
-        std::string onboard_cpu_cluster1_freq_path;
-        std::string onboard_emc_freq_path;
+        // Path to jetson_freq_reader kernel module procfs output
+        std::string onboard_jetson_freq_path = "/proc/jetson_freqs";
     };
 
     explicit PowerMonitorSession(const Options& options);

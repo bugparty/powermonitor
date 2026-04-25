@@ -119,9 +119,7 @@ struct ConfigOptions {
     uint64_t onboard_period_us = 1000;
     int onboard_cpu_core = -1;
     int onboard_rt_prio = -1;
-    std::string onboard_cpu_cluster0_freq_path;
-    std::string onboard_cpu_cluster1_freq_path;
-    std::string onboard_emc_freq_path;
+    std::string onboard_jetson_freq_path = "/proc/jetson_freqs";
 };
 
 bool parse_vid_pid(const std::string &hardware_id, uint16_t &vid, uint16_t &pid) {
@@ -245,14 +243,8 @@ bool load_yaml_config(const std::string &path, ConfigOptions &options) {
         if (onboard["rt_prio"] && onboard["rt_prio"].IsScalar()) {
             options.onboard_rt_prio = onboard["rt_prio"].as<int>();
         }
-        if (onboard["cpu_cluster0_freq_path"] && onboard["cpu_cluster0_freq_path"].IsScalar()) {
-            options.onboard_cpu_cluster0_freq_path = onboard["cpu_cluster0_freq_path"].as<std::string>();
-        }
-        if (onboard["cpu_cluster1_freq_path"] && onboard["cpu_cluster1_freq_path"].IsScalar()) {
-            options.onboard_cpu_cluster1_freq_path = onboard["cpu_cluster1_freq_path"].as<std::string>();
-        }
-        if (onboard["emc_freq_path"] && onboard["emc_freq_path"].IsScalar()) {
-            options.onboard_emc_freq_path = onboard["emc_freq_path"].as<std::string>();
+        if (onboard["jetson_freq_path"] && onboard["jetson_freq_path"].IsScalar()) {
+            options.onboard_jetson_freq_path = onboard["jetson_freq_path"].as<std::string>();
         }
     }
 
@@ -389,12 +381,8 @@ int main(int argc, char **argv) {
     app.add_option("--onboard-period-us", options.onboard_period_us, "Onboard sampling period in microseconds");
     app.add_option("--onboard-core", options.onboard_cpu_core, "CPU core for onboard sampler thread");
     app.add_option("--onboard-rt-prio", options.onboard_rt_prio, "RT priority for onboard sampler");
-    app.add_option("--onboard-cpu-cluster0-freq", options.onboard_cpu_cluster0_freq_path,
-                   "Full sysfs path for CPU cluster 0 freq (enables sudo read)");
-    app.add_option("--onboard-cpu-cluster1-freq", options.onboard_cpu_cluster1_freq_path,
-                   "Full sysfs path for CPU cluster 1 freq (enables sudo read)");
-    app.add_option("--onboard-emc-freq", options.onboard_emc_freq_path,
-                   "Full sysfs path for EMC freq (enables sudo read)");
+    app.add_option("--jetson-freq-path", options.onboard_jetson_freq_path,
+                   "Path to /proc/jetson_freqs (default: /proc/jetson_freqs)");
 
     try {
         app.parse(argc, argv);
@@ -603,9 +591,7 @@ int main(int argc, char **argv) {
     session_options.onboard_period_us = options.onboard_period_us;
     session_options.onboard_cpu_core = options.onboard_cpu_core;
     session_options.onboard_rt_prio = options.onboard_rt_prio;
-    session_options.onboard_cpu_cluster0_freq_path = options.onboard_cpu_cluster0_freq_path;
-    session_options.onboard_cpu_cluster1_freq_path = options.onboard_cpu_cluster1_freq_path;
-    session_options.onboard_emc_freq_path = options.onboard_emc_freq_path;
+    session_options.onboard_jetson_freq_path = options.onboard_jetson_freq_path;
 
     powermonitor::client::PowerMonitorSession session(session_options);
     try {

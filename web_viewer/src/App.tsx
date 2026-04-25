@@ -83,6 +83,43 @@ function normalizePanelOrder(panelIds: string[], order: string[]): string[] {
     ];
 }
 
+function lowerBoundTime(points: Point[], targetUs: number): number {
+    let low = 0;
+    let high = points.length;
+    while (low < high) {
+        const mid = Math.floor((low + high) / 2);
+        if (points[mid].timeUs < targetUs) {
+            low = mid + 1;
+        } else {
+            high = mid;
+        }
+    }
+    return low;
+}
+
+function upperBoundTime(points: Point[], targetUs: number): number {
+    let low = 0;
+    let high = points.length;
+    while (low < high) {
+        const mid = Math.floor((low + high) / 2);
+        if (points[mid].timeUs <= targetUs) {
+            low = mid + 1;
+        } else {
+            high = mid;
+        }
+    }
+    return low;
+}
+
+function slicePointsByRange(points: Point[], startUs: number, endUs: number): Point[] {
+    if (!points.length) {
+        return [];
+    }
+    const startIndex = lowerBoundTime(points, startUs);
+    const endIndex = upperBoundTime(points, endUs);
+    return points.slice(startIndex, endIndex);
+}
+
 // Apply moving average to power values
 function applyMovingAverage(series: Series[], windowMs: number): Series[] {
     if (windowMs === 0) {
@@ -98,36 +135,58 @@ function applyMovingAverage(series: Series[], windowMs: number): Series[] {
         }
 
         const averagedPoints: Point[] = [];
+        const halfWindowUs = windowUs / 2;
+        let left = 0;
+        let right = 0;
+        let sumPower = 0;
+        let sumVoltage = 0;
+        let sumCurrent = 0;
+        let countPower = 0;
+        let countVoltage = 0;
+        let countCurrent = 0;
+
+        function addPoint(point: Point): void {
+            if (point.power != null) {
+                sumPower += point.power;
+                countPower++;
+            }
+            if (point.voltage != null) {
+                sumVoltage += point.voltage;
+                countVoltage++;
+            }
+            if (point.current != null) {
+                sumCurrent += point.current;
+                countCurrent++;
+            }
+        }
+
+        function removePoint(point: Point): void {
+            if (point.power != null) {
+                sumPower -= point.power;
+                countPower--;
+            }
+            if (point.voltage != null) {
+                sumVoltage -= point.voltage;
+                countVoltage--;
+            }
+            if (point.current != null) {
+                sumCurrent -= point.current;
+                countCurrent--;
+            }
+        }
 
         for (let i = 0; i < points.length; i++) {
             const currentPoint = points[i];
-            const windowStart = currentPoint.timeUs - windowUs / 2;
-            const windowEnd = currentPoint.timeUs + windowUs / 2;
+            const windowStart = currentPoint.timeUs - halfWindowUs;
+            const windowEnd = currentPoint.timeUs + halfWindowUs;
 
-            // Find points within the window
-            let sumPower = 0;
-            let sumVoltage = 0;
-            let sumCurrent = 0;
-            let countPower = 0;
-            let countVoltage = 0;
-            let countCurrent = 0;
-
-            for (let j = 0; j < points.length; j++) {
-                const p = points[j];
-                if (p.timeUs >= windowStart && p.timeUs <= windowEnd) {
-                    if (p.power != null) {
-                        sumPower += p.power;
-                        countPower++;
-                    }
-                    if (p.voltage != null) {
-                        sumVoltage += p.voltage;
-                        countVoltage++;
-                    }
-                    if (p.current != null) {
-                        sumCurrent += p.current;
-                        countCurrent++;
-                    }
-                }
+            while (right < points.length && points[right].timeUs <= windowEnd) {
+                addPoint(points[right]);
+                right++;
+            }
+            while (left < right && points[left].timeUs < windowStart) {
+                removePoint(points[left]);
+                left++;
             }
 
             averagedPoints.push({
@@ -404,9 +463,10 @@ export default function App() {
                             );
                         }
 
-                        const visiblePoints = panel.sourceSeries.points.filter(
-                            (point) => point.timeUs >= range.start && point.timeUs <= range.end
-                        );
+                        const isCollapsed = collapsedPanelIds.has(panel.id);
+                        const visiblePoints = isCollapsed
+                            ? []
+                            : slicePointsByRange(panel.sourceSeries.points, range.start, range.end);
 
                         return (
                             <TimelineChart

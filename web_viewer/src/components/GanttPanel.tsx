@@ -85,9 +85,12 @@ export default function GanttPanel({
     const [hoveredSpan, setHoveredSpan] = useState<string | null>(null);
 
     // Calculate visible spans within range
-    const visibleSpans = useMemo(() => spans.filter(
-        (span) => span.endUs >= range.start && span.startUs <= range.end
-    ), [spans, range.start, range.end]);
+    const visibleSpans = useMemo(() => {
+        if (isCollapsed) {
+            return [];
+        }
+        return spans.filter((span) => span.endUs >= range.start && span.startUs <= range.end);
+    }, [isCollapsed, spans, range.start, range.end]);
 
     // Compute overlap offsets for visible spans
     const overlapOffsets = useMemo(() => computeOverlapOffsets(visibleSpans), [visibleSpans]);

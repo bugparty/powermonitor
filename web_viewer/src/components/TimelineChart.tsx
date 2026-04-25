@@ -228,16 +228,14 @@ export default function TimelineChart({
         };
     }
 
-    if (!points.length) {
+    if (!points.length && !isCollapsed) {
         return null;
     }
 
     return (
         <>
             {series.map((sourceSeries, index) => {
-                const visiblePoints = sourceSeries.points.filter(
-                    (point) => point.timeUs >= range.start && point.timeUs <= range.end
-                );
+                const visiblePoints = points;
                 return (
                     <section
                         key={sourceSeries.id}

@@ -18,8 +18,40 @@ interface DragState {
 
 export function usePanZoom({ points, range, setRange, layout }: UsePanZoomArgs) {
     const panRef = useRef<DragState | null>(null);
+    const rangeRef = useRef<Range>(range);
+    const pendingRangeRef = useRef<Range | null>(null);
+    const animationFrameRef = useRef<number | null>(null);
     const chartRight = layout.width - layout.right;
     const plotWidth = chartRight - layout.left;
+
+    useEffect(() => {
+        rangeRef.current = range;
+    }, [range]);
+
+    useEffect(() => () => {
+        if (animationFrameRef.current != null) {
+            window.cancelAnimationFrame(animationFrameRef.current);
+        }
+    }, []);
+
+    function scheduleRange(nextRange: Range): void {
+        rangeRef.current = nextRange;
+        pendingRangeRef.current = nextRange;
+
+        if (animationFrameRef.current != null) {
+            return;
+        }
+
+        animationFrameRef.current = window.requestAnimationFrame(() => {
+            animationFrameRef.current = null;
+            const pendingRange = pendingRangeRef.current;
+            if (!pendingRange) {
+                return;
+            }
+            pendingRangeRef.current = null;
+            setRange(pendingRange);
+        });
+    }
 
     useEffect(() => {
         function onMouseMove(event: MouseEvent): void {
@@ -49,7 +81,7 @@ export function usePanZoom({ points, range, setRange, layout }: UsePanZoomArgs) 
                 end = start + 1;
             }
 
-            setRange({ start, end });
+            scheduleRange({ start, end });
         }
 
         function onMouseUp(): void {
@@ -72,8 +104,9 @@ export function usePanZoom({ points, range, setRange, layout }: UsePanZoomArgs) 
         const minTime = points[0].timeUs;
         const maxTime = points[points.length - 1].timeUs;
         const cursorRatio = (localX - layout.left) / plotWidth;
-        const span = Math.max(1, range.end - range.start);
-        const anchor = range.start + span * cursorRatio;
+        const currentRange = rangeRef.current;
+        const span = Math.max(1, currentRange.end - currentRange.start);
+        const anchor = currentRange.start + span * cursorRatio;
         const newSpan = Math.max(MIN_SPAN_US, span * factor);
 
         let start = anchor - newSpan * cursorRatio;
@@ -91,7 +124,7 @@ export function usePanZoom({ points, range, setRange, layout }: UsePanZoomArgs) 
             end = start + 1;
         }
 
-        setRange({ start, end });
+        scheduleRange({ start, end });
     }
 
     function onWheel(event: WheelEvent<HTMLElement>): void {
@@ -117,7 +150,7 @@ export function usePanZoom({ points, range, setRange, layout }: UsePanZoomArgs) 
         }
         panRef.current = {
             startClientX: event.clientX,
-            baseRange: { ...range }
+            baseRange: { ...rangeRef.current }
         };
     }
 

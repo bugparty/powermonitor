@@ -275,11 +275,10 @@ int PowerMonitorSession::run() {
         onboard_sampler_ = std::make_unique<OnboardSampler>(onboard_cfg, onboard_queue_);
 
         if (!onboard_sampler_->start()) {
-            std::cerr << "Warning: Failed to start onboard sampler: "
+            std::cerr << "Error: Failed to start onboard sampler: "
                       << onboard_sampler_->get_last_error() << std::endl;
-            append_log("Warning: Failed to start onboard sampler: " + onboard_sampler_->get_last_error());
-            onboard_sampler_.reset();
-            onboard_queue_.reset();
+            append_log("Error: Failed to start onboard sampler: " + onboard_sampler_->get_last_error());
+            return 1;
         } else {
             // Start onboard processing thread
             onboard_proc_thread_ = std::thread([this] {

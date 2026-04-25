@@ -15,6 +15,7 @@ import { formatTimeUs } from "../domain/formatters";
 ChartJS.register(LineElement, PointElement, LinearScale, Tooltip, ChartLegend, Filler);
 
 interface TimelineChartProps {
+    panelId: string;
     layout: Layout;
     tracks: Track[];
     series: Series[];
@@ -22,6 +23,14 @@ interface TimelineChartProps {
     range: Range;
     downsampleMode: DownsampleMode;
     onPointHover: (point: DataPoint | null) => void;
+    panelTitle?: string;
+    isCollapsed?: boolean;
+    isDragging?: boolean;
+    onToggleCollapsed?: (panelId: string) => void;
+    onPanelDragStart?: (panelId: string) => void;
+    onPanelDragOver?: (panelId: string) => void;
+    onPanelDrop?: () => void;
+    onPanelDragEnd?: () => void;
 }
 
 type RawPoint = { x: number; y: number; _point: DataPoint };
@@ -98,13 +107,22 @@ function lttbDownsample(data: RawPoint[], threshold: number): RawPoint[] {
 }
 
 export default function TimelineChart({
+    panelId,
     layout,
     tracks,
     series,
     points,
     range,
     downsampleMode,
-    onPointHover
+    onPointHover,
+    panelTitle,
+    isCollapsed = false,
+    isDragging = false,
+    onToggleCollapsed,
+    onPanelDragStart,
+    onPanelDragOver,
+    onPanelDrop,
+    onPanelDragEnd
 }: TimelineChartProps) {
     function buildChartData(seriesPoints: DataPoint[]) {
         const targetPoints = Math.max(200, Math.floor(layout.width / 2));
@@ -221,17 +239,61 @@ export default function TimelineChart({
                     (point) => point.timeUs >= range.start && point.timeUs <= range.end
                 );
                 return (
-                    <section key={sourceSeries.id} className="timeline-panel">
+                    <section
+                        key={sourceSeries.id}
+                        className={`timeline-panel${isCollapsed ? " timeline-panel-collapsed" : ""}${isDragging ? " timeline-panel-dragging" : ""}`}
+                        onDragOver={(event) => {
+                            event.preventDefault();
+                            onPanelDragOver?.(panelId);
+                        }}
+                        onDrop={(event) => {
+                            event.preventDefault();
+                            onPanelDrop?.();
+                        }}
+                    >
                         <header className="timeline-panel-header">
-                            <span className="timeline-panel-title">{sourceSeries.label}</span>
-                            <span className="timeline-panel-meta">{visiblePoints.length} visible samples</span>
+                            <div className="timeline-panel-heading">
+                                <button
+                                    type="button"
+                                    className="timeline-panel-drag-handle"
+                                    draggable
+                                    aria-label={`Drag ${panelTitle || sourceSeries.label}`}
+                                    title="Drag to reorder"
+                                    onMouseDown={(event) => event.stopPropagation()}
+                                    onDragStart={(event) => {
+                                        event.dataTransfer.effectAllowed = "move";
+                                        event.dataTransfer.setData("text/plain", panelId);
+                                        onPanelDragStart?.(panelId);
+                                    }}
+                                    onDragEnd={onPanelDragEnd}
+                                >
+                                    ::
+                                </button>
+                                <span className="timeline-panel-title">{panelTitle || sourceSeries.label}</span>
+                            </div>
+                            <div className="timeline-panel-actions">
+                                {!isCollapsed && (
+                                    <span className="timeline-panel-meta">{visiblePoints.length} visible samples</span>
+                                )}
+                                <button
+                                    type="button"
+                                    className="timeline-panel-toggle"
+                                    aria-label={`${isCollapsed ? "Expand" : "Collapse"} ${panelTitle || sourceSeries.label}`}
+                                    onMouseDown={(event) => event.stopPropagation()}
+                                    onClick={() => onToggleCollapsed?.(panelId)}
+                                >
+                                    {isCollapsed ? "+" : "-"}
+                                </button>
+                            </div>
                         </header>
-                        <div className="timeline-panel-chart">
-                            <Line
-                                data={buildChartData(visiblePoints)}
-                                options={buildOptions(index === series.length - 1)}
-                            />
-                        </div>
+                        {!isCollapsed && (
+                            <div className="timeline-panel-chart">
+                                <Line
+                                    data={buildChartData(visiblePoints)}
+                                    options={buildOptions(index === series.length - 1)}
+                                />
+                            </div>
+                        )}
                     </section>
                 );
             })}

@@ -16,6 +16,12 @@ interface RawSample {
         p2d_ns?: unknown;   // Prediction-to-Display (nanoseconds)
         r2d_ns?: unknown;   // Render-to-Display (nanoseconds)
     };
+    freqs?: {
+        cpu_cluster0_hz?: unknown;  // CPU cluster 0 frequency (Hz)
+        cpu_cluster1_hz?: unknown;  // CPU cluster 1 frequency (Hz)
+        gpu_hz?: unknown;           // GPU frequency (Hz)
+        emc_hz?: unknown;           // EMC frequency (Hz)
+    };
     seq?: unknown;
     device_timestamp_us?: unknown;
     device_timestamp_unix_us?: unknown;
@@ -151,7 +157,16 @@ function parseSeries(samples: RawSample[], sourceId: SourceId, sourceLabel: stri
             const hasLatencyData = Number.isFinite(m2dNs) || Number.isFinite(c2dNs) ||
                                     Number.isFinite(p2dNs) || Number.isFinite(r2dNs);
 
-            if (!hasPowerData && !hasLatencyData) {
+            // Parse frequency data (convert Hz → MHz)
+            const freqs = sample.freqs || {};
+            const cpu0Hz = Number(freqs.cpu_cluster0_hz);
+            const cpu1Hz = Number(freqs.cpu_cluster1_hz);
+            const gpuHz = Number(freqs.gpu_hz);
+            const emcHz = Number(freqs.emc_hz);
+            const hasFreqData = Number.isFinite(cpu0Hz) || Number.isFinite(cpu1Hz) ||
+                                Number.isFinite(gpuHz) || Number.isFinite(emcHz);
+
+            if (!hasPowerData && !hasLatencyData && !hasFreqData) {
                 return null;
             }
 
@@ -168,7 +183,7 @@ function parseSeries(samples: RawSample[], sourceId: SourceId, sourceLabel: stri
                 timeUs: normalizeTimestamp(sample),
                 voltage: hasVoltage ? voltage : null,
                 current: hasCurrent ? current : null,
-                power: hasPowerData ? power : 0,
+                power: hasPowerData ? power : null,
                 temp: Number.isFinite(temp) ? temp : null,
                 vshunt: Number.isFinite(vshunt) ? vshunt : null,
                 charge: Number.isFinite(charge) ? charge : null,
@@ -178,6 +193,11 @@ function parseSeries(samples: RawSample[], sourceId: SourceId, sourceLabel: stri
                 c2d: Number.isFinite(c2dNs) ? c2dNs / 1_000_000 : null,
                 p2d: Number.isFinite(p2dNs) ? p2dNs / 1_000_000 : null,
                 r2d: Number.isFinite(r2dNs) ? r2dNs / 1_000_000 : null,
+                // Frequency metrics: convert Hz → MHz (divide by 1,000,000)
+                cpu0_freq: Number.isFinite(cpu0Hz) ? cpu0Hz / 1_000_000 : null,
+                cpu1_freq: Number.isFinite(cpu1Hz) ? cpu1Hz / 1_000_000 : null,
+                gpu_freq: Number.isFinite(gpuHz) ? gpuHz / 1_000_000 : null,
+                emc_freq: Number.isFinite(emcHz) ? emcHz / 1_000_000 : null,
             };
         })
         .filter((point): point is Point => point !== null)

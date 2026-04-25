@@ -44,3 +44,8 @@ When the request is `fix the CRC bug in parser`, since the first word is not in 
 ```
 fix the CRC bug in parser
 ```
+
+## Web Viewer Data Samples
+
+- Agents generating JSON data for the web viewer must follow the reference format in `web_viewer/src/dataset/agent_format_sample.json`.
+- When designing or reviewing web viewer UI, load `web_viewer/src/dataset/full_capability_sample.json` as the reference dataset.

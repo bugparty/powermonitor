@@ -2,9 +2,17 @@ import React, { useState, useMemo } from "react";
 import type { TimeSpanSource, TimeSpan, Range, Layout } from "../types";
 
 interface GanttPanelProps {
+    panelId: string;
     source: TimeSpanSource;
     range: Range;
     layout: Layout;
+    isCollapsed?: boolean;
+    isDragging?: boolean;
+    onToggleCollapsed?: (panelId: string) => void;
+    onPanelDragStart?: (panelId: string) => void;
+    onPanelDragOver?: (panelId: string) => void;
+    onPanelDrop?: () => void;
+    onPanelDragEnd?: () => void;
 }
 
 const LANE_HEIGHT = 28;
@@ -60,7 +68,19 @@ function computeOverlapOffsets(spans: TimeSpan[]): Map<string, number> {
     return offsets;
 }
 
-export default function GanttPanel({ source, range, layout }: GanttPanelProps) {
+export default function GanttPanel({
+    panelId,
+    source,
+    range,
+    layout,
+    isCollapsed = false,
+    isDragging = false,
+    onToggleCollapsed,
+    onPanelDragStart,
+    onPanelDragOver,
+    onPanelDrop,
+    onPanelDragEnd
+}: GanttPanelProps) {
     const { spans, laneCount, laneLabels, label: panelLabel } = source;
     const [hoveredSpan, setHoveredSpan] = useState<string | null>(null);
 
@@ -219,39 +239,82 @@ export default function GanttPanel({ source, range, layout }: GanttPanelProps) {
     };
 
     return (
-        <section className="timeline-panel">
+        <section
+            className={`timeline-panel${isCollapsed ? " timeline-panel-collapsed" : ""}${isDragging ? " timeline-panel-dragging" : ""}`}
+            onDragOver={(event) => {
+                event.preventDefault();
+                onPanelDragOver?.(panelId);
+            }}
+            onDrop={(event) => {
+                event.preventDefault();
+                onPanelDrop?.();
+            }}
+        >
             <header className="timeline-panel-header">
-                <span className="timeline-panel-title">{panelLabel}</span>
-                <span className="timeline-panel-meta">
-                    {hoveredSpanData ? (
-                        <>
-                            {hoveredSpanData.id} · {formatDuration(hoveredSpanData.endUs - hoveredSpanData.startUs)} ·
-                            start {formatStartTime(hoveredSpanData.startUs)}
-                        </>
-                    ) : (
-                        `${visibleSpans.length} spans · ${laneCount} lanes`
+                <div className="timeline-panel-heading">
+                    <button
+                        type="button"
+                        className="timeline-panel-drag-handle"
+                        draggable
+                        aria-label={`Drag ${panelLabel}`}
+                        title="Drag to reorder"
+                        onMouseDown={(event) => event.stopPropagation()}
+                        onDragStart={(event) => {
+                            event.dataTransfer.effectAllowed = "move";
+                            event.dataTransfer.setData("text/plain", panelId);
+                            onPanelDragStart?.(panelId);
+                        }}
+                        onDragEnd={onPanelDragEnd}
+                    >
+                        ::
+                    </button>
+                    <span className="timeline-panel-title">{panelLabel}</span>
+                </div>
+                <div className="timeline-panel-actions">
+                    {!isCollapsed && (
+                        <span className="timeline-panel-meta">
+                            {hoveredSpanData ? (
+                                <>
+                                    {hoveredSpanData.id} · {formatDuration(hoveredSpanData.endUs - hoveredSpanData.startUs)} ·
+                                    start {formatStartTime(hoveredSpanData.startUs)}
+                                </>
+                            ) : (
+                                `${visibleSpans.length} spans · ${laneCount} lanes`
+                            )}
+                        </span>
                     )}
-                </span>
+                    <button
+                        type="button"
+                        className="timeline-panel-toggle"
+                        aria-label={`${isCollapsed ? "Expand" : "Collapse"} ${panelLabel}`}
+                        onMouseDown={(event) => event.stopPropagation()}
+                        onClick={() => onToggleCollapsed?.(panelId)}
+                    >
+                        {isCollapsed ? "+" : "-"}
+                    </button>
+                </div>
             </header>
-            <div className="timeline-panel-chart" style={{ height: totalHeight }}>
-                <svg
-                    viewBox={`0 0 ${layout.width} ${totalHeight}`}
-                    preserveAspectRatio="none"
-                    style={{ width: "100%", height: "100%", display: "block" }}
-                >
-                    {/* Lane labels */}
-                    <g>{renderLaneLabels()}</g>
+            {!isCollapsed && (
+                <div className="timeline-panel-chart" style={{ height: totalHeight }}>
+                    <svg
+                        viewBox={`0 0 ${layout.width} ${totalHeight}`}
+                        preserveAspectRatio="none"
+                        style={{ width: "100%", height: "100%", display: "block" }}
+                    >
+                        {/* Lane labels */}
+                        <g>{renderLaneLabels()}</g>
 
-                    {/* Grid lines */}
-                    <g>{renderGridLines()}</g>
+                        {/* Grid lines */}
+                        <g>{renderGridLines()}</g>
 
-                    {/* Span bars */}
-                    <g>{visibleSpans.map(renderSpan)}</g>
+                        {/* Span bars */}
+                        <g>{visibleSpans.map(renderSpan)}</g>
 
-                    {/* Time axis */}
-                    <g>{renderTimeAxis()}</g>
-                </svg>
-            </div>
+                        {/* Time axis */}
+                        <g>{renderTimeAxis()}</g>
+                    </svg>
+                </div>
+            )}
         </section>
     );
 }

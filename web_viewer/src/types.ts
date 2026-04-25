@@ -2,7 +2,9 @@ export type PowerMetricKey = "voltage" | "current" | "power" | "temp" | "vshunt"
 
 export type LatencyMetricKey = "m2d" | "c2d" | "p2d" | "r2d";
 
-export type MetricKey = PowerMetricKey | LatencyMetricKey;
+export type FreqMetricKey = "cpu0_freq" | "cpu1_freq" | "gpu_freq" | "emc_freq";
+
+export type MetricKey = PowerMetricKey | LatencyMetricKey | FreqMetricKey;
 
 export type DownsampleMode = "none" | "min-max" | "lttb";
 
@@ -25,6 +27,11 @@ export interface Point {
     c2d: number | null;  // Camera-to-Display latency
     p2d: number | null;  // Prediction-to-Display latency
     r2d: number | null;  // Render-to-Display latency
+    // Frequency metrics (in MHz, converted from Hz)
+    cpu0_freq: number | null;  // CPU cluster 0 frequency
+    cpu1_freq: number | null;  // CPU cluster 1 frequency
+    gpu_freq: number | null;   // GPU frequency
+    emc_freq: number | null;   // EMC (memory controller) frequency
 }
 
 export interface ParsedMeta {

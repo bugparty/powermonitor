@@ -73,6 +73,8 @@ body {
 .timeline-panel-header,
 .timeline-panel-title,
 .timeline-panel-meta,
+.timeline-panel-drag-handle,
+.timeline-panel-toggle,
 .status-row,
 button,
 .file-button,
@@ -241,16 +243,71 @@ select:focus-visible {
     border-bottom: 1px solid rgba(47, 54, 67, 0.8);
 }
 
+.timeline-panel-collapsed .timeline-panel-header {
+    border-bottom: 0;
+}
+
+.timeline-panel-dragging {
+    opacity: 0.72;
+    border-color: var(--accent);
+}
+
+.timeline-panel-heading,
+.timeline-panel-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.timeline-panel-heading {
+    flex: 1 1 auto;
+}
+
+.timeline-panel-actions {
+    flex: 0 0 auto;
+}
+
 .timeline-panel-title {
     font-size: 13px;
     font-weight: 600;
     color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .timeline-panel-meta {
     font-size: 12px;
     color: var(--muted);
     font-family: var(--font-mono);
+}
+
+.timeline-panel-drag-handle,
+.timeline-panel-toggle {
+    width: 24px;
+    height: 24px;
+    border-radius: var(--radius-sm);
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1;
+}
+
+.timeline-panel-drag-handle {
+    cursor: grab;
+}
+
+.timeline-panel-drag-handle:active {
+    cursor: grabbing;
+}
+
+.timeline-panel-toggle {
+    font-weight: 600;
 }
 
 .timeline-panel-chart {

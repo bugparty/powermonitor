@@ -14,4 +14,9 @@ export const defaultTracks: Track[] = [
     { id: "c2d", key: "c2d", label: "C2D Latency (ms)", color: "#ef4444", visible: true },  // red
     { id: "p2d", key: "p2d", label: "P2D Latency (ms)", color: "#06b6d4", visible: false }, // cyan
     { id: "r2d", key: "r2d", label: "R2D Latency (ms)", color: "#f97316", visible: false }, // orange
+    // Frequency metrics (in MHz)
+    { id: "cpu0_freq", key: "cpu0_freq", label: "CPU0 Freq (MHz)", color: "#8b5cf6", visible: true },  // violet
+    { id: "cpu1_freq", key: "cpu1_freq", label: "CPU1 Freq (MHz)", color: "#ec4899", visible: true },  // pink
+    { id: "gpu_freq", key: "gpu_freq", label: "GPU Freq (MHz)", color: "#14b8a6", visible: true },    // teal
+    { id: "emc_freq", key: "emc_freq", label: "EMC Freq (MHz)", color: "#facc15", visible: false },  // yellow
 ];

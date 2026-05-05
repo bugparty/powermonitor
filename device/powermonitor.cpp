@@ -131,7 +131,7 @@ static bool usb_cdc_write_no_flush(const uint8_t *data, size_t len) {
 // Parser callback - called when a complete frame is received.
 // T2 is captured here, immediately after CRC verification and before
 // handle_frame(), so it reflects precisely when this specific frame completed.
-static void on_frame_received(const protocol::Frame &frame, void *user_data) {
+static void on_frame_received(const protocol::FixedFrame &frame, void *user_data) {
   (void)user_data;
   device::g_last_frame_recv_time_us = time_us_64();
   if (g_handler) {

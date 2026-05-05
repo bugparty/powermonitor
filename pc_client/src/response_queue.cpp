@@ -5,13 +5,13 @@
 namespace powermonitor {
 namespace client {
 
-void ResponseQueue::push(protocol::Frame&& frame) {
+void ResponseQueue::push(protocol::DynamicFrame&& frame) {
     std::lock_guard<std::mutex> lock(mutex_);
     queue_.push_back(std::move(frame));
     cv_.notify_one();
 }
 
-bool ResponseQueue::pop_wait(protocol::Frame& frame, int timeout_ms) {
+bool ResponseQueue::pop_wait(protocol::DynamicFrame& frame, int timeout_ms) {
     std::unique_lock<std::mutex> lock(mutex_);
 
     if (timeout_ms < 0) {
@@ -39,7 +39,7 @@ bool ResponseQueue::pop_wait(protocol::Frame& frame, int timeout_ms) {
     return true;
 }
 
-bool ResponseQueue::pop_by_msgid(protocol::Frame& frame, uint8_t msgid) {
+bool ResponseQueue::pop_by_msgid(protocol::DynamicFrame& frame, uint8_t msgid) {
     std::lock_guard<std::mutex> lock(mutex_);
     for (auto it = queue_.begin(); it != queue_.end(); ++it) {
         if (it->msgid == msgid) {

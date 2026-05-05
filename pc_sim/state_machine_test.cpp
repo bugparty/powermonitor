@@ -45,7 +45,7 @@ class ParserStateMachineTest : public ::testing::Test {
 protected:
     void SetUp() override {
         frame_count = 0;
-        parser = std::make_unique<protocol::Parser>([this](const protocol::Frame &f, uint64_t /*receive_time*/) {
+        parser = std::make_unique<protocol::Parser>([this](const protocol::DynamicFrame &f, uint64_t /*receive_time*/) {
             last_frame = f;
             frame_count++;
         }, 4097);
@@ -56,7 +56,7 @@ protected:
     }
 
     std::unique_ptr<protocol::Parser> parser;
-    protocol::Frame last_frame{};
+    protocol::DynamicFrame last_frame{};
     int frame_count = 0;
 };
 

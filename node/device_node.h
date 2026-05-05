@@ -17,8 +17,8 @@ public:
     void tick(uint64_t now_us);
 
 private:
-    void on_frame(const protocol::Frame &frame, uint64_t receive_time_us);
-    void handle_cmd(const protocol::Frame &frame, uint64_t now_us);
+    void on_frame(const protocol::DynamicFrame &frame, uint64_t receive_time_us);
+    void handle_cmd(const protocol::DynamicFrame &frame, uint64_t now_us);
 
     void send_rsp(uint8_t seq, uint8_t orig_msgid, uint8_t status, const std::vector<uint8_t> &data,
                   uint64_t now_us);

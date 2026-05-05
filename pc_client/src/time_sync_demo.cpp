@@ -35,7 +35,7 @@ struct DemoOptions {
 };
 
 struct TimedFrame {
-    protocol::Frame frame;
+    protocol::DynamicFrame frame;
     uint64_t receive_time_us = 0;
 };
 
@@ -346,7 +346,7 @@ int main(int argc, char **argv) {
     std::cout << "Using port: " << port->port << " @ " << options.baud << "\n";
 
     std::deque<TimedFrame> rx_queue;
-    protocol::Parser parser([&rx_queue](const protocol::Frame &frame, uint64_t receive_time_us) {
+    protocol::Parser parser([&rx_queue](const protocol::DynamicFrame &frame, uint64_t receive_time_us) {
         rx_queue.push_back(TimedFrame{frame, receive_time_us});
     });
 

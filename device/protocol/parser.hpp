@@ -33,7 +33,7 @@
  *   Avoids allocating a temporary 4KB buffer on stack.
  *
  * Memory Layout:
- *   - Frame struct: ~260 bytes (fixed-size data array)
+ *   - FixedFrame struct: ~260 bytes (fixed-size data array)
  *   - Parser object: ~270 bytes (header + payload buffers + state)
  *   - Total stack usage when parser is on stack: ~530 bytes
  *
@@ -64,9 +64,9 @@
 
 namespace protocol {
 
-// Frame callback function pointer type
+// FixedFrame callback function pointer type
 // Called when a complete, valid frame is received
-using FrameCallback = void (*)(const Frame& frame, void* user_data);
+using FrameCallback = void (*)(const FixedFrame& frame, void* user_data);
 
 // Protocol parser with 4-state FSM
 // Uses fixed-size buffer, no dynamic allocation
@@ -223,7 +223,7 @@ private:
     void* user_data_ = nullptr;
 
     State state_ = State::kWaitSof0;
-    Frame current_frame_{};
+    FixedFrame current_frame_{};
 
     // Header buffer (6 bytes)
     uint8_t header_buf_[kHeaderSize]{};

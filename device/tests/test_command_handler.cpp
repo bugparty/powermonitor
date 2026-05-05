@@ -35,7 +35,7 @@ void test_time_sync() {
     protocol::TimeSyncPayload payload;
     payload.t1 = 1234567890;
 
-    protocol::Frame frame;
+    protocol::FixedFrame frame;
     frame.ver = protocol::kProtoVersion;
     frame.type = protocol::FrameType::kCmd;
     frame.msgid = static_cast<uint8_t>(protocol::MsgId::kTimeSync);
@@ -110,7 +110,7 @@ void test_time_adjust() {
     protocol::TimeAdjustPayload payload;
     payload.offset_us = -500;
 
-    protocol::Frame frame;
+    protocol::FixedFrame frame;
     frame.type = protocol::FrameType::kCmd;
     frame.msgid = static_cast<uint8_t>(protocol::MsgId::kTimeAdjust);
     frame.seq = 2;
@@ -142,7 +142,7 @@ void test_time_set() {
     protocol::TimeSetPayload payload;
     payload.unix_time_us = 2000000;
 
-    protocol::Frame frame;
+    protocol::FixedFrame frame;
     frame.type = protocol::FrameType::kCmd;
     frame.msgid = static_cast<uint8_t>(protocol::MsgId::kTimeSet);
     frame.seq = 3;
@@ -208,7 +208,7 @@ void test_stats_report_periodic_and_stop() {
     tx_buffer.clear();
 
     // STREAM_STOP should send RSP + final STATS_REPORT
-    protocol::Frame stop_frame{};
+    protocol::FixedFrame stop_frame{};
     stop_frame.type = protocol::FrameType::kCmd;
     stop_frame.msgid = static_cast<uint8_t>(protocol::MsgId::kStreamStop);
     stop_frame.seq = 0x2A;

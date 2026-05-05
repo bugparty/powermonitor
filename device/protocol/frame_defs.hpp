@@ -19,7 +19,7 @@ constexpr uint16_t kMaxTxPayloadLen = 1025;
 constexpr size_t kHeaderSize = 6;
 
 // Parsed frame structure (fixed-size, no dynamic allocation)
-struct Frame {
+struct FixedFrame {
     uint8_t ver;
     FrameType type;
     uint8_t flags;

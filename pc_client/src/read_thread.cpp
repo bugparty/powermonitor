@@ -71,12 +71,12 @@ struct ParserState {
     ThreadStats* stats = nullptr;
 
     ParserState(ResponseQueue* rq, SampleQueue* sq, ThreadStats* st)
-        : parser([this](const protocol::Frame& frame, uint64_t receive_time_us) {
+        : parser([this](const protocol::DynamicFrame& frame, uint64_t receive_time_us) {
             this->on_frame(frame, receive_time_us);
           }),
           response_q(rq), sample_q(sq), stats(st) {}
 
-    void on_frame(const protocol::Frame& frame, uint64_t receive_time_us) {
+    void on_frame(const protocol::DynamicFrame& frame, uint64_t receive_time_us) {
         stats->rx_counts[frame.msgid].fetch_add(1, std::memory_order_relaxed);
 
         // EMA and min/max of inter-packet interval (average delay between consecutive USB packets)
@@ -122,10 +122,10 @@ struct ParserState {
             }
         } else if (frame.type == protocol::FrameType::kEvt && frame.msgid == kMsgTextReport) {
             // Route to control queue; UI/log layer decides how to display it.
-            response_q->push(protocol::Frame(frame));
+            response_q->push(protocol::DynamicFrame(frame));
         } else {
             // Control frames (RSP, CFG_REPORT, etc.)
-            response_q->push(protocol::Frame(frame));
+            response_q->push(protocol::DynamicFrame(frame));
         }
     }
 

@@ -6,7 +6,7 @@
 
 namespace protocol {
 
-struct Frame {
+struct DynamicFrame {
     uint8_t ver = kProtoVersion;
     FrameType type = FrameType::kCmd;
     uint8_t flags = 0;

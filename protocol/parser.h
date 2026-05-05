@@ -23,7 +23,7 @@
  *   Reason: Flexibility to use lambdas with captures, member functions,
  *   or function objects. The overhead of type erasure is negligible on
  *   desktop and improves code readability.
- * - std::vector<uint8_t> for Frame::data
+ * - std::vector<uint8_t> for DynamicFrame::data
  *   Reason: Dynamically sized payload storage eliminates fixed buffer
  *   size limitations. Simplifies memory management for the caller.
  * - Separate .h/.cpp compilation
@@ -34,7 +34,7 @@
  *   Default is 1KB, but can be increased for larger payloads.
  *
  * Memory Usage (typical):
- *   - Frame struct: 24 bytes + vector allocation (payload size)
+ *   - DynamicFrame struct: 24 bytes + vector allocation (payload size)
  *   - Parser object: 64 bytes + deque allocation (typically <1KB)
  *   - Per-frame overhead: negligible on desktop
  *
@@ -66,7 +66,7 @@ namespace protocol {
 
 class Parser {
 public:
-    using FrameCallback = std::function<void(const Frame &, uint64_t receive_time_us)>;
+    using FrameCallback = std::function<void(const DynamicFrame &, uint64_t receive_time_us)>;
 
     static constexpr uint16_t kDefaultMaxLen = 1024;
 
@@ -121,7 +121,7 @@ private:
     FrameCallback callback_;
     std::deque<uint8_t> buffer_;
     State state_ = State::kWaitSof0;
-    Frame current_frame_{};
+    DynamicFrame current_frame_{};
     uint16_t max_len_ = 1024;
     uint16_t payload_remaining_ = 0;
     uint64_t crc_fail_count_ = 0;

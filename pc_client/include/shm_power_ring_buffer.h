@@ -27,6 +27,7 @@ public:
     }
 
     bool valid() const { return buffer_.valid(); }
+    bool ok() const { return valid(); }
     bool is_creator() const { return buffer_.is_creator(); }
 
 private:

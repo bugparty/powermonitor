@@ -12,6 +12,7 @@
 
 #include "protocol/frame_builder.h"
 #include "protocol/parser.h"
+#include "protocol/serialization.h"
 #include "serial/serial.h"
 
 namespace {
@@ -46,24 +47,6 @@ uint64_t now_steady_us() {
 uint64_t now_unix_us() {
     const auto now = std::chrono::system_clock::now().time_since_epoch();
     return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(now).count());
-}
-
-void pack_u64_le(std::vector<uint8_t> &dst, uint64_t value) {
-    for (int i = 0; i < 8; ++i) {
-        dst.push_back(static_cast<uint8_t>((value >> (i * 8)) & 0xFF));
-    }
-}
-
-void pack_s64_le(std::vector<uint8_t> &dst, int64_t value) {
-    pack_u64_le(dst, static_cast<uint64_t>(value));
-}
-
-uint64_t read_u64_le(const std::vector<uint8_t> &buf, size_t offset) {
-    uint64_t value = 0;
-    for (int i = 0; i < 8; ++i) {
-        value |= static_cast<uint64_t>(buf[offset + static_cast<size_t>(i)]) << (i * 8);
-    }
-    return value;
 }
 
 int64_t signed_diff_u64(uint64_t a, uint64_t b) {
@@ -383,7 +366,7 @@ int main(int argc, char **argv) {
     if (options.do_time_set) {
         TimedFrame rsp;
         std::vector<uint8_t> payload;
-        pack_u64_le(payload, now_unix_us());
+        protocol::append_u64(payload, now_unix_us());
         if (!send_cmd_and_wait_rsp(serial, parser, rx_queue, seq++, kMsgTimeSet, payload,
                                    options.cmd_timeout_ms, &rsp)) {
             std::cerr << "TIME_SET failed\n";
@@ -412,7 +395,7 @@ int main(int argc, char **argv) {
             ++total_rounds;
             const uint64_t t1 = now_steady_us();
             std::vector<uint8_t> sync_payload;
-            pack_u64_le(sync_payload, t1);
+            protocol::append_u64(sync_payload, t1);
 
             TimedFrame sync_rsp;
             if (!send_cmd_and_wait_rsp(serial, parser, rx_queue, seq++, kMsgTimeSync, sync_payload,
@@ -430,16 +413,16 @@ int main(int argc, char **argv) {
                 continue;
             }
 
-            const uint64_t T1 = read_u64_le(sync_rsp.frame.data, 2);
-            const uint64_t T2 = read_u64_le(sync_rsp.frame.data, 10);
-            const uint64_t T3 = read_u64_le(sync_rsp.frame.data, 18);
+            const uint64_t T1 = protocol::read_u64(sync_rsp.frame.data, 2);
+            const uint64_t T2 = protocol::read_u64(sync_rsp.frame.data, 10);
+            const uint64_t T3 = protocol::read_u64(sync_rsp.frame.data, 18);
             const uint64_t T4 = sync_rsp.receive_time_us;
 
             const int64_t delay = signed_diff_u64(T4, T1) - signed_diff_u64(T3, T2);
             const int64_t offset = (signed_diff_u64(T2, T1) + signed_diff_u64(T3, T4)) / 2;
 
             std::vector<uint8_t> adjust_payload;
-            pack_s64_le(adjust_payload, -offset);
+            protocol::append_i64(adjust_payload, -offset);
             TimedFrame adjust_rsp;
             if (!send_cmd_and_wait_rsp(serial, parser, rx_queue, seq++, kMsgTimeAdjust, adjust_payload,
                                        options.cmd_timeout_ms, &adjust_rsp)) {

@@ -59,6 +59,9 @@ public:
 
         // Path to jetson_freq_reader kernel module procfs output
         std::string onboard_jetson_freq_path = "/proc/jetson_freqs";
+
+        // Flush interval for periodic data dump to chunks
+        uint32_t flush_interval_s = 5;
     };
 
     explicit PowerMonitorSession(const Options& options);
@@ -92,6 +95,7 @@ private:
 
     void process_samples_loop();
     void process_onboard_loop();
+    void flush_loop();
     int run_tui_loop();
     bool save_snapshot(const std::string& path);
     void append_log(const std::string& message);
@@ -135,6 +139,8 @@ private:
      std::shared_ptr<OnboardSampleQueue> onboard_queue_;
      std::unique_ptr<OnboardSampler> onboard_sampler_;
      std::thread onboard_proc_thread_;
+
+     std::thread flush_thread_;
 
      std::atomic<bool> stop_requested_{false};
      std::atomic<bool> interrupted_{false};

@@ -117,6 +117,7 @@ public:
 
     void add_sample(const Sample& sample);
     void save(const std::string& filepath) const;
+    void save_merged(const std::string& filepath) const { save(filepath); }
     size_t sample_count() const {
         std::lock_guard<std::mutex> lock(mutex_);
         return samples_.size();
@@ -137,6 +138,7 @@ public:
         return onboard_samples_.size();
     }
     void save_bundle(const std::string& filepath) const;
+    void save_bundle_merged(const std::string& filepath) const { save_bundle(filepath); }
 
 private:
     Config config_;

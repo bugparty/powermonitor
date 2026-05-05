@@ -140,6 +140,14 @@ public:
     void save_bundle(const std::string& filepath) const;
     void save_bundle_merged(const std::string& filepath) const { save_bundle(filepath); }
 
+    // Flush interface for periodic data dumps
+    void set_flush_dir(const std::string& dir) { flush_dir_ = dir; }
+    bool flush_to_chunks();
+    size_t total_pico_count() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return samples_.size();
+    }
+
 private:
     Config config_;
     RuntimeMeta runtime_meta_;
@@ -153,6 +161,9 @@ private:
     OnboardMeta onboard_meta_;
     std::vector<OnboardSample> onboard_samples_;
     mutable std::mutex onboard_mutex_;
+
+    // Flush interface
+    std::string flush_dir_;
 
     nlohmann::json sample_to_json(const Sample& sample) const;
     nlohmann::json build_meta_json() const;

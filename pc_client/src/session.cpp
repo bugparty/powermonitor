@@ -2,6 +2,7 @@
 #include "onboard_sampler.h"
 
 #include <algorithm>
+#include <chrono>
 #include <ctime>
 #include <fstream>
 #include <iomanip>
@@ -284,6 +285,40 @@ Session::OnboardSummary Session::compute_onboard_summary() const {
     summary.energy_j = summary.mean_w * duration_s;
 
     return summary;
+}
+
+bool Session::flush_to_chunks() {
+    if (flush_dir_.empty()) {
+        return false;
+    }
+    try {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (samples_.empty()) {
+            return false;
+        }
+        // Create a chunk filename with timestamp
+        auto now = std::chrono::system_clock::now();
+        auto time = std::chrono::system_clock::to_time_t(now);
+        std::ostringstream oss;
+        oss << flush_dir_ << "/chunk_" << std::put_time(std::localtime(&time), "%Y%m%d_%H%M%S") << ".json";
+
+        nlohmann::json chunk;
+        chunk["meta"] = build_meta_json();
+        chunk["samples"] = nlohmann::json::array();
+        for (const auto& sample : samples_) {
+            chunk["samples"].push_back(sample);
+        }
+
+        std::ofstream file(oss.str());
+        if (!file) {
+            return false;
+        }
+        file << std::setw(2) << chunk << std::endl;
+        samples_.clear();
+        return true;
+    } catch (...) {
+        return false;
+    }
 }
 
 }  // namespace client

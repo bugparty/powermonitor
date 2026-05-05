@@ -1,9 +1,98 @@
 ﻿# Parser Design and Architecture
 
 Related code:
-- `protocol/parser.cpp`
-- `protocol/parser.h`
+- `protocol/parser.cpp` - PC-side implementation
+- `protocol/parser.h` - PC-side implementation
+- `device/protocol/parser.hpp` - Device-side implementation
 - `protocol/frame_builder.h` (FrameType, MsgId enums)
+
+## Why Two Parser Implementations?
+
+This project maintains **two independent protocol parser implementations**:
+
+| Implementation | Location | Target Platform |
+|----------------|----------|-----------------|
+| **Device-side** | `device/protocol/parser.hpp` | RP2040 microcontroller (Cortex-M0+, 264KB RAM) |
+| **PC-side** | `protocol/parser.h` / `protocol/parser.cpp` | Desktop Linux/Windows |
+
+Both parsers implement the same UART protocol and share protocol constants (defined in `protocol/protocol_constants.h`), but they make fundamentally different design trade-offs based on their target platforms.
+
+### Device-Side Parser (`device/protocol/parser.hpp`)
+
+**Target Constraints:**
+- RP2040 microcontroller: Cortex-M0+ @ 133MHz, 264KB RAM, ~2MB flash
+- No operating system, bare-metal embedded environment
+- Deterministic memory usage required (no heap fragmentation)
+- Limited stack space (typically 4KB per thread)
+
+**Design Choices:**
+- **Fixed-size buffers**: Stack-allocated arrays (`header_buf_[6]`, `payload_buf_[258]`)
+  - Total parser object size: ~270 bytes (predictable stack usage)
+  - No heap allocation, no fragmentation risk
+- **C-style callback**: Function pointer (`void (*)(const Frame&, void*)`) instead of `std::function`
+  - Avoids heap allocation and type erasure overhead
+- **Header-only**: All implementation in `.hpp` for better inlining
+- **No STL dependencies**: No `std::vector`, `std::deque`, or `std::function`
+  - Embedded environments often disable exceptions and RTTI
+  - Eliminates hidden allocation overhead
+- **Incremental CRC**: `crc16_ccitt_false_two()` computes CRC over header+payload without concatenating
+  - Avoids allocating a temporary 4KB buffer on stack
+
+### PC-Side Parser (`protocol/parser.h` / `protocol/parser.cpp`)
+
+**Target Constraints:**
+- Desktop Linux/Windows: Multi-GHz CPU, GBs of RAM
+- Developer productivity and code maintainability prioritized
+- Flexibility for testing and future extensions
+
+**Design Choices:**
+- **Dynamic buffering**: `std::deque<uint8_t>` for receive buffer
+  - Automatically handles partial reads, resync, and buffer growth
+  - Memory overhead acceptable on desktop (typically <1KB per parser)
+- **std::function callback**: Flexible, supports lambdas with captures
+  - Overhead negligible on desktop systems
+  - Improves code readability and testability
+- **std::vector payload**: `Frame::data` dynamically sized
+  - No fixed buffer size limitations
+  - Simplifies memory management for the caller
+- **Separate compilation**: `.h` declaration + `.cpp` definition
+  - Standard C++ practice, hides implementation details
+  - Reduces header dependencies
+
+### Shared Protocol Constants
+
+Both implementations share the same protocol constants (moved to `protocol/protocol_constants.h` in a previous refactoring):
+- Start-of-frame bytes: `kSof0 = 0xAA`, `kSof1 = 0x55`
+- Protocol version: `kProtoVersion = 0x01`
+- Frame types: `FrameType` enum (CMD, RSP, ACK, NACK)
+- Maximum payload length: Device uses 256 bytes, PC uses configurable default (1024 bytes)
+
+### Performance Comparison
+
+| Metric | Device Parser | PC Parser |
+|--------|---------------|-----------|
+| **Memory usage** | ~270 bytes (fixed) | ~1KB typical (variable) |
+| **Heap allocations** | 0 | Yes (deque, vector) |
+| **Stack usage** | ~530 bytes (parser + frame) | ~100 bytes |
+| **Code size** | ~2KB (header-only) | ~4KB (.h + .cpp) |
+| **Per-byte overhead** | ~10 cycles (inline) | ~50 cycles (deque + std::function) |
+
+**Note**: The PC parser's overhead is negligible on modern desktop CPUs (multi-GHz). The device parser's tight design is necessary for the constrained RP2040 environment.
+
+### When to Use Which
+
+- **Device-side code** (RP2040 firmware): Use `device/protocol/parser.hpp`
+- **PC-side code** (Linux/Windows client): Use `protocol/parser.h`
+- **Testing**: PC-side parser has better testability (STL containers), device-side parser tests embedded constraints
+
+### Future Considerations
+
+If merging the implementations becomes desirable:
+- Create a template-based parser that can be instantiated with different buffer policies
+- Use compile-time polymorphism to avoid virtual call overhead
+- Maintain separate build configurations for device vs. PC targets
+
+**Current recommendation**: Keep both implementations. The platform-specific optimizations are valuable, and the code duplication is manageable (both parsers are <200 lines).
 
 ## Current Implementation
 

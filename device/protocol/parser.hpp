@@ -1,6 +1,60 @@
 #ifndef DEVICE_PROTOCOL_PARSER_HPP
 #define DEVICE_PROTOCOL_PARSER_HPP
 
+/**
+ * @file parser.hpp
+ * @brief Device-side protocol parser for RP2040 microcontroller.
+ *
+ * == WHY THIS FILE EXISTS (Duplicate Protocol Implementations) ==
+ *
+ * This file is part of the DEVICE-SIDE protocol implementation, optimized for
+ * embedded constraints. A separate PC-side implementation exists in
+ * protocol/parser.h with different trade-offs.
+ *
+ * == Device-Side Constraints (this file) ==
+ *
+ * Target: RP2040 microcontroller (Cortex-M0+, 264KB RAM)
+ *
+ * Design choices driven by embedded constraints:
+ * - Fixed-size buffers (stack-allocated arrays)
+ *   header_buf_[6]: 6 bytes
+ *   payload_buf_[258]: 256 max payload + 2 CRC bytes
+ *   Total: ~264 bytes of stack usage (deterministic, no heap fragmentation)
+ * - No dynamic allocation (no std::vector, no std::deque)
+ *   Reason: Embedded systems often disable heap allocation for safety-critical
+ *   code. Eliminates risk of allocation failures at runtime.
+ * - C-style callback function pointer (not std::function)
+ *   Reason: Avoids heap allocation and type erasure overhead of std::function.
+ *   On Cortex-M0+, every byte and CPU cycle matters.
+ * - Header-only implementation
+ *   Reason: Allows inlining and cross-translation-unit optimization without LTO.
+ * - Incremental CRC with crc16_ccitt_false_two()
+ *   Reason: Computes CRC over header + payload without concatenating them.
+ *   Avoids allocating a temporary 4KB buffer on stack.
+ *
+ * Memory Layout:
+ *   - Frame struct: ~260 bytes (fixed-size data array)
+ *   - Parser object: ~270 bytes (header + payload buffers + state)
+ *   - Total stack usage when parser is on stack: ~530 bytes
+ *
+ * == PC-Side Implementation (protocol/parser.h) ==
+ *
+ * Target: Desktop Linux/Windows (multi-GHz CPU, GBs of RAM)
+ *
+ * Uses std::deque<uint8_t> for flexible buffering. This allows the caller
+ * to feed arbitrary chunks of data without worrying about buffer management.
+ * The deque handles partial reads, resync, and buffer growing automatically.
+ * On desktop systems, the overhead is negligible and developer productivity
+ * is prioritized.
+ *
+ * == When to Modify ==
+ *
+ * - If increasing kMaxPayloadLen, recalculate stack usage to ensure it fits
+ *   within the RP2040's 264KB RAM (shared between stack and heap).
+ * - If adding complex parsing logic, consider moving to .cpp file to reduce
+ *   header bloat (but measure compilation time impact first).
+ */
+
 #include <cstdint>
 #include <cstddef>
 #include <cstring>

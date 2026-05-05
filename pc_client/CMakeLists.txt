@@ -185,6 +185,29 @@ target_compile_definitions(shm_spsc_test PRIVATE ASIO_STANDALONE)
 
 gtest_discover_tests(shm_spsc_test)
 
+add_executable(session_merge_test
+    tests/session_merge_tests.cpp
+)
+
+target_link_libraries(session_merge_test PRIVATE
+    pc_client_lib
+    gtest_main
+)
+
+if(NOT MSVC AND UNIX)
+    target_link_libraries(session_merge_test PRIVATE pthread)
+endif()
+
+target_include_directories(session_merge_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../protocol
+)
+
+target_compile_definitions(session_merge_test PRIVATE ASIO_STANDALONE)
+
+gtest_discover_tests(session_merge_test)
+
 if(MSVC)
   target_compile_options(host_pc_client PUBLIC "/ZI")
   target_link_options(host_pc_client PUBLIC "/INCREMENTAL")

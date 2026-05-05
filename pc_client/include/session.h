@@ -117,7 +117,7 @@ public:
 
     void add_sample(const Sample& sample);
     void save(const std::string& filepath) const;
-    void save_merged(const std::string& filepath) const { save(filepath); }
+    void save_merged(const std::string& filepath) const;
     size_t sample_count() const {
         std::lock_guard<std::mutex> lock(mutex_);
         return samples_.size();
@@ -138,7 +138,7 @@ public:
         return onboard_samples_.size();
     }
     void save_bundle(const std::string& filepath) const;
-    void save_bundle_merged(const std::string& filepath) const { save_bundle(filepath); }
+    void save_bundle_merged(const std::string& filepath) const;
 
     // Flush interface for periodic data dumps
     void set_flush_dir(const std::string& dir) { flush_dir_ = dir; }

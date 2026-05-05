@@ -63,17 +63,17 @@ static int jetson_freq_show(struct seq_file *m, void *v)
     // Timestamp start
     ts_start = ktime_get_ns();
 
-    // Read CPU cluster 0 (CPUs 0-3)
+    // Read CPU cluster 0 (CPUs 0-3); policy->cur is in kHz, convert to Hz
     policy = cpufreq_cpu_get(0);
     if (policy) {
-        cpu0_freq = policy->cur;
+        cpu0_freq = policy->cur * 1000U;
         cpufreq_cpu_put(policy);
     }
 
     // Read CPU cluster 1 (CPUs 4-5) - Jetson Nano has 2 clusters
     policy = cpufreq_cpu_get(4);
     if (policy) {
-        cpu4_freq = policy->cur;
+        cpu4_freq = policy->cur * 1000U;
         cpufreq_cpu_put(policy);
     } else {
         // If no cluster 1, use cluster 0 value (single-cluster system)

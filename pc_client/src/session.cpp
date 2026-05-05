@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <chrono>
 #include <ctime>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
@@ -285,6 +286,123 @@ Session::OnboardSummary Session::compute_onboard_summary() const {
     summary.energy_j = summary.mean_w * duration_s;
 
     return summary;
+}
+
+namespace {
+
+// Load all chunk JSON files from a directory in filename order and return their samples.
+std::vector<nlohmann::json> load_chunk_samples(const std::string& flush_dir) {
+    std::vector<nlohmann::json> all_samples;
+    if (flush_dir.empty()) {
+        return all_samples;
+    }
+    namespace fs = std::filesystem;
+    std::vector<std::string> paths;
+    std::error_code ec;
+    for (const auto& entry : fs::directory_iterator(flush_dir, ec)) {
+        if (entry.path().extension() == ".json") {
+            paths.push_back(entry.path().string());
+        }
+    }
+    std::sort(paths.begin(), paths.end());
+    for (const auto& p : paths) {
+        try {
+            std::ifstream f(p);
+            if (!f) continue;
+            nlohmann::json chunk = nlohmann::json::parse(f);
+            if (chunk.contains("samples") && chunk["samples"].is_array()) {
+                for (auto& s : chunk["samples"]) {
+                    all_samples.push_back(std::move(s));
+                }
+            }
+        } catch (...) {}
+    }
+    return all_samples;
+}
+
+}  // namespace
+
+void Session::save_merged(const std::string& filepath) const {
+    if (flush_dir_.empty()) {
+        save(filepath);
+        return;
+    }
+
+    nlohmann::json root;
+    root["meta"] = build_meta_json();
+    root["samples"] = nlohmann::json::array();
+
+    for (auto& s : load_chunk_samples(flush_dir_)) {
+        root["samples"].push_back(std::move(s));
+    }
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        for (const auto& s : samples_) {
+            root["samples"].push_back(s);
+        }
+    }
+
+    std::ofstream file(filepath);
+    if (!file) {
+        throw std::runtime_error("Failed to open output file: " + filepath);
+    }
+    file << std::setw(2) << root << std::endl;
+}
+
+void Session::save_bundle_merged(const std::string& filepath) const {
+    if (flush_dir_.empty()) {
+        save_bundle(filepath);
+        return;
+    }
+
+    nlohmann::json root;
+    root["schema_version"] = "power-bundle/v1";
+    root["sources"] = nlohmann::json::object();
+
+    nlohmann::json pico_source;
+    pico_source["format"] = "powermonitor_json/v1";
+    pico_source["enabled"] = true;
+    pico_source["meta"] = build_meta_json();
+    pico_source["samples"] = nlohmann::json::array();
+
+    for (auto& s : load_chunk_samples(flush_dir_)) {
+        pico_source["samples"].push_back(std::move(s));
+    }
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        for (const auto& s : samples_) {
+            pico_source["samples"].push_back(s);
+        }
+    }
+
+    {
+        std::vector<double> powers_w;
+        for (const auto& s : pico_source["samples"]) {
+            if (s.contains("engineering") && s["engineering"].contains("power_w")) {
+                powers_w.push_back(s["engineering"]["power_w"].get<double>());
+            }
+        }
+        if (!powers_w.empty()) {
+            std::sort(powers_w.begin(), powers_w.end());
+            double sum = 0.0;
+            for (double p : powers_w) sum += p;
+            pico_source["summary"]["sample_count"] = powers_w.size();
+            pico_source["summary"]["mean_w"] = sum / powers_w.size();
+            pico_source["summary"]["p50_w"] = powers_w[powers_w.size() / 2];
+            pico_source["summary"]["p95_w"] = powers_w[static_cast<size_t>(0.95 * (powers_w.size() - 1))];
+            double duration_s = static_cast<double>(powers_w.size()) / 1000.0;
+            pico_source["summary"]["energy_j"] = (sum / powers_w.size()) * duration_s;
+        }
+    }
+
+    root["sources"]["pico"] = pico_source;
+    root["sources"]["onboard_cpp"] = build_onboard_source_json();
+
+    std::ofstream file(filepath);
+    if (!file) {
+        throw std::runtime_error("Failed to open output file: " + filepath);
+    }
+    file << std::setw(2) << root << std::endl;
 }
 
 bool Session::flush_to_chunks() {

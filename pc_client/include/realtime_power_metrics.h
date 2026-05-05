@@ -9,7 +9,7 @@ namespace powermonitor {
 namespace client {
 
 constexpr const char* POWER_METRICS_SHM_NAME = "/powermonitor_power_metrics";
-constexpr uint32_t kPowerMetricsVersion = 1;
+constexpr uint32_t kPowerMetricsVersion = 3;
 constexpr size_t kPowerMetricsRingCapacity = 4096;
 
 enum class PowerSampleSource : uint32_t {
@@ -39,11 +39,12 @@ struct RealtimePowerSample {
     uint64_t cpu_cluster1_freq_hz;
     uint64_t emc_freq_hz;
 
+    int64_t gpu_load_pct;
+    int64_t cpu_util_pct[6];
+
     double cpu_temp_c;
     double gpu_temp_c;
-
-    uint64_t reserved0;
-    uint64_t reserved1;
+    double energy_j;  // Pico cumulative energy accumulator in joules; 0.0 for non-Pico sources.
 };
 
 struct RealtimePowerRingSlot {

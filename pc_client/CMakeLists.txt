@@ -42,9 +42,15 @@ FetchContent_Declare(
     GIT_TAG v6.1.9
 )
 
+FetchContent_Declare(
+    RingBuffer
+    GIT_REPOSITORY https://github.com/bugparty/RingBufferCpp.git
+    GIT_TAG main
+)
+
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 
-FetchContent_MakeAvailable(cli11 nlohmann_json yaml-cpp asio googletest ftxui)
+FetchContent_MakeAvailable(cli11 nlohmann_json yaml-cpp asio googletest ftxui RingBuffer)
 
 add_library(serial
     src/serial/serial.cpp
@@ -81,6 +87,7 @@ target_link_libraries(pc_client_lib PUBLIC
     powermonitor_protocol
     serial
     nlohmann_json::nlohmann_json
+    RingBuffer::RingBuffer
 )
 
 target_compile_definitions(pc_client_lib PRIVATE ASIO_STANDALONE)
@@ -153,6 +160,30 @@ target_compile_definitions(pc_client_tests PRIVATE ASIO_STANDALONE)
 enable_testing()
 include(GoogleTest)
 gtest_discover_tests(pc_client_tests)
+
+add_executable(shm_spsc_test
+    tests/shm_spsc_test.cpp
+)
+
+target_link_libraries(shm_spsc_test PRIVATE
+    pc_client_lib
+    gtest_main
+    RingBuffer::RingBuffer
+)
+
+if(NOT MSVC AND UNIX)
+    target_link_libraries(shm_spsc_test PRIVATE pthread rt)
+endif()
+
+target_include_directories(shm_spsc_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../protocol
+)
+
+target_compile_definitions(shm_spsc_test PRIVATE ASIO_STANDALONE)
+
+gtest_discover_tests(shm_spsc_test)
 
 if(MSVC)
   target_compile_options(host_pc_client PUBLIC "/ZI")

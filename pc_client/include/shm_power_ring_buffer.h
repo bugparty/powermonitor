@@ -1,6 +1,9 @@
 #pragma once
 
+#include <mutex>
+
 #include <spsc_ring_buffer.hpp>
+
 #include "realtime_power_metrics.h"
 
 namespace powermonitor {
@@ -19,6 +22,7 @@ public:
                   buffers::ShmOpenMode::create_or_open) {}
 
     void push(const RealtimePowerSample& sample) {
+        std::lock_guard<std::mutex> lock(producer_mutex_);
         buffer_.push_overwrite(sample);
     }
 
@@ -38,6 +42,7 @@ private:
     >;
 
     PowerSpscBuffer buffer_;
+    std::mutex producer_mutex_;
 };
 
 }  // namespace client

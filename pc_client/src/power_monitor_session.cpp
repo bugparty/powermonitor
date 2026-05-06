@@ -1009,6 +1009,7 @@ void PowerMonitorSession::export_pico_power_sample(const Session::Sample& sample
     const PicoEngineeringValues values = compute_pico_engineering_values(session_->get_config(), sample);
 
     RealtimePowerSample power_sample{};
+    power_sample.sequence_num = realtime_power_sequence_.fetch_add(1, std::memory_order_relaxed) + 1;
     power_sample.source = static_cast<uint32_t>(PowerSampleSource::kPico);
     power_sample.flags = sample.flags;
     power_sample.host_timestamp_us = sample.host_timestamp_us;
@@ -1030,6 +1031,7 @@ void PowerMonitorSession::export_onboard_power_sample(const OnboardSample& sampl
     }
 
     RealtimePowerSample power_sample{};
+    power_sample.sequence_num = realtime_power_sequence_.fetch_add(1, std::memory_order_relaxed) + 1;
     power_sample.source = static_cast<uint32_t>(PowerSampleSource::kOnboard);
     power_sample.host_timestamp_us = sample.mono_ns > 0 ? static_cast<uint64_t>(sample.mono_ns / 1000) : 0;
     power_sample.unix_timestamp_us = sample.unix_ns > 0 ? static_cast<uint64_t>(sample.unix_ns / 1000) : 0;

@@ -169,6 +169,10 @@ target_link_libraries(shm_spsc_test PRIVATE
     pc_client_lib
     gtest_main
     RingBuffer::RingBuffer
+    CLI11::CLI11
+    ftxui::screen
+    ftxui::dom
+    ftxui::component
 )
 
 if(NOT MSVC AND UNIX)

@@ -339,6 +339,7 @@ int main(int argc, char **argv) {
     bool list_devices = false;
     bool no_apply_time_offset = false;
     bool debug_time_sync = false;
+    bool no_onboard = false;
 
     auto opt_output = app.add_option("-o,--output", output_path, "Output JSON file path");
     auto opt_config = app.add_option("-c,--config", config_path, "YAML configuration file");
@@ -374,9 +375,9 @@ int main(int argc, char **argv) {
     auto opt_rt_prio = app.add_option("--rt-prio", options.rt_prio, "Real-time priority (SCHED_FIFO)");
 
     // Onboard sampler options
-    app.add_flag("--onboard", options.onboard_enabled, "Enable onboard hwmon power sampling");
+    auto opt_onboard = app.add_flag("--onboard", options.onboard_enabled, "Enable onboard hwmon power sampling");
     // --no-onboard is the explicit negation of --onboard (onboard_enabled defaults to false)
-    app.add_flag("--no-onboard", "Alias for not using --onboard");
+    auto opt_no_onboard = app.add_flag("--no-onboard", no_onboard, "Disable onboard hwmon power sampling");
     app.add_option("--onboard-path", options.onboard_hwmon_path, "Hwmon path (default: /sys/class/hwmon/hwmon1)");
     app.add_option("--onboard-period-us", options.onboard_period_us, "Onboard sampling period in microseconds");
     app.add_option("--onboard-core", options.onboard_cpu_core, "CPU core for onboard sampler thread");
@@ -394,6 +395,12 @@ int main(int argc, char **argv) {
         if (!load_yaml_config(config_path, options)) {
             return 1;
         }
+    }
+    if (opt_onboard->count() > 0) {
+        options.onboard_enabled = true;
+    }
+    if (opt_no_onboard->count() > 0) {
+        options.onboard_enabled = false;
     }
 
     if (opt_output->count() > 0) {

@@ -1,7 +1,5 @@
 #pragma once
 
-#include <array>
-#include <atomic>
 #include <cstddef>
 #include <cstdint>
 
@@ -45,24 +43,6 @@ struct RealtimePowerSample {
     double cpu_temp_c;
     double gpu_temp_c;
     double energy_j;  // Pico cumulative energy accumulator in joules; 0.0 for non-Pico sources.
-};
-
-struct RealtimePowerRingSlot {
-    std::atomic<uint64_t> sequence_guard;
-    RealtimePowerSample sample;
-};
-
-struct RealtimePowerRingHeader {
-    uint32_t version;
-    uint32_t capacity;
-    std::atomic<uint64_t> write_index;
-    std::atomic<uint64_t> dropped_records;
-    std::atomic<uint64_t> writer_pid;
-};
-
-struct RealtimePowerMetricsRegion {
-    RealtimePowerRingHeader header;
-    std::array<RealtimePowerRingSlot, kPowerMetricsRingCapacity> slots;
 };
 
 }  // namespace client

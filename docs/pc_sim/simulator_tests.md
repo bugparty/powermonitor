@@ -19,6 +19,10 @@ Full PC + Device pair connected over a `VirtualLink`. Default link is clean (no 
 
 PC only — no `DeviceNode`. PC→device direction has `drop_prob = 1.0`, so commands never reach the device and no RSP is ever sent. Used to exercise the retransmit/timeout path in isolation.
 
+### `FaultInjectionTest`
+
+PC only — no `DeviceNode`. Clean link in both directions. Provides an `InjectFrame()` helper to inject crafted frames from device→PC direction. Used to test orphan RSP and error RSP detection without interference from a real device.
+
 ---
 
 ## Test Cases
@@ -125,6 +129,38 @@ so virtually every frame is corrupted.
 
 ---
 
+### Orphan RSP / Error RSP tests
+
+These tests use a dedicated `FaultInjectionTest` fixture (PC only, no device) to inject crafted RSP frames directly into the PC's parser.
+
+#### `OrphanRspDetected`
+Injects a RSP frame with `seq = 0x42` (not in the `pending_` map). Verifies that `orphan_rsp_count` is incremented.
+
+**Asserts**: `orphan_rsp_count = 1`, `error_rsp_count = 0`.
+
+---
+
+#### `ErrorRspDetected`
+Sends a PING command (creates pending entry), then injects a RSP with matching seq but `status = ERR_HW (0x05)`.
+
+**Asserts**: `orphan_rsp_count = 0`, `error_rsp_count = 1`, `timeout_count = 0` (command completed by error RSP).
+
+---
+
+#### `OrphanRspDetectedOnMsgidMismatch`
+Sends a PING command, then injects a RSP with matching seq but `orig_msgid = SET_CFG (0x10)` instead of PING.
+
+**Asserts**: `orphan_rsp_count = 1`, `error_rsp_count = 0`.
+
+---
+
+#### `MultipleOrphanRspsCounted`
+Injects 5 orphan RSPs with different seq values. Verifies each is counted.
+
+**Asserts**: `orphan_rsp_count = 5`.
+
+---
+
 ### Timeout / retransmit tests
 
 #### `CommandRetransmitsAndTimesOut`
@@ -161,7 +197,7 @@ Uses `CommandTimeoutTest` fixture. Sends PING and GET_CFG simultaneously, runs f
 | `retransmit_count()` | Pending command deadline hits and a retry is sent |
 | `orphan_rsp_count()` | RSP arrives with no matching pending command, or `orig_msgid` mismatches the pending entry |
 | `error_rsp_count()` | RSP received with `status ≠ 0x00` (non-OK) |
-| `truncated_data_count()` | DATA_SAMPLE payload is shorter than the minimum 37 bytes |
+| `truncated_data_count()` | DATA_SAMPLE payload is shorter than the minimum 41 bytes |
 | `get_rx_count(msgid)` | Per-MSGID receive counter (all frame types) |
 
 **Config accessors** (updated from the last parsed `CFG_REPORT`):
@@ -173,22 +209,22 @@ Uses `CommandTimeoutTest` fixture. Sends PING and GET_CFG simultaneously, runs f
 
 ## DeviceNode DATA_SAMPLE Frame Layout
 
-`DeviceNode::send_data_sample()` produces a 37-byte payload:
+`DeviceNode::send_data_sample()` produces a 41-byte payload:
 
 | Offset | Size | Field |
 |--------|------|-------|
-| 0–3 | 4 B | `timestamp_us` (relative to stream start) |
-| 4–11 | 8 B | `timestamp_unix_us` (monotonic + epoch_offset) |
-| 12 | 1 B | flags |
-| 13–15 | 3 B | vbus20 (20-bit LE-packed) |
-| 16–18 | 3 B | vshunt20 (20-bit signed LE-packed) |
-| 19–21 | 3 B | current20 (20-bit signed LE-packed) |
-| 22–24 | 3 B | power24 (not modelled — zeros) |
-| 25–26 | 2 B | temp16 (signed, raw INA228 die temp) |
-| 27–31 | 5 B | energy40 (not modelled — zeros) |
-| 32–36 | 5 B | charge40 (not modelled — zeros) |
+| 0–7 | 8 B | `timestamp_unix_us` (monotonic + epoch_offset) |
+| 8–15 | 8 B | `timestamp_us` (relative to stream start, 64-bit) |
+| 16 | 1 B | flags |
+| 17–19 | 3 B | vbus20 (20-bit LE-packed) |
+| 20–22 | 3 B | vshunt20 (20-bit signed LE-packed) |
+| 23–25 | 3 B | current20 (20-bit signed LE-packed) |
+| 26–28 | 3 B | power24 (not modelled — zeros) |
+| 29–30 | 2 B | temp16 (signed, raw INA228 die temp) |
+| 31–35 | 5 B | energy40 (not modelled — zeros) |
+| 36–40 | 5 B | charge40 (not modelled — zeros) |
 
-`PCNode::handle_data_sample()` requires `frame.data.size() >= 37`; frames shorter than this
+`PCNode::handle_data_sample()` requires `frame.data.size() >= 41`; frames shorter than this
 increment `truncated_data_count` and are discarded.
 
 ---
@@ -223,7 +259,7 @@ Drop and flip are applied independently per chunk, per direction.
 | Multiple simultaneous commands each timing out independently | ✅ |
 | CRC error detection with 5% chunk drop | ✅ |
 | CRC error detection with 1% bit flip | ✅ |
-| Error counters for silent-drop paths (`orphan_rsp`, `error_rsp`, `truncated_data`) | ✅ counters exist; fault-injection tests for `error_rsp` / `orphan_rsp` pending |
+| Error counters for silent-drop paths (`orphan_rsp`, `error_rsp`, `truncated_data`) | ✅ all covered by fault-injection tests |
 | SET_CFG during streaming (seq gap side-effect) | ⬜ not yet covered |
 | High packet loss (≥ 50%) | ⬜ not yet covered |
 
@@ -242,7 +278,7 @@ pwsh workflow.ps1 -Verbose
 ./build_linux/bin/pc_sim_test --gtest_filter=PowerMonitorTest.DataSeqWraparoundNoFalseDrops
 ```
 
-All 49 tests must pass before committing.
+All 61 tests must pass before committing.
 
 ---
 

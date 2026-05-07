@@ -1,16 +1,10 @@
 #ifndef DEVICE_PROTOCOL_FRAME_DEFS_HPP
 #define DEVICE_PROTOCOL_FRAME_DEFS_HPP
 
+#include "../../protocol/protocol_constants.h"
 #include <cstdint>
 
 namespace protocol {
-
-// Start of Frame bytes
-constexpr uint8_t kSof0 = 0xAA;
-constexpr uint8_t kSof1 = 0x55;
-
-// Protocol version
-constexpr uint8_t kProtoVersion = 0x01;
 
 // Maximum payload length for RECEIVING frames (LEN field, includes MSGID).
 // Device only receives CMD frames from PC, which are small (max ~10 bytes).
@@ -24,57 +18,8 @@ constexpr uint16_t kMaxTxPayloadLen = 1025;
 // Frame header size (VER + TYPE + FLAGS + SEQ + LEN)
 constexpr size_t kHeaderSize = 6;
 
-// Frame type (TYPE field)
-enum class FrameType : uint8_t {
-    kCmd  = 0x01,  // PC -> Device: Control command
-    kRsp  = 0x02,  // Device -> PC: Command response
-    kData = 0x03,  // Device -> PC: Data stream (no ACK)
-    kEvt  = 0x04,  // Device -> PC: Async event
-};
-
-// Message IDs (MSGID field)
-enum class MsgId : uint8_t {
-    // Management
-    kPing        = 0x01,
-    kTimeSync    = 0x05,
-    kTimeAdjust  = 0x06,
-    kTimeSet     = 0x07,
-
-    // Configuration
-    kSetCfg      = 0x10,
-    kGetCfg      = 0x11,
-
-    // Debug
-    kRegRead     = 0x20,
-    kRegWrite    = 0x21,
-
-    // Stream control
-    kStreamStart = 0x30,
-    kStreamStop  = 0x31,
-
-    // Data
-    kDataSample  = 0x80,
-
-    // Events
-    kEvtAlert    = 0x90,
-    kCfgReport   = 0x91,
-    kStatsReport = 0x92,
-    kTextReport      = 0x93,
-    kTimeSyncRequest = 0x94,
-};
-
-// Response status codes
-enum class Status : uint8_t {
-    kOk         = 0x00,  // Success
-    kErrCrc     = 0x01,  // CRC verification failed
-    kErrLen     = 0x02,  // Invalid packet length
-    kErrUnkCmd  = 0x03,  // Unknown or unsupported MSGID
-    kErrParam   = 0x04,  // Parameter out of range
-    kErrHw      = 0x05,  // Hardware fault (e.g., I2C NACK)
-};
-
 // Parsed frame structure (fixed-size, no dynamic allocation)
-struct Frame {
+struct FixedFrame {
     uint8_t ver;
     FrameType type;
     uint8_t flags;
@@ -86,6 +31,7 @@ struct Frame {
 };
 
 // DATA_SAMPLE payload structure (41 bytes, packed).
+// See docs/protocol/uart_protocol.md section 5.1.1 for wire format documentation.
 // Field order is the wire/protocol order: timestamp_unix_us (8), timestamp_us (8),
 // flags (1), vbus20[3], vshunt20[3], current20[3], then dietemp16 (int16_t) last.
 // Because this struct is packed, do not apply manual alignment-based reordering.
@@ -104,7 +50,8 @@ struct DataSamplePayload {
 
 static_assert(sizeof(DataSamplePayload) == 41, "DataSamplePayload must be 41 bytes");
 
-// CFG_REPORT payload structure
+// CFG_REPORT payload structure (16 bytes).
+// See docs/protocol/uart_protocol.md section 5.1.2 for wire format documentation.
 struct CfgReportPayload {
     uint8_t proto_ver;       // Protocol version (0x01)
     uint8_t flags;           // Bit0: streaming_on, Bit1: cal_valid, Bit2: adcrange
@@ -118,7 +65,8 @@ struct CfgReportPayload {
 
 static_assert(sizeof(CfgReportPayload) == 16, "CfgReportPayload must be 16 bytes");
 
-// STATS_REPORT payload structure
+// STATS_REPORT payload structure (31 bytes).
+// See docs/protocol/uart_protocol.md section 5.1.2.1 for wire format documentation.
 struct StatsReportPayload {
     uint16_t report_seq;        // Monotonic report sequence (wrap-around)
     uint32_t samples_produced;  // Total samples produced on device side
@@ -162,12 +110,14 @@ struct RegWriteCmdPayload {
     uint16_t reg_value;
 } __attribute__((packed));
 
-// TIME_SYNC command payload
+// TIME_SYNC command payload.
+// See docs/protocol/uart_protocol.md section 5.2.2 for wire format documentation.
 struct TimeSyncPayload {
     uint64_t t1;
 } __attribute__((packed));
 
-// TIME_SYNC response payload
+// TIME_SYNC response payload.
+// See docs/protocol/uart_protocol.md section 5.2.2 for wire format documentation.
 struct TimeSyncResponsePayload {
     uint8_t orig_msgid;
     uint8_t status;
@@ -176,7 +126,8 @@ struct TimeSyncResponsePayload {
     uint64_t t3;
 } __attribute__((packed));
 
-// TIME_ADJUST command payload
+// TIME_ADJUST command payload.
+// See docs/protocol/uart_protocol.md section 5.2.3 for wire format documentation.
 struct TimeAdjustPayload {
     int64_t offset_us;
 } __attribute__((packed));

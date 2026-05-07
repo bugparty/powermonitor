@@ -3,14 +3,14 @@
 ## Quick Start
 
 ```bash
-# One-command test (recommended)
-./test.sh
+# One-command test (recommended) — requires PowerShell
+pwsh workflow.ps1
 
 # Clean build and test
-./test.sh --clean
+pwsh workflow.ps1 -Clean
 
 # Verbose output
-./test.sh --verbose
+pwsh workflow.ps1 -Verbose
 ```
 
 ## Web Viewer Only Changes
@@ -150,7 +150,7 @@ cd build && ctest --verbose
 
 1. **Check detailed output**:
    ```bash
-   ./test.sh --verbose
+   pwsh workflow.ps1 -Verbose
    ```
 
 2. **Look for the failure**:
@@ -166,7 +166,7 @@ cd build && ctest --verbose
 
 1. **Clean and rebuild**:
    ```bash
-   ./test.sh --clean
+   pwsh workflow.ps1 -Clean
    ```
 
 2. **Check compiler errors**:
@@ -176,19 +176,14 @@ cd build && ctest --verbose
 
 ### Script Won't Run
 
-1. **Make executable**:
+1. **Ensure PowerShell is available** (Windows: PowerShell 5.1+, Linux/macOS: `pwsh` from Microsoft):
    ```bash
-   chmod +x test.sh
+   pwsh --version
    ```
 
-2. **Fix line endings** (if on Windows):
+2. **Run with explicit path** (WSL/Linux):
    ```bash
-   dos2unix test.sh
-   ```
-
-3. **Run with bash**:
-   ```bash
-   bash test.sh
+   pwsh ./workflow.ps1 -Verbose
    ```
 
 ## Continuous Integration
@@ -197,7 +192,7 @@ For CI/CD pipelines:
 
 ```bash
 # Exit with error code if tests fail
-./test.sh --clean || exit 1
+pwsh workflow.ps1 || exit 1
 ```
 
 ## Test Coverage
@@ -210,7 +205,7 @@ Current test coverage (27 tests total):
 - ✅ Data streaming (DATA_SAMPLE at 1kHz)
 - ✅ Error detection (CRC validation)
 - ✅ Fault tolerance (packet drops, bit flips)
-- ✅ Protocol state machine (all 6 states, 2+ times each)
+- ✅ Protocol state machine (all 4 states, 2+ times each)
 - ✅ Parser robustness (fragmentation, corruption)
 - ✅ Resync and error recovery
 
@@ -255,7 +250,7 @@ TEST_F(ParserStateMachineTest, YourTestName) {
 }
 ```
 
-After adding tests, run `./test.sh` to verify they pass.
+After adding tests, run `pwsh workflow.ps1` to verify they pass.
 
 ## Performance Metrics
 

@@ -1,0 +1,23 @@
+<!doctype html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-sans);padding:20px}
+  .row{display:flex;gap:14px;align-items:flex-end}
+  .unit{display:flex;flex-direction:column;align-items:center;gap:6px}
+  .box{background:var(--panel);border:1px solid var(--line);border-radius:8px}
+  .label{font-family:"JetBrains Mono",monospace;font-size:10px;color:var(--muted)}
+</style></head><body>
+<div class="row">
+  <div class="unit"><div class="box" style="width:4px;height:4px;border-radius:2px"></div><span class="label">4</span></div>
+  <div class="unit"><div class="box" style="width:6px;height:6px;border-radius:2px"></div><span class="label">6</span></div>
+  <div class="unit"><div class="box" style="width:8px;height:8px"></div><span class="label">8</span></div>
+  <div class="unit"><div class="box" style="width:10px;height:10px"></div><span class="label">10</span></div>
+  <div class="unit"><div class="box" style="width:12px;height:12px"></div><span class="label">12</span></div>
+  <div class="unit"><div class="box" style="width:14px;height:14px"></div><span class="label">14</span></div>
+  <div class="unit"><div class="box" style="width:16px;height:16px"></div><span class="label">16</span></div>
+  <div style="margin-left:20px;align-self:center;color:var(--muted);font-size:12px;max-width:320px">
+    2 px half-step grid. No 24 / 32 px — layouts stay tight. Panel padding <code style="font-family:'JetBrains Mono',monospace;color:var(--text)">10px 12px</code>, rows <code style="font-family:'JetBrains Mono',monospace;color:var(--text)">10px 16px</code>.
+  </div>
+</div>
+</body></html>

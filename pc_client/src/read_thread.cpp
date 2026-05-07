@@ -1,4 +1,5 @@
 #include "read_thread.h"
+#include "thread_affinity.h"
 
 #include <chrono>
 #include <iostream>
@@ -18,12 +19,14 @@ namespace client {
 
 ReadThread::ReadThread(serial::Serial* serial, SampleQueue* sample_q,
                        ResponseQueue* response_q, std::atomic<bool>* stop_flag,
-                       ThreadStats* stats)
+                       ThreadStats* stats, int core_id, int rt_prio)
     : serial_(serial),
       sample_q_(sample_q),
       response_q_(response_q),
       stop_flag_(stop_flag),
-      stats_(stats) {
+      stats_(stats),
+      core_id_(core_id),
+      rt_prio_(rt_prio) {
 }
 
 ReadThread::~ReadThread() {
@@ -68,12 +71,12 @@ struct ParserState {
     ThreadStats* stats = nullptr;
 
     ParserState(ResponseQueue* rq, SampleQueue* sq, ThreadStats* st)
-        : parser([this](const protocol::Frame& frame, uint64_t receive_time_us) {
+        : parser([this](const protocol::DynamicFrame& frame, uint64_t receive_time_us) {
             this->on_frame(frame, receive_time_us);
           }),
           response_q(rq), sample_q(sq), stats(st) {}
 
-    void on_frame(const protocol::Frame& frame, uint64_t receive_time_us) {
+    void on_frame(const protocol::DynamicFrame& frame, uint64_t receive_time_us) {
         stats->rx_counts[frame.msgid].fetch_add(1, std::memory_order_relaxed);
 
         // EMA and min/max of inter-packet interval (average delay between consecutive USB packets)
@@ -119,10 +122,10 @@ struct ParserState {
             }
         } else if (frame.type == protocol::FrameType::kEvt && frame.msgid == kMsgTextReport) {
             // Route to control queue; UI/log layer decides how to display it.
-            response_q->push(protocol::Frame(frame));
+            response_q->push(protocol::DynamicFrame(frame));
         } else {
             // Control frames (RSP, CFG_REPORT, etc.)
-            response_q->push(protocol::Frame(frame));
+            response_q->push(protocol::DynamicFrame(frame));
         }
     }
 
@@ -138,6 +141,14 @@ struct ParserState {
 void ReadThread::run() {
 #ifdef _WIN32
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
+#else
+    if (core_id_ >= 0 && rt_prio_ >= 0) {
+        ThreadAffinity::SetRealtimeWithAffinity(core_id_, rt_prio_);
+    } else if (core_id_ >= 0) {
+        ThreadAffinity::SetCpuAffinity(core_id_);
+    } else if (rt_prio_ >= 0) {
+        ThreadAffinity::SetRealtimePriority(rt_prio_);
+    }
 #endif
     ParserState state(response_q_, sample_q_, stats_);
 

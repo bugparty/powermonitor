@@ -27,7 +27,7 @@ constexpr uint8_t kStatusOk = 0x00;
 
 DeviceNode::DeviceNode(sim::VirtualLinkEndpoint *endpoint)
     : endpoint_(endpoint),
-      parser_([this](const protocol::Frame &frame, uint64_t receive_time_us) {
+      parser_([this](const protocol::DynamicFrame &frame, uint64_t receive_time_us) {
           on_frame(frame, receive_time_us);
       }) {}
 
@@ -57,7 +57,7 @@ void DeviceNode::tick(uint64_t now_us) {
     }
 }
 
-void DeviceNode::on_frame(const protocol::Frame &frame, uint64_t receive_time_us) {
+void DeviceNode::on_frame(const protocol::DynamicFrame &frame, uint64_t receive_time_us) {
     ++rx_counts_[frame.msgid];
     if (frame.type == protocol::FrameType::kCmd) {
         // Use receive_time_us for accurate T2 capture in time sync
@@ -65,7 +65,7 @@ void DeviceNode::on_frame(const protocol::Frame &frame, uint64_t receive_time_us
     }
 }
 
-void DeviceNode::handle_cmd(const protocol::Frame &frame, uint64_t now_us) {
+void DeviceNode::handle_cmd(const protocol::DynamicFrame &frame, uint64_t now_us) {
     switch (frame.msgid) {
     case kMsgPing: {
         send_rsp(frame.seq, frame.msgid, kStatusOk, {}, now_us);

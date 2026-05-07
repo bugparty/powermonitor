@@ -109,6 +109,17 @@ struct ConfigOptions {
     std::vector<std::string> run_tags;
     std::string output_path;
     std::string config_path;
+    int read_thread_core = -1;
+    int proc_thread_core = -1;
+    int rt_prio = -1;
+
+    // Onboard sampler options
+    bool onboard_enabled = false;
+    std::string onboard_hwmon_path = "/sys/class/hwmon/hwmon1";
+    uint64_t onboard_period_us = 1000;
+    int onboard_cpu_core = -1;
+    int onboard_rt_prio = -1;
+    std::string onboard_jetson_freq_path = "/proc/jetson_freqs";
 };
 
 bool parse_vid_pid(const std::string &hardware_id, uint16_t &vid, uint16_t &pid) {
@@ -203,6 +214,40 @@ bool load_yaml_config(const std::string &path, ConfigOptions &options) {
         }
     }
 
+    if (const auto affinity = root["affinity"]) {
+        if (affinity["read_thread_core"] && affinity["read_thread_core"].IsScalar()) {
+            options.read_thread_core = affinity["read_thread_core"].as<int>();
+        }
+        if (affinity["proc_thread_core"] && affinity["proc_thread_core"].IsScalar()) {
+            options.proc_thread_core = affinity["proc_thread_core"].as<int>();
+        }
+        if (affinity["rt_prio"] && affinity["rt_prio"].IsScalar()) {
+            options.rt_prio = affinity["rt_prio"].as<int>();
+        }
+    }
+
+    // Parse onboard sampler configuration
+    if (const auto onboard = root["onboard"]) {
+        if (onboard["enabled"] && onboard["enabled"].IsScalar()) {
+            options.onboard_enabled = onboard["enabled"].as<bool>();
+        }
+        if (onboard["hwmon_path"] && onboard["hwmon_path"].IsScalar()) {
+            options.onboard_hwmon_path = onboard["hwmon_path"].as<std::string>();
+        }
+        if (onboard["period_us"] && onboard["period_us"].IsScalar()) {
+            options.onboard_period_us = onboard["period_us"].as<uint64_t>();
+        }
+        if (onboard["cpu_core"] && onboard["cpu_core"].IsScalar()) {
+            options.onboard_cpu_core = onboard["cpu_core"].as<int>();
+        }
+        if (onboard["rt_prio"] && onboard["rt_prio"].IsScalar()) {
+            options.onboard_rt_prio = onboard["rt_prio"].as<int>();
+        }
+        if (onboard["jetson_freq_path"] && onboard["jetson_freq_path"].IsScalar()) {
+            options.onboard_jetson_freq_path = onboard["jetson_freq_path"].as<std::string>();
+        }
+    }
+
     return true;
 }
 
@@ -294,6 +339,7 @@ int main(int argc, char **argv) {
     bool list_devices = false;
     bool no_apply_time_offset = false;
     bool debug_time_sync = false;
+    bool no_onboard = false;
 
     auto opt_output = app.add_option("-o,--output", output_path, "Output JSON file path");
     auto opt_config = app.add_option("-c,--config", config_path, "YAML configuration file");
@@ -324,6 +370,21 @@ int main(int argc, char **argv) {
     app.add_flag("--no-apply-time-offset", no_apply_time_offset,
                  "Do not send TIME_ADJUST after time sync (measure offset only, do not correct device clock)");
 
+    auto opt_read_core = app.add_option("--read-thread-core", options.read_thread_core, "CPU core for serial read thread");
+    auto opt_proc_core = app.add_option("--proc-thread-core", options.proc_thread_core, "CPU core for data processing thread");
+    auto opt_rt_prio = app.add_option("--rt-prio", options.rt_prio, "Real-time priority (SCHED_FIFO)");
+
+    // Onboard sampler options
+    auto opt_onboard = app.add_flag("--onboard", options.onboard_enabled, "Enable onboard hwmon power sampling");
+    // --no-onboard is the explicit negation of --onboard (onboard_enabled defaults to false)
+    auto opt_no_onboard = app.add_flag("--no-onboard", no_onboard, "Disable onboard hwmon power sampling");
+    app.add_option("--onboard-path", options.onboard_hwmon_path, "Hwmon path (default: /sys/class/hwmon/hwmon1)");
+    app.add_option("--onboard-period-us", options.onboard_period_us, "Onboard sampling period in microseconds");
+    app.add_option("--onboard-core", options.onboard_cpu_core, "CPU core for onboard sampler thread");
+    app.add_option("--onboard-rt-prio", options.onboard_rt_prio, "RT priority for onboard sampler");
+    app.add_option("--jetson-freq-path", options.onboard_jetson_freq_path,
+                   "Path to /proc/jetson_freqs (default: /proc/jetson_freqs)");
+
     try {
         app.parse(argc, argv);
     } catch (const CLI::ParseError &e) {
@@ -334,6 +395,12 @@ int main(int argc, char **argv) {
         if (!load_yaml_config(config_path, options)) {
             return 1;
         }
+    }
+    if (opt_onboard->count() > 0) {
+        options.onboard_enabled = true;
+    }
+    if (opt_no_onboard->count() > 0) {
+        options.onboard_enabled = false;
     }
 
     if (opt_output->count() > 0) {
@@ -523,6 +590,15 @@ int main(int argc, char **argv) {
     session_options.no_apply_time_offset = options.no_apply_time_offset;
     session_options.vid_hex = hex_u16(options.vid);
     session_options.pid_hex = hex_u16(options.pid);
+    session_options.read_thread_core = options.read_thread_core;
+    session_options.proc_thread_core = options.proc_thread_core;
+    session_options.rt_prio = options.rt_prio;
+    session_options.onboard_enabled = options.onboard_enabled;
+    session_options.onboard_hwmon_path = options.onboard_hwmon_path;
+    session_options.onboard_period_us = options.onboard_period_us;
+    session_options.onboard_cpu_core = options.onboard_cpu_core;
+    session_options.onboard_rt_prio = options.onboard_rt_prio;
+    session_options.onboard_jetson_freq_path = options.onboard_jetson_freq_path;
 
     powermonitor::client::PowerMonitorSession session(session_options);
     try {

@@ -1,3 +1,4 @@
+cmake_minimum_required(VERSION 3.16)
 project(powermonitor_client LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -41,9 +42,15 @@ FetchContent_Declare(
     GIT_TAG v6.1.9
 )
 
+FetchContent_Declare(
+    RingBuffer
+    GIT_REPOSITORY https://github.com/bugparty/RingBufferCpp.git
+    GIT_TAG main
+)
+
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 
-FetchContent_MakeAvailable(cli11 nlohmann_json yaml-cpp asio googletest ftxui)
+FetchContent_MakeAvailable(cli11 nlohmann_json yaml-cpp asio googletest ftxui RingBuffer)
 
 add_library(serial
     src/serial/serial.cpp
@@ -71,12 +78,16 @@ add_library(pc_client_lib
     src/response_queue.cpp
     src/read_thread.cpp
     src/session.cpp
+    src/thread_affinity.cpp
+    src/onboard_sampler.cpp
+    src/onboard_sample_queue.cpp
 )
 
 target_link_libraries(pc_client_lib PUBLIC
     powermonitor_protocol
     serial
     nlohmann_json::nlohmann_json
+    RingBuffer::RingBuffer
 )
 
 target_compile_definitions(pc_client_lib PRIVATE ASIO_STANDALONE)
@@ -150,6 +161,57 @@ enable_testing()
 include(GoogleTest)
 gtest_discover_tests(pc_client_tests)
 
+add_executable(shm_spsc_test
+    tests/shm_spsc_test.cpp
+)
+
+target_link_libraries(shm_spsc_test PRIVATE
+    pc_client_lib
+    gtest_main
+    RingBuffer::RingBuffer
+    CLI11::CLI11
+    ftxui::screen
+    ftxui::dom
+    ftxui::component
+)
+
+if(NOT MSVC AND UNIX)
+    target_link_libraries(shm_spsc_test PRIVATE pthread rt)
+endif()
+
+target_include_directories(shm_spsc_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../protocol
+)
+
+target_compile_definitions(shm_spsc_test PRIVATE ASIO_STANDALONE)
+
+gtest_discover_tests(shm_spsc_test)
+
+add_executable(session_merge_test
+    tests/session_merge_tests.cpp
+)
+
+target_link_libraries(session_merge_test PRIVATE
+    pc_client_lib
+    gtest_main
+)
+
+if(NOT MSVC AND UNIX)
+    target_link_libraries(session_merge_test PRIVATE pthread)
+endif()
+
+target_include_directories(session_merge_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../protocol
+)
+
+target_compile_definitions(session_merge_test PRIVATE ASIO_STANDALONE)
+
+gtest_discover_tests(session_merge_test)
+
 if(MSVC)
   target_compile_options(host_pc_client PUBLIC "/ZI")
   target_link_options(host_pc_client PUBLIC "/INCREMENTAL")
@@ -157,4 +219,20 @@ if(MSVC)
   target_link_options(pc_time_sync_demo PUBLIC "/INCREMENTAL")
   target_compile_options(pc_client_tests PUBLIC "/ZI")
   target_link_options(pc_client_tests PUBLIC "/INCREMENTAL")
+endif()
+
+# CPU Affinity Benchmark (Linux-only)
+if(NOT MSVC AND UNIX)
+    add_executable(cpu_affinity_benchmark
+        ${CMAKE_CURRENT_SOURCE_DIR}/../benchmarks/cpu_affinity_benchmark.cpp
+        src/thread_affinity.cpp
+    )
+
+    target_include_directories(cpu_affinity_benchmark PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+
+    target_link_libraries(cpu_affinity_benchmark PRIVATE pthread rt)
+
+    target_compile_options(cpu_affinity_benchmark PRIVATE -O2)
 endif()

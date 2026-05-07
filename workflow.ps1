@@ -386,17 +386,35 @@ if ($BuildDevice -or $FlashPico) {
 
             while ($Elapsed -lt $MaxWaitSeconds) {
                 $PicoDrive = $null
-                Get-Volume | Where-Object { $_.FileSystemLabel -eq "RPI-RP2" } | ForEach-Object {
-                    $PicoDrive = $_.DriveLetter
-                    if ($PicoDrive) {
-                        $PicoDrive = $PicoDrive + ":"
+                if ($CurrentIsLinux) {
+                    # Linux: check common automount locations
+                    $UserName = $env:USER
+                    $LinuxCandidates = @(
+                        "/media/$UserName/RPI-RP2",
+                        "/run/media/$UserName/RPI-RP2",
+                        "/mnt/RPI-RP2"
+                    )
+                    foreach ($Candidate in $LinuxCandidates) {
+                        if (Test-Path $Candidate) {
+                            $PicoDrive = $Candidate
+                            break
+                        }
                     }
                 }
-                if (-not $PicoDrive) {
-                    $drives = Get-WmiObject -Class Win32_LogicalDisk -ErrorAction SilentlyContinue | Where-Object { $_.VolumeName -eq "RPI-RP2" }
-                    foreach ($drive in $drives) {
-                        $PicoDrive = $drive.DeviceID
-                        break
+                else {
+                    # Windows: use Get-Volume / WMI
+                    Get-Volume | Where-Object { $_.FileSystemLabel -eq "RPI-RP2" } | ForEach-Object {
+                        $PicoDrive = $_.DriveLetter
+                        if ($PicoDrive) {
+                            $PicoDrive = $PicoDrive + ":"
+                        }
+                    }
+                    if (-not $PicoDrive) {
+                        $drives = Get-WmiObject -Class Win32_LogicalDisk -ErrorAction SilentlyContinue | Where-Object { $_.VolumeName -eq "RPI-RP2" }
+                        foreach ($drive in $drives) {
+                            $PicoDrive = $drive.DeviceID
+                            break
+                        }
                     }
                 }
                 if ($PicoDrive) {

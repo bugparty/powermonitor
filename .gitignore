@@ -1,5 +1,5 @@
 # Build directories
-build/
+build/**/*
 build_pc/
 cmake-build-*/
 build_pc_test/
@@ -55,3 +55,8 @@ Thumbs.db
 linuxbuild/
 build_linux/
 build_vs/
+GacUI-master
+._.DS_Store
+
+# Claude Code worktrees and settings
+.claude/

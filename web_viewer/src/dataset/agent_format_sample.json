@@ -1,0 +1,171 @@
+{
+  "schema_version": "2.0",
+  "meta": {
+    "schema_version": "2.0",
+    "protocol_version": "1",
+    "config": {
+      "stream_period_us": 10000
+    },
+    "scenario": "minimal format sample for agents",
+    "has_power": true,
+    "has_latency": true,
+    "has_freqs": true,
+    "has_timespans": true
+  },
+  "sources": {
+    "pico": {
+      "samples": [
+        {
+          "seq": 0,
+          "device_timestamp_unix_us": 1000000,
+          "engineering": {
+            "vbus_v": 12.04,
+            "current_a": 0.38,
+            "power_w": 4.5752,
+            "temp_c": 34.8,
+            "vshunt_v": 0.038,
+            "charge_c": 0.0038,
+            "energy_j": 0.0458
+          },
+          "latency": {
+            "m2d_ns": 4100000,
+            "c2d_ns": 62000000,
+            "p2d_ns": 1800000,
+            "r2d_ns": 11200000
+          },
+          "freqs": {
+            "cpu_cluster0_hz": 729600000,
+            "cpu_cluster1_hz": 1420800000,
+            "gpu_hz": 306000000,
+            "emc_hz": 1600000000
+          }
+        },
+        {
+          "seq": 1,
+          "device_timestamp_unix_us": 1010000,
+          "engineering": {
+            "vbus_v": 12.02,
+            "current_a": 0.57,
+            "power_w": 6.8514,
+            "temp_c": 35.4,
+            "vshunt_v": 0.057,
+            "charge_c": 0.0095,
+            "energy_j": 0.1143
+          },
+          "latency": {
+            "m2d_ns": 6900000,
+            "c2d_ns": 91000000,
+            "p2d_ns": 2300000,
+            "r2d_ns": 15600000
+          },
+          "freqs": {
+            "cpu_cluster0_hz": 1190400000,
+            "cpu_cluster1_hz": 1804800000,
+            "gpu_hz": 612000000,
+            "emc_hz": 2133000000
+          }
+        },
+        {
+          "seq": 2,
+          "device_timestamp_unix_us": 1020000,
+          "engineering": {
+            "vbus_v": 11.99,
+            "current_a": 0.84,
+            "power_w": 10.0716,
+            "temp_c": 36.1,
+            "vshunt_v": 0.084,
+            "charge_c": 0.0179,
+            "energy_j": 0.215
+          },
+          "latency": {
+            "m2d_ns": 9800000,
+            "c2d_ns": 134000000,
+            "p2d_ns": 3100000,
+            "r2d_ns": 21400000
+          },
+          "freqs": {
+            "cpu_cluster0_hz": 1420800000,
+            "cpu_cluster1_hz": 2201600000,
+            "gpu_hz": 918000000,
+            "emc_hz": 3199000000
+          }
+        },
+        {
+          "seq": 3,
+          "device_timestamp_unix_us": 1030000,
+          "engineering": {
+            "vbus_v": 12.01,
+            "current_a": 0.51,
+            "power_w": 6.1251,
+            "temp_c": 35.7,
+            "vshunt_v": 0.051,
+            "charge_c": 0.023,
+            "energy_j": 0.2762
+          },
+          "latency": {
+            "m2d_ns": 5600000,
+            "c2d_ns": 73000000,
+            "p2d_ns": 2100000,
+            "r2d_ns": 13200000
+          },
+          "freqs": {
+            "cpu_cluster0_hz": 729600000,
+            "cpu_cluster1_hz": 1420800000,
+            "gpu_hz": 408000000,
+            "emc_hz": 1600000000
+          }
+        }
+      ]
+    }
+  },
+  "timespans": {
+    "pipeline": {
+      "label": "pipeline spans",
+      "lane_labels": [
+        "capture",
+        "compute",
+        "render"
+      ],
+      "spans": [
+        {
+          "id": "capture_0",
+          "lane": 0,
+          "start_us": 1000500,
+          "end_us": 1009000,
+          "color": "#06b6d4",
+          "label": "capture",
+          "metadata": {
+            "frame": 0
+          }
+        },
+        {
+          "id": "compute_0",
+          "lane": 1,
+          "start_us": 1008000,
+          "end_us": 1024000,
+          "color": "#a855f7",
+          "label": "compute",
+          "metadata": {
+            "iteration_no": 18
+          }
+        },
+        {
+          "id": "compute_overlap_1",
+          "lane": 1,
+          "start_us": 1018000,
+          "end_us": 1031000,
+          "color": "#f59e0b",
+          "label": "overlap"
+        },
+        {
+          "id": "render_0",
+          "lane": 2,
+          "start_us": 1025000,
+          "end_us": 1033000,
+          "color": "#22c55e",
+          "label": "render"
+        }
+      ]
+    }
+  }
+}

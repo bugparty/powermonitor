@@ -33,7 +33,7 @@ int64_t signed_diff_u64(uint64_t lhs, uint64_t rhs) {
 
 PCNode::PCNode(sim::VirtualLinkEndpoint *endpoint)
     : endpoint_(endpoint),
-      parser_([this](const protocol::Frame &frame, uint64_t receive_time_us) {
+      parser_([this](const protocol::DynamicFrame &frame, uint64_t receive_time_us) {
           on_frame(frame, receive_time_us);
       }) {}
 
@@ -124,7 +124,7 @@ void PCNode::send_cmd(uint8_t msgid, const std::vector<uint8_t> &payload, uint64
               << " seq=" << static_cast<int>(seq) << std::dec << "\n";
 }
 
-void PCNode::on_frame(const protocol::Frame &frame, uint64_t receive_time_us) {
+void PCNode::on_frame(const protocol::DynamicFrame &frame, uint64_t receive_time_us) {
     ++rx_counts_[frame.msgid];
     if (frame.type == protocol::FrameType::kRsp) {
         handle_rsp(frame, receive_time_us);
@@ -144,7 +144,7 @@ void PCNode::on_frame(const protocol::Frame &frame, uint64_t receive_time_us) {
     }
 }
 
-void PCNode::handle_rsp(const protocol::Frame &frame, uint64_t receive_time_us) {
+void PCNode::handle_rsp(const protocol::DynamicFrame &frame, uint64_t receive_time_us) {
     if (frame.data.size() < 2) {
         return;
     }
@@ -188,7 +188,7 @@ void PCNode::handle_rsp(const protocol::Frame &frame, uint64_t receive_time_us) 
     }
 }
 
-void PCNode::handle_cfg_report(const protocol::Frame &frame) {
+void PCNode::handle_cfg_report(const protocol::DynamicFrame &frame) {
     if (frame.data.size() < 16) {
         return;
     }
@@ -208,7 +208,7 @@ void PCNode::handle_cfg_report(const protocol::Frame &frame) {
               << stream_mask_ << std::dec << "\n";
 }
 
-void PCNode::handle_text_report(const protocol::Frame &frame) {
+void PCNode::handle_text_report(const protocol::DynamicFrame &frame) {
     if (frame.data.empty()) {
         return;
     }
@@ -216,7 +216,7 @@ void PCNode::handle_text_report(const protocol::Frame &frame) {
     std::cout << "TEXT_REPORT len=" << frame.data.size() << " text=\"" << text << "\"\n";
 }
 
-void PCNode::handle_data_sample(const protocol::Frame &frame) {
+void PCNode::handle_data_sample(const protocol::DynamicFrame &frame) {
     if (frame.data.size() < 41) {
         ++truncated_data_count_;
         return;

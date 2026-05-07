@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: "en-US"
+# Enable experimental features (currently not using any specific early_access features)
+early_access: true
+reviews:
+  profile: "chill"
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: true
+  review_status: true
+  review_details: false
+  auto_review:
+    enabled: true
+    drafts: false
+  path_filters:
+    - "!**/node_modules/**" # npm dependencies
+    - "!.github/**" # GitHub configuration files
+    - "!.claude/**" # Claude configuration files
+    - "!**/.expo/**" # Expo build cache
+    - "!**/.expo-shared/**" # Expo shared config
+    - "!**/dist/**" # Build output
+    - "!web_viewer/ui_kits/**" # UI kits for web viewer
+    - "!web_viewer/preview/**"
+    - "!web_viewer/assets/**"
+chat:
+  auto_reply: true

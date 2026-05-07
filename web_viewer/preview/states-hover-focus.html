@@ -1,0 +1,17 @@
+<!doctype html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-sans);padding:20px;display:flex;gap:22px;align-items:center;flex-wrap:wrap}
+  .block{display:flex;flex-direction:column;gap:8px;align-items:center}
+  .label{font-family:"JetBrains Mono",monospace;font-size:10px;color:var(--muted);text-align:center}
+  .b{width:180px;height:56px;border:1px solid var(--line);border-radius:8px;background:var(--panel);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px}
+  .b.hover{border-color:#3f8cff;color:var(--text)}
+  .b.focus{border-color:#3f8cff;box-shadow:0 0 0 2px rgba(63,140,255,0.18);color:var(--text)}
+  .b.dis{opacity:.5}
+</style></head><body>
+  <div class="block"><div class="b">Default</div><span class="label">border #2F3643</span></div>
+  <div class="block"><div class="b hover">Hover</div><span class="label">border → #3F8CFF</span></div>
+  <div class="block"><div class="b focus">Focus</div><span class="label">+ 2 px halo</span></div>
+  <div class="block"><div class="b dis">Disabled</div><span class="label">opacity .5</span></div>
+</body></html>

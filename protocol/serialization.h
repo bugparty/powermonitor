@@ -148,4 +148,55 @@ inline int16_t unpack_s16(const uint8_t buf[2]) {
     return static_cast<int16_t>(raw);
 }
 
+// Pointer-based pack/unpack overloads for direct buffer access
+inline void pack_u16(uint8_t* buf, uint16_t value) {
+    buf[0] = static_cast<uint8_t>(value & 0xFF);
+    buf[1] = static_cast<uint8_t>((value >> 8) & 0xFF);
+}
+
+inline void pack_u32(uint8_t* buf, uint32_t value) {
+    buf[0] = static_cast<uint8_t>(value & 0xFF);
+    buf[1] = static_cast<uint8_t>((value >> 8) & 0xFF);
+    buf[2] = static_cast<uint8_t>((value >> 16) & 0xFF);
+    buf[3] = static_cast<uint8_t>((value >> 24) & 0xFF);
+}
+
+inline void pack_u64(uint8_t* buf, uint64_t value) {
+    buf[0] = static_cast<uint8_t>(value & 0xFF);
+    buf[1] = static_cast<uint8_t>((value >> 8) & 0xFF);
+    buf[2] = static_cast<uint8_t>((value >> 16) & 0xFF);
+    buf[3] = static_cast<uint8_t>((value >> 24) & 0xFF);
+    buf[4] = static_cast<uint8_t>((value >> 32) & 0xFF);
+    buf[5] = static_cast<uint8_t>((value >> 40) & 0xFF);
+    buf[6] = static_cast<uint8_t>((value >> 48) & 0xFF);
+    buf[7] = static_cast<uint8_t>((value >> 56) & 0xFF);
+}
+
+inline uint16_t unpack_u16(const uint8_t* buf) {
+    return static_cast<uint16_t>(buf[0]) | (static_cast<uint16_t>(buf[1]) << 8U);
+}
+
+inline uint32_t unpack_u32(const uint8_t* buf) {
+    return static_cast<uint32_t>(buf[0]) |
+           (static_cast<uint32_t>(buf[1]) << 8U) |
+           (static_cast<uint32_t>(buf[2]) << 16U) |
+           (static_cast<uint32_t>(buf[3]) << 24U);
+}
+
+inline uint64_t unpack_u64(const uint8_t* buf) {
+    return static_cast<uint64_t>(buf[0]) |
+           (static_cast<uint64_t>(buf[1]) << 8U) |
+           (static_cast<uint64_t>(buf[2]) << 16U) |
+           (static_cast<uint64_t>(buf[3]) << 24U) |
+           (static_cast<uint64_t>(buf[4]) << 32U) |
+           (static_cast<uint64_t>(buf[5]) << 40U) |
+           (static_cast<uint64_t>(buf[6]) << 48U) |
+           (static_cast<uint64_t>(buf[7]) << 56U);
+}
+
+inline int32_t unpack_s32(const uint8_t* buf) {
+    uint32_t raw = unpack_u32(buf);
+    return static_cast<int32_t>(raw);
+}
+
 } // namespace protocol

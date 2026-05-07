@@ -260,7 +260,7 @@ protected:
     void SetRisky(bool risky) { risky_test_ = risky; }
 
     void DrainInput() {
-        protocol::Frame frame;
+        protocol::DynamicFrame frame;
         while (response_queue_ && response_queue_->pop_wait(frame, 0)) {
         }
         if (sample_queue_) {
@@ -271,7 +271,7 @@ protected:
     }
 
     bool SendCommand(uint8_t msgid, const std::vector<uint8_t> &payload,
-                     protocol::Frame *rsp = nullptr) {
+                     protocol::DynamicFrame *rsp = nullptr) {
         constexpr int kMaxRetries = 3;
         for (int attempt = 0; attempt < kMaxRetries; ++attempt) {
             const uint8_t seq = cmd_seq_++;
@@ -284,7 +284,7 @@ protected:
                 return false;
             }
 
-            protocol::Frame response;
+            protocol::DynamicFrame response;
             if (WaitForRsp(seq, &response, g_options.cmd_timeout_ms)) {
                 // Per docs/protocol/uart_protocol.md:
                 // RSP payload starts with { orig_msgid, status, ... }.
@@ -306,14 +306,14 @@ protected:
         return false;
     }
 
-    bool WaitForRsp(uint8_t seq, protocol::Frame *out, int timeout_ms) {
+    bool WaitForRsp(uint8_t seq, protocol::DynamicFrame *out, int timeout_ms) {
         auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
         while (std::chrono::steady_clock::now() < deadline) {
             const int remaining = static_cast<int>(
                 std::chrono::duration_cast<std::chrono::milliseconds>(
                     deadline - std::chrono::steady_clock::now())
                     .count());
-            protocol::Frame frame;
+            protocol::DynamicFrame frame;
             if (!response_queue_->pop_wait(frame, std::max(remaining, 0))) {
                 continue;
             }
@@ -331,14 +331,14 @@ protected:
         return false;
     }
 
-    bool WaitForEvent(uint8_t msgid, protocol::Frame *out, int timeout_ms) {
+    bool WaitForEvent(uint8_t msgid, protocol::DynamicFrame *out, int timeout_ms) {
         auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
         while (std::chrono::steady_clock::now() < deadline) {
             const int remaining = static_cast<int>(
                 std::chrono::duration_cast<std::chrono::milliseconds>(
                     deadline - std::chrono::steady_clock::now())
                     .count());
-            protocol::Frame frame;
+            protocol::DynamicFrame frame;
             if (!response_queue_->pop_wait(frame, std::max(remaining, 0))) {
                 continue;
             }
@@ -441,13 +441,13 @@ TEST_F(DeviceSerialTest, Order01_PingSmoke) {
 
 TEST_F(DeviceSerialTest, Order02_GetCfgReport) {
     ASSERT_TRUE(SendCommand(kMsgGetCfg, {}));
-    protocol::Frame cfg_report;
+    protocol::DynamicFrame cfg_report;
     ASSERT_TRUE(WaitForEvent(kMsgCfgReport, &cfg_report, g_options.event_timeout_ms));
     EXPECT_GE(cfg_report.data.size(), 16u);
 }
 
 TEST_F(DeviceSerialTest, Order02b_TextReport) {
-    protocol::Frame text_report;
+    protocol::DynamicFrame text_report;
     ASSERT_TRUE(WaitForEvent(kMsgTextReport, &text_report, g_options.event_timeout_ms));
     EXPECT_GE(text_report.data.size(), 1u);
     EXPECT_LE(text_report.data.size(), 4096u);
@@ -460,7 +460,7 @@ TEST_F(DeviceSerialTest, Order03_SetCfgMinimal) {
     powermonitor::client::pack_u16(payload.data() + 4, 0x1000);
     powermonitor::client::pack_u16(payload.data() + 6, 0x0000);
     ASSERT_TRUE(SendCommand(kMsgSetCfg, payload));
-    protocol::Frame cfg_report;
+    protocol::DynamicFrame cfg_report;
     ASSERT_TRUE(WaitForEvent(kMsgCfgReport, &cfg_report, g_options.event_timeout_ms));
     EXPECT_GE(cfg_report.data.size(), 16u);
 }
@@ -470,7 +470,7 @@ TEST_F(DeviceSerialTest, Order04_RegReadConfig) {
     payload.push_back(0x40);
     payload.push_back(0x00);
     payload.push_back(0x00);
-    protocol::Frame rsp;
+    protocol::DynamicFrame rsp;
     ASSERT_TRUE(SendCommand(kMsgRegRead, payload, &rsp));
     ASSERT_GE(rsp.data.size(), 5u);
     EXPECT_EQ(rsp.data[0], kMsgRegRead);
@@ -517,7 +517,7 @@ TEST_F(DeviceSerialTest, Order09_StreamMidCommand) {
     ASSERT_TRUE(StartStream());
     ASSERT_TRUE(WaitForSamples(3, std::chrono::milliseconds(1500)));
     ASSERT_TRUE(SendCommand(kMsgGetCfg, {}));
-    protocol::Frame cfg_report;
+    protocol::DynamicFrame cfg_report;
     ASSERT_TRUE(WaitForEvent(kMsgCfgReport, &cfg_report, g_options.event_timeout_ms));
     ASSERT_TRUE(WaitForSamples(3, std::chrono::milliseconds(1500)));
     ASSERT_TRUE(StopStream());

@@ -1,5 +1,60 @@
 #pragma once
 
+/**
+ * @file parser.h
+ * @brief PC-side protocol parser for desktop systems.
+ *
+ * == WHY THIS FILE EXISTS (Duplicate Protocol Implementations) ==
+ *
+ * This file is part of the PC-SIDE protocol implementation, optimized for
+ * desktop flexibility and developer productivity. A separate device-side
+ * implementation exists in device/protocol/parser.hpp with different trade-offs.
+ *
+ * == PC-Side Design (this file) ==
+ *
+ * Target: Desktop Linux/Windows (multi-GHz CPU, GBs of RAM)
+ *
+ * Design choices driven by desktop environment:
+ * - std::deque<uint8_t> for receive buffer
+ *   Reason: Efficient front insertion/removal for byte-by-byte parsing.
+ *   Automatically grows to handle partial reads and resync scenarios.
+ *   Memory overhead is acceptable on desktop (typically <10KB).
+ * - std::function for callback
+ *   Reason: Flexibility to use lambdas with captures, member functions,
+ *   or function objects. The overhead of type erasure is negligible on
+ *   desktop and improves code readability.
+ * - std::vector<uint8_t> for DynamicFrame::data
+ *   Reason: Dynamically sized payload storage eliminates fixed buffer
+ *   size limitations. Simplifies memory management for the caller.
+ * - Separate .h/.cpp compilation
+ *   Reason: Standard C++ practice. Hides implementation details and
+ *   reduces header dependencies.
+ * - Configurable max_len parameter
+ *   Reason: Allows caller to limit memory usage for untrusted sources.
+ *   Default is 1KB, but can be increased for larger payloads.
+ *
+ * Memory Usage (typical):
+ *   - DynamicFrame struct: 24 bytes + vector allocation (payload size)
+ *   - Parser object: 64 bytes + deque allocation (typically <1KB)
+ *   - Per-frame overhead: negligible on desktop
+ *
+ * == Device-Side Implementation (device/protocol/parser.hpp) ==
+ *
+ * Target: RP2040 microcontroller (Cortex-M0+, 264KB RAM)
+ *
+ * Uses fixed-size stack-allocated arrays for header (6 bytes) and payload
+ * (256 bytes + 2 CRC). Total parser object is ~270 bytes with deterministic
+ * memory usage. No heap allocation, no std::function overhead. Optimized
+ * for constrained embedded environments where every byte counts.
+ *
+ * == When to Modify ==
+ *
+ * - If parsing untrusted data from network, consider adding stricter
+ *   max_len limits and malformed frame detection.
+ * - If processing very high data rates (10kHz+), consider using a ring
+ *   buffer instead of deque to reduce memory allocations.
+ */
+
 #include <cstdint>
 #include <deque>
 #include <functional>
@@ -11,7 +66,7 @@ namespace protocol {
 
 class Parser {
 public:
-    using FrameCallback = std::function<void(const Frame &, uint64_t receive_time_us)>;
+    using FrameCallback = std::function<void(const DynamicFrame &, uint64_t receive_time_us)>;
 
     static constexpr uint16_t kDefaultMaxLen = 1024;
 
@@ -66,7 +121,7 @@ private:
     FrameCallback callback_;
     std::deque<uint8_t> buffer_;
     State state_ = State::kWaitSof0;
-    Frame current_frame_{};
+    DynamicFrame current_frame_{};
     uint16_t max_len_ = 1024;
     uint16_t payload_remaining_ = 0;
     uint64_t crc_fail_count_ = 0;

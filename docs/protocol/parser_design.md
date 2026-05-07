@@ -1,8 +1,98 @@
 ﻿# Parser Design and Architecture
 
 Related code:
-- `protocol/parser.cpp`
-- `protocol/parser.h`
+- `protocol/parser.cpp` - PC-side implementation
+- `protocol/parser.h` - PC-side implementation
+- `device/protocol/parser.hpp` - Device-side implementation
+- `protocol/frame_builder.h` (FrameType, MsgId enums)
+
+## Why Two Parser Implementations?
+
+This project maintains **two independent protocol parser implementations**:
+
+| Implementation | Location | Target Platform |
+|----------------|----------|-----------------|
+| **Device-side** | `device/protocol/parser.hpp` | RP2040 microcontroller (Cortex-M0+, 264KB RAM) |
+| **PC-side** | `protocol/parser.h` / `protocol/parser.cpp` | Desktop Linux/Windows |
+
+Both parsers implement the same UART protocol and share protocol constants (defined in `protocol/protocol_constants.h`), but they make fundamentally different design trade-offs based on their target platforms.
+
+### Device-Side Parser (`device/protocol/parser.hpp`)
+
+**Target Constraints:**
+- RP2040 microcontroller: Cortex-M0+ @ 133MHz, 264KB RAM, ~2MB flash
+- No operating system, bare-metal embedded environment
+- Deterministic memory usage required (no heap fragmentation)
+- Limited stack space (typically 4KB per thread)
+
+**Design Choices:**
+- **Fixed-size buffers**: Stack-allocated arrays (`header_buf_[6]`, `payload_buf_[258]`)
+  - Total parser object size: ~270 bytes (predictable stack usage)
+  - No heap allocation, no fragmentation risk
+- **C-style callback**: Function pointer (`void (*)(const Frame&, void*)`) instead of `std::function`
+  - Avoids heap allocation and type erasure overhead
+- **Header-only**: All implementation in `.hpp` for better inlining
+- **No STL dependencies**: No `std::vector`, `std::deque`, or `std::function`
+  - Embedded environments often disable exceptions and RTTI
+  - Eliminates hidden allocation overhead
+- **Incremental CRC**: `crc16_ccitt_false_two()` computes CRC over header+payload without concatenating
+  - Avoids allocating a temporary 4KB buffer on stack
+
+### PC-Side Parser (`protocol/parser.h` / `protocol/parser.cpp`)
+
+**Target Constraints:**
+- Desktop Linux/Windows: Multi-GHz CPU, GBs of RAM
+- Developer productivity and code maintainability prioritized
+- Flexibility for testing and future extensions
+
+**Design Choices:**
+- **Dynamic buffering**: `std::deque<uint8_t>` for receive buffer
+  - Automatically handles partial reads, resync, and buffer growth
+  - Memory overhead acceptable on desktop (typically <1KB per parser)
+- **std::function callback**: Flexible, supports lambdas with captures
+  - Overhead negligible on desktop systems
+  - Improves code readability and testability
+- **std::vector payload**: `Frame::data` dynamically sized
+  - No fixed buffer size limitations
+  - Simplifies memory management for the caller
+- **Separate compilation**: `.h` declaration + `.cpp` definition
+  - Standard C++ practice, hides implementation details
+  - Reduces header dependencies
+
+### Shared Protocol Constants
+
+Both implementations share the same protocol constants (moved to `protocol/protocol_constants.h` in a previous refactoring):
+- Start-of-frame bytes: `kSof0 = 0xAA`, `kSof1 = 0x55`
+- Protocol version: `kProtoVersion = 0x01`
+- Frame types: `FrameType` enum (CMD, RSP, ACK, NACK)
+- Maximum payload length: Device uses 256 bytes, PC uses configurable default (1024 bytes)
+
+### Performance Comparison
+
+| Metric | Device Parser | PC Parser |
+|--------|---------------|-----------|
+| **Memory usage** | ~270 bytes (fixed) | ~1KB typical (variable) |
+| **Heap allocations** | 0 | Yes (deque, vector) |
+| **Stack usage** | ~530 bytes (parser + frame) | ~100 bytes |
+| **Code size** | ~2KB (header-only) | ~4KB (.h + .cpp) |
+| **Per-byte overhead** | ~10 cycles (inline) | ~50 cycles (deque + std::function) |
+
+**Note**: The PC parser's overhead is negligible on modern desktop CPUs (multi-GHz). The device parser's tight design is necessary for the constrained RP2040 environment.
+
+### When to Use Which
+
+- **Device-side code** (RP2040 firmware): Use `device/protocol/parser.hpp`
+- **PC-side code** (Linux/Windows client): Use `protocol/parser.h`
+- **Testing**: PC-side parser has better testability (STL containers), device-side parser tests embedded constraints
+
+### Future Considerations
+
+If merging the implementations becomes desirable:
+- Create a template-based parser that can be instantiated with different buffer policies
+- Use compile-time polymorphism to avoid virtual call overhead
+- Maintain separate build configurations for device vs. PC targets
+
+**Current recommendation**: Keep both implementations. The platform-specific optimizations are valuable, and the code duplication is manageable (both parsers are <200 lines).
 
 ## Current Implementation
 
@@ -13,25 +103,38 @@ The protocol parser uses a **switch-based state machine** pattern implemented in
 The parser implements a 4-state FSM for robust frame parsing:
 
 ```
-┌─────────────┐
-│ WaitSof0    │  ──► Search for 0xAA (SOF0)
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│ WaitSof1    │  ──► Verify 0x55 (SOF1) follows SOF0
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│ ReadHeader  │  ──► Parse 6-byte header (VER, TYPE, FLAGS, SEQ, LEN)
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│ ReadPayload │  ──► Read payload + CRC, verify, and callback
-└─────────────┘
+                         ┌─────────────────────────────────────────┐
+                         │                                         │
+                         ▼                                         │
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐           │
+│ kWaitSof0   │────►│ kWaitSof1   │────►│ kReadHeader │           │
+└─────────────┘     └─────────────┘     └─────────────┘           │
+       ▲                   │                   │                   │
+       │                   │                   │                   │
+       │   ┌───────────────┘ (if byte != 0x55  │                   │
+       │   │                and != 0xAA)       │                   │
+       │   │                                    ▼                   │
+       │   │                            ┌─────────────┐           │
+       │   │                            │ kReadPayload│───────────┤
+       │   │                            └─────────────┘  success  │
+       │   │                                   │                  │
+       │   │                           CRC fail│ len fail         │
+       │   │                                   ▼                  │
+       │   │                            ┌─────────────┐           │
+       │   └────────────────────────────│   resync()  │───────────┘
+       │                                └─────────────┘  no SOF found
+       │                                       │
+       └───────────────────────────────────────┘  SOF found
 ```
+
+### State Details
+
+| State | Purpose | Transitions |
+|-------|---------|-------------|
+| `kWaitSof0` | Scan for first SOF byte (0xAA) | → `kWaitSof1` when 0xAA found |
+| `kWaitSof1` | Verify second SOF byte (0x55) | → `kReadHeader` if 0x55 found<br>→ stay if 0xAA found (restart SOF search)<br>→ `kWaitSof0` otherwise |
+| `kReadHeader` | Parse 6-byte header | → `kReadPayload` if length valid<br>→ `kWaitSof0` if length invalid (0 or > max_len) |
+| `kReadPayload` | Read payload + CRC, verify | → `kWaitSof0` on success or error |
 
 ### Key Features
 
@@ -39,6 +142,7 @@ The parser implements a 4-state FSM for robust frame parsing:
 2. **Buffer management**: Incremental parsing with automatic buffer cleanup
 3. **Error recovery**: Automatic resynchronization on CRC failures or invalid frames
 4. **Robustness**: Handles fragmentation, corruption, and out-of-order bytes
+5. **TIME_SYNC CRC skip**: Special handling for TIME_SYNC responses where T3 is patched after CRC calculation
 
 ### Implementation Pattern
 
@@ -71,6 +175,113 @@ void Parser::process() {
     }
 }
 ```
+
+## CRC Verification
+
+### Normal CRC Flow
+
+1. CRC is calculated over the 6-byte header + payload (incrementally)
+2. Calculated CRC is compared against the 2-byte CRC suffix (little-endian)
+3. On mismatch: `crc_fail_count_` is incremented and `resync()` is called
+
+### TIME_SYNC Response CRC Skip
+
+**Critical Implementation Detail**: CRC verification is skipped for TIME_SYNC response frames.
+
+```cpp
+// TIME_SYNC response: FrameType::kRsp (0x02) + msgid 0x05
+const bool is_time_sync_rsp = (current_frame_.type == FrameType::kRsp && msgid == 0x05);
+if (!is_time_sync_rsp) {
+    // Perform CRC verification
+}
+```
+
+**Rationale**: On the device side, the T3 timestamp is patched into the frame **after** CRC calculation. This means the CRC will always fail if validated on the PC side. The parser recognizes TIME_SYNC responses by their frame type and message ID, and skips CRC verification for these frames.
+
+## Error Handling
+
+### Length Validation Failure
+
+When parsing the header, the length field is validated:
+
+```cpp
+if (current_frame_.len == 0 || current_frame_.len > max_len_) {
+    ++len_fail_count_;
+    state_ = State::kWaitSof0;
+    return;
+}
+```
+
+- Length of 0 is invalid (no payload)
+- Length exceeding `max_len_` (default 1024) is rejected to prevent memory exhaustion
+- Counter `len_fail_count_` tracks these failures
+
+### CRC Failure and Resync
+
+When CRC verification fails:
+
+```cpp
+if (expected != actual) {
+    ++crc_fail_count_;
+    resync();
+    return;
+}
+```
+
+The `resync()` method scans the remaining buffer for a new SOF pattern:
+
+```cpp
+void Parser::resync() {
+    for (size_t i = 0; i + 1 < buffer_.size(); ++i) {
+        if (buffer_[i] == kSof0 && buffer_[i + 1] == kSof1) {
+            buffer_.erase(buffer_.begin(), buffer_.begin() + i);
+            state_ = State::kWaitSof1;  // Found potential SOF
+            return;
+        }
+    }
+    buffer_.clear();
+    state_ = State::kWaitSof0;  // No SOF found, reset
+}
+```
+
+**Resync Strategy**:
+- Search for `0xAA 0x55` pattern in remaining buffer
+- If found: discard bytes before the pattern, transition to `kWaitSof1`
+- If not found: clear buffer, return to `kWaitSof0`
+
+## Buffer Management
+
+### Growth Strategy
+
+The parser uses a `std::deque<uint8_t>` for the receive buffer, which provides:
+- Efficient insertion at the end: O(1) amortized
+- Efficient removal from the front: O(1)
+- No reallocation of existing elements
+
+### Memory Bounds
+
+- Maximum payload length is configurable via `max_len_` (default 1024 bytes)
+- Buffer is cleared when no SOF is found in `kWaitSof0` state
+- Buffer is trimmed after each successful parse
+
+### Receive Time Tracking
+
+The parser tracks receive time for accurate frame timing:
+
+```cpp
+void set_receive_time(uint64_t receive_time_us) { receive_time_us_ = receive_time_us; }
+```
+
+This should be called before `feed()` to ensure accurate timing in the callback.
+
+## Counters
+
+The parser maintains two failure counters for monitoring and debugging:
+
+| Counter | Accessor | Increment Condition |
+|---------|----------|---------------------|
+| `crc_fail_count_` | `crc_fail_count()` | CRC mismatch (non-TIME_SYNC frames) |
+| `len_fail_count_` | `len_fail_count()` | Invalid length (0 or > max_len) |
 
 ## Why Not TinyFSM?
 

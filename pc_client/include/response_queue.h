@@ -18,13 +18,13 @@ public:
     ResponseQueue(const ResponseQueue&) = delete;
     ResponseQueue& operator=(const ResponseQueue&) = delete;
 
-    void push(protocol::Frame&& frame);
-    bool pop_wait(protocol::Frame& frame, int timeout_ms);
-    bool pop_by_msgid(protocol::Frame& frame, uint8_t msgid);
+    void push(protocol::DynamicFrame&& frame);
+    bool pop_wait(protocol::DynamicFrame& frame, int timeout_ms);
+    bool pop_by_msgid(protocol::DynamicFrame& frame, uint8_t msgid);
     void stop();
 
 private:
-    std::deque<protocol::Frame> queue_;
+    std::deque<protocol::DynamicFrame> queue_;
     std::mutex mutex_;
     std::condition_variable cv_;
     bool stop_requested_ = false;

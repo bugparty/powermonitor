@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Power Monitor · UI Kit</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../colors_and_type.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script type="text/babel" src="data.jsx"></script>
+  <script type="text/babel" src="TopBar.jsx"></script>
+  <script type="text/babel" src="TrackChips.jsx"></script>
+  <script type="text/babel" src="TimelinePanel.jsx"></script>
+  <script type="text/babel" src="GanttPanel.jsx"></script>
+  <script type="text/babel" src="Trim.jsx"></script>
+
+  <script type="text/babel">
+    const DEFAULT_TRACKS = [
+      { id: "voltage", key: "voltage", label: "Voltage (V)",     color: "#22c55e", visible: true },
+      { id: "current", key: "current", label: "Current (A)",     color: "#f59e0b", visible: true },
+      { id: "power",   key: "power",   label: "Power (W)",       color: "#a855f7", visible: true },
+      { id: "temp",    key: "temp",    label: "Temperature (°C)",color: "#ef4444", visible: false },
+      { id: "vshunt",  key: "vshunt",  label: "Shunt Voltage (V)",color:"#06b6d4", visible: false },
+      { id: "charge",  key: "charge",  label: "Charge (C)",      color: "#f97316", visible: false },
+      { id: "energy",  key: "energy",  label: "Energy (J)",      color: "#3b82f6", visible: false },
+    ];
+
+    function App() {
+      const [data, setData] = React.useState(null);
+      const [fileName, setFileName] = React.useState("");
+      const [tracks, setTracks] = React.useState(DEFAULT_TRACKS);
+      const [downsample, setDownsample] = React.useState("none");
+      const [alignStarts, setAlignStarts] = React.useState(false);
+      const [range, setRange] = React.useState({ start: 0, end: 1 });
+      const [hover, setHover] = React.useState(null);
+      const fileRef = React.useRef(null);
+
+      // Derived display series (with align-starts applied)
+      const displaySeries = React.useMemo(() => {
+        if (!data) return [];
+        if (!alignStarts) return data.series;
+        const starts = data.series.map((s) => s.points[0]?.timeUs).filter(Number.isFinite);
+        if (!starts.length) return data.series;
+        const anchor = Math.min(...starts);
+        return data.series.map((s) => {
+          const start = s.points[0]?.timeUs;
+          if (!Number.isFinite(start)) return s;
+          const delta = start - anchor;
+          return { ...s, points: s.points.map((p) => ({ ...p, timeUs: p.timeUs - delta })) };
+        });
+      }, [data, alignStarts]);
+
+      const allPoints = React.useMemo(
+        () => displaySeries.flatMap((s) => s.points).sort((a, b) => a.timeUs - b.timeUs),
+        [displaySeries]
+      );
+
+      React.useEffect(() => {
+        if (!allPoints.length) return;
+        const start = allPoints[0].timeUs;
+        let end = allPoints[allPoints.length - 1].timeUs;
+        if (end <= start) end = start + 1;
+        setRange({ start, end });
+      }, [data, alignStarts]);
+
+      const loadDemo = () => {
+        const d = makeSyntheticData();
+        setData(d);
+        setFileName("demo_ina228_dual_source.json");
+      };
+
+      const openFilePicker = () => {
+        if (fileRef.current) fileRef.current.click();
+      };
+
+      const handleFile = (e) => {
+        const f = e.target.files?.[0];
+        if (!f) return;
+        f.text().then((text) => {
+          try {
+            const parsed = JSON.parse(text);
+            // Accept either PM schema or fall back to demo
+            if (parsed.series && Array.isArray(parsed.series)) {
+              setData(parsed);
+              setFileName(f.name);
+            } else {
+              alert("Unrecognised JSON — loading demo dataset.");
+              loadDemo();
+            }
+          } catch (err) {
+            alert("Failed to parse JSON: " + err.message);
+          }
+        });
+      };
+
+      const toggleTrack = (id) =>
+        setTracks((ts) => ts.map((t) => (t.id === id ? { ...t, visible: !t.visible } : t)));
+      const reorderTracks = (srcId, tgtId) => {
+        if (!srcId || srcId === tgtId) return;
+        setTracks((ts) => {
+          const next = [...ts];
+          const si = next.findIndex((t) => t.id === srcId);
+          const ti = next.findIndex((t) => t.id === tgtId);
+          if (si < 0 || ti < 0) return ts;
+          const [moved] = next.splice(si, 1);
+          next.splice(ti, 0, moved);
+          return next;
+        });
+      };
+
+      const fitAll = () => {
+        if (!allPoints.length) return;
+        const start = allPoints[0].timeUs;
+        let end = allPoints[allPoints.length - 1].timeUs;
+        if (end <= start) end = start + 1;
+        setRange({ start, end });
+      };
+
+      // Wheel zoom / drag pan on chart stack
+      const stackRef = React.useRef(null);
+      const onWheel = (e) => {
+        if (!allPoints.length) return;
+        e.preventDefault();
+        const rect = stackRef.current.getBoundingClientRect();
+        const xFrac = (e.clientX - rect.left) / rect.width;
+        const span = range.end - range.start;
+        const scale = e.deltaY < 0 ? 0.8 : 1.25;
+        const newSpan = Math.max(1, span * scale);
+        const anchor = range.start + xFrac * span;
+        setRange({ start: anchor - xFrac * newSpan, end: anchor + (1 - xFrac) * newSpan });
+      };
+      const onMouseDown = (e) => {
+        if (!allPoints.length) return;
+        const startX = e.clientX;
+        const startRange = { ...range };
+        const rect = stackRef.current.getBoundingClientRect();
+        const onMove = (ev) => {
+          const dx = ev.clientX - startX;
+          const span = startRange.end - startRange.start;
+          const delta = -(dx / rect.width) * span;
+          setRange({ start: startRange.start + delta, end: startRange.end + delta });
+        };
+        const onUp = () => {
+          window.removeEventListener("mousemove", onMove);
+          window.removeEventListener("mouseup", onUp);
+        };
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", onUp);
+      };
+
+      const metaText = data
+        ? `schema ${data.meta?.schema_version ?? "—"} · protocol ${data.meta?.protocol_version ?? "—"} · stream_period ${data.meta?.config?.stream_period_us ?? "—"} µs · ${displaySeries.length} sources · ${allPoints.length.toLocaleString()} samples`
+        : "no data loaded";
+
+      const statusText = hover
+        ? `t=${(hover.timeUs / 1e6).toFixed(3)} s · V=${hover.voltage?.toFixed(4) ?? "—"} · A=${hover.current?.toFixed(4) ?? "—"} · W=${hover.power?.toFixed(4) ?? "—"} · source=${hover.sourceLabel}`
+        : data ? `range ${(range.start / 1e6).toFixed(3)} s → ${(range.end / 1e6).toFixed(3)} s · scroll to zoom · drag to pan` : "load a JSON file to begin";
+
+      return (
+        <>
+          <PMTopBar
+            onLoad={openFilePicker}
+            onFit={fitAll}
+            downsample={downsample}
+            onDownsample={setDownsample}
+            alignStarts={alignStarts}
+            onAlignStarts={setAlignStarts}
+            fileName={fileName}
+          />
+          <input ref={fileRef} type="file" accept="application/json,.json" onChange={handleFile} style={{ display: "none" }} />
+          <PMMetaBar text={metaText} />
+          <PMTrackChips tracks={tracks} onToggle={toggleTrack} onReorder={reorderTracks} />
+          {!data ? (
+            <PMEmptyState onLoad={loadDemo} />
+          ) : (
+            <section className="pm-chart-area">
+              <div className="pm-stack" ref={stackRef} onWheel={onWheel} onMouseDown={onMouseDown}>
+                {displaySeries.map((src) => (
+                  <PMTimelinePanel key={src.id} source={src} tracks={tracks} range={range} onHover={setHover} />
+                ))}
+                <PMGanttPanel
+                  title="scheduling · per-core task spans"
+                  lanes={makeSchedulingData().lanes}
+                  tasks={makeSchedulingData().tasks}
+                  range={range}
+                  groupColors={GANTT_GROUP_COLORS}
+                />
+              </div>
+            </section>
+          )}
+          <PMStatusRow text={statusText} />
+        </>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>

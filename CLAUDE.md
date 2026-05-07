@@ -1,20 +1,51 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## Step 1
 
-> **Start here:** read `AGENTS.md` — it covers build/test commands, code style, protocol rules, working agreements, and docs/tests sync requirements.
+Read the first word of the request, and read an additional instruction file when it is:
+- "design": REPO-ROOT/.github/prompts/design.prompt.md
+- "verify": REPO-ROOT/.github/prompts/verify.prompt.md
+- "ask": REPO-ROOT/.github/prompts/ask.prompt.md
+- "investigate": REPO-ROOT/.github/prompts/investigate.prompt.md
+- "code": REPO-ROOT/.github/prompts/code.prompt.md
+- "review": REPO-ROOT/.github/prompts/review.prompt.md
 
-## Architecture Overview
+### Exceptions
 
-Power Monitor is an INA228-based power monitoring system with:
-- **Raspberry Pi Pico firmware** (`device/`) - I2C sensor driver, USB serial communication
-- **PC client** (`pc_client/`) - Serial communication, YAML/JSON config, CLI interface
-- **PC simulator** (`pc_sim/`) - Hardware-free testing with fault injection
+- If the first word is not in the list:
+  - Follow REPO-ROOT/.github/prompts/code.prompt.md
+  - Skip Step 2
 
-### Core Modules
+## Step 2
 
-| Directory | Purpose |
-|-----------|---------|
-| `protocol/` | Shared protocol: CRC16, frame builder, 4-state FSM parser, 20-bit unpacking |
-| `sim/` | EventLoop (discrete event simulator), VirtualLink (fault injection) |
-| `node/` | PCNode (command/response handling), DeviceNode (device simulation), INA228Model |
+Only applies when the first word is "design" or "investigate".
+Read the second word if it exists, convert it to a title `# THE-WORD`.
+
+## Step 3
+
+Keep the remaining as is.
+Treat the processed request as "the LATEST chat message" in the additional instruction file.
+Follow the additional instruction file and start working immediately, there will be no more input.
+
+## Examples
+
+When the request is `ask how does the parser resync on noise`, follow `ask.prompt.md` and "the LATEST chat message" becomes:
+```
+how does the parser resync on noise
+```
+
+When the request is `design problem add PING message`, follow `design.prompt.md` and "the LATEST chat message" becomes:
+```
+# Problem
+add PING message
+```
+
+When the request is `fix the CRC bug in parser`, since the first word is not in the list, follow `code.prompt.md` and "the LATEST chat message" becomes:
+```
+fix the CRC bug in parser
+```
+
+## Web Viewer Data Samples
+
+- Agents generating JSON data for the web viewer must follow the reference format in `web_viewer/src/dataset/agent_format_sample.json`.
+- When designing or reviewing web viewer UI, load `web_viewer/src/dataset/full_capability_sample.json` as the reference dataset.

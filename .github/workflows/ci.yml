@@ -2,20 +2,20 @@ name: CI
 
 on:
   push:
-    branches: [ main, master, develop ]
+    branches: [ main, master, develop, dev ]
   pull_request:
-    branches: [ main, master, develop ]
+    branches: [ main, master, develop, dev ]
   workflow_dispatch:
 
 jobs:
   test:
     name: Build and Test
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
     - name: Install dependencies
       run: |
         sudo apt-get update
@@ -24,7 +24,7 @@ jobs:
           cmake \
           g++ \
           git
-      
+
     - name: Cache build directory
       uses: actions/cache@v3
       with:
@@ -32,11 +32,11 @@ jobs:
         key: ${{ runner.os }}-build-${{ hashFiles('**/CMakeLists.txt', 'protocol/**', 'sim/**', 'node/**', 'pc_sim/**') }}
         restore-keys: |
           ${{ runner.os }}-build-
-    
+
     - name: Run tests
       shell: pwsh
       run: ./workflow.ps1 -Verbose
-      
+
     - name: Upload test results
       if: always()
       uses: actions/upload-artifact@v4

@@ -1,0 +1,112 @@
+/* Power Monitor — Color & Type tokens
+   Source of truth: web_viewer_ref/styles.css + constants/tracks.ts
+   Aesthetic: dark instrumentation panel / logic-analyzer
+*/
+
+/* ── Self-hosted JetBrains Mono (user-uploaded) ──────────────── */
+@font-face { font-family: "JetBrains Mono"; src: url("fonts/JetBrainsMono-Thin.woff2") format("woff2"); font-weight: 100; font-style: normal; font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; src: url("fonts/JetBrainsMono-ThinItalic.woff2") format("woff2"); font-weight: 100; font-style: italic; font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; src: url("fonts/JetBrainsMono-ExtraLight.woff2") format("woff2"); font-weight: 200; font-style: normal; font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; src: url("fonts/JetBrainsMono-ExtraLightItalic.woff2") format("woff2"); font-weight: 200; font-style: italic; font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; src: url("fonts/JetBrainsMono-Light.woff2") format("woff2"); font-weight: 300; font-style: normal; font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; src: url("fonts/JetBrainsMono-LightItalic.woff2") format("woff2"); font-weight: 300; font-style: italic; font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; src: url("fonts/JetBrainsMono-Regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; src: url("fonts/JetBrainsMono-Italic.woff2") format("woff2"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; src: url("fonts/JetBrainsMono-Medium.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; src: url("fonts/JetBrainsMono-MediumItalic.woff2") format("woff2"); font-weight: 500; font-style: italic; font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; src: url("fonts/JetBrainsMono-SemiBold.woff2") format("woff2"); font-weight: 600; font-style: normal; font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; src: url("fonts/JetBrainsMono-SemiBoldItalic.woff2") format("woff2"); font-weight: 600; font-style: italic; font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; src: url("fonts/JetBrainsMono-Bold.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; src: url("fonts/JetBrainsMono-BoldItalic.woff2") format("woff2"); font-weight: 700; font-style: italic; font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; src: url("fonts/JetBrainsMono-ExtraBold.woff2") format("woff2"); font-weight: 800; font-style: normal; font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; src: url("fonts/JetBrainsMono-ExtraBoldItalic.woff2") format("woff2"); font-weight: 800; font-style: italic; font-display: swap; }
+
+:root {
+    color-scheme: dark;
+
+    /* ── Surfaces (dark instrument panel) ─────────────────────── */
+    --bg:           #1a1f27;   /* app background (lifted for clearer separation from bg-deep) */
+    --bg-deep:      #07090c;   /* top bar / shell — distinctly darker */
+    --panel:        #181b21;   /* cards, selects, chart stack */
+    --panel-raised: #14181f;   /* inside timeline panels (gradient top) */
+
+    /* ── Lines & text ────────────────────────────────────────── */
+    --line:         #2f3643;   /* borders, grid, dividers */
+    --line-soft:    rgba(47, 54, 67, 0.55); /* faint grid */
+    --text:         #dbe2ee;   /* primary text */
+    --muted:        #94a0b8;   /* axis labels, secondary */
+    --subtle:       #6b7280;   /* hover crosshair */
+
+    /* ── Accent ──────────────────────────────────────────────── */
+    --accent:       #3f8cff;   /* focus / hover border, primary action */
+    --accent-soft:  rgba(63, 140, 255, 0.16);
+
+    /* ── Track signals (chart series) ─────────────────────────── */
+    --sig-voltage:  #22c55e;   /* V — green */
+    --sig-current:  #f59e0b;   /* A — amber */
+    --sig-power:    #a855f7;   /* W — violet */
+    --sig-temp:     #ef4444;   /* °C — red */
+    --sig-vshunt:   #06b6d4;   /* shunt V — cyan */
+    --sig-charge:   #f97316;   /* C — orange */
+    --sig-energy:   #3b82f6;   /* J — blue */
+
+    /* ── Semantic status ─────────────────────────────────────── */
+    --ok:           #22c55e;
+    --warn:         #f59e0b;
+    --err:          #ef4444;
+    --info:         #3f8cff;
+
+    /* ── Spacing / radii / shadow (derived from usage) ───────── */
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 10px;
+
+    --space-1: 4px;
+    --space-2: 6px;
+    --space-3: 8px;
+    --space-4: 10px;
+    --space-5: 12px;
+    --space-6: 14px;
+    --space-7: 16px;
+
+    --shadow-panel: 0 0 0 1px var(--accent-soft), 0 2px 12px rgba(0, 0, 0, 0.25);
+
+    /* ── Type ─────────────────────────────────────────────────── */
+    --font-sans: Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-mono: "JetBrains Mono", "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
+
+    /* Size scale — dense instrumentation UI, not marketing */
+    --t-h1:     18px;  /* "Power Monitor Timeline Viewer" */
+    --t-title:  13px;  /* panel titles, control rows */
+    --t-body:   13px;  /* default copy */
+    --t-meta:   12px;  /* axis/legend/meta */
+    --t-axis:   11px;  /* svg axis labels */
+    --t-status: 12px;  /* status row, bottom bar */
+
+    /* Weights */
+    --w-regular: 400;
+    --w-medium:  500;
+    --w-semibold: 600;
+}
+
+/* ── Semantic element defaults ───────────────────────────────── */
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: var(--t-body);
+    line-height: 1.45;
+}
+
+h1 { font-size: var(--t-h1);  font-weight: var(--w-semibold); margin: 0; }
+h2 { font-size: 15px;         font-weight: var(--w-semibold); margin: 0; }
+h3 { font-size: var(--t-title); font-weight: var(--w-semibold); margin: 0; }
+
+.t-meta    { font-size: var(--t-meta);   color: var(--muted); }
+.t-axis    { font-size: var(--t-axis);   color: var(--muted); }
+.t-mono    { font-family: var(--font-mono); }
+.t-muted   { color: var(--muted); }
+.t-subtle  { color: var(--subtle); }
+
+code, pre, .t-mono { font-family: var(--font-mono); font-size: 12px; }

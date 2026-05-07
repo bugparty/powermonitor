@@ -5,11 +5,13 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "protocol/frame_builder.h"
 #include "sample_queue.h"
 #include "session.h"
+#include "shm_power_ring_buffer.h"
 
 namespace serial {
 class Serial;
@@ -21,6 +23,8 @@ namespace client {
 class ResponseQueue;
 class ReadThread;
 class Session;
+class OnboardSampler;
+class OnboardSampleQueue;
 struct ThreadStats;
 
 class PowerMonitorSession {
@@ -42,6 +46,22 @@ public:
         std::vector<std::string> run_tags;
         std::string vid_hex = "0x0000";
         std::string pid_hex = "0x0000";
+        int read_thread_core = -1;
+        int proc_thread_core = -1;
+        int rt_prio = -1;
+
+        // Onboard sampler options
+        bool onboard_enabled = false;
+        std::string onboard_hwmon_path = "/sys/class/hwmon/hwmon1";
+        uint64_t onboard_period_us = 1000;
+        int onboard_cpu_core = -1;
+        int onboard_rt_prio = -1;
+
+        // Path to jetson_freq_reader kernel module procfs output
+        std::string onboard_jetson_freq_path = "/proc/jetson_freqs";
+
+        // Flush interval for periodic data dump to chunks
+        uint32_t flush_interval_s = 5;
     };
 
     explicit PowerMonitorSession(const Options& options);
@@ -65,15 +85,17 @@ private:
     bool stop_streaming();
 
     bool wait_for_response(uint8_t expected_seq, protocol::MsgId expected_msgid,
-                           protocol::Frame* frame, int timeout_ms);
-    bool wait_for_message_by_id(protocol::MsgId expected_msgid, protocol::Frame* frame, int timeout_ms);
-    void process_async_control_frame(const protocol::Frame& frame);
+                           protocol::DynamicFrame* frame, int timeout_ms);
+    bool wait_for_message_by_id(protocol::MsgId expected_msgid, protocol::DynamicFrame* frame, int timeout_ms);
+    void process_async_control_frame(const protocol::DynamicFrame& frame);
     void on_time_sync_request();  // Single entry for EVT_TIME_SYNC_REQUEST: run periodic sync when streaming
     bool send_command_with_retry(protocol::MsgId msgid, const std::vector<uint8_t>& payload,
                                  std::vector<uint8_t>* rsp_data = nullptr,
                                  bool try_lock_command = false);
 
     void process_samples_loop();
+    void process_onboard_loop();
+    void flush_loop();
     int run_tui_loop();
     bool save_snapshot(const std::string& path);
     void append_log(const std::string& message);
@@ -81,6 +103,8 @@ private:
     void save_and_exit();
     void emit_time_sync_debug(const std::string& message);
     void maybe_debug_time_sync_sample(const SampleQueue::Sample& sample);
+    void export_pico_power_sample(const Session::Sample& sample);
+    void export_onboard_power_sample(const OnboardSample& sample);
 
     struct UiState {
         mutable std::mutex mutex;
@@ -111,12 +135,19 @@ private:
      std::unique_ptr<Session> session_;
      std::unique_ptr<ThreadStats> stats_;
 
+     // Onboard sampler
+     std::shared_ptr<OnboardSampleQueue> onboard_queue_;
+     std::unique_ptr<OnboardSampler> onboard_sampler_;
+     std::thread onboard_proc_thread_;
+
+     std::thread flush_thread_;
 
      std::atomic<bool> stop_requested_{false};
      std::atomic<bool> interrupted_{false};
      std::atomic<bool> streaming_{false};
      std::atomic<bool> save_requested_{false};
      std::atomic<uint64_t> sample_counter_{0};
+     std::atomic<uint64_t> realtime_power_sequence_{0};
      uint64_t session_start_unix_us_ = 0;
      uint64_t session_end_unix_us_ = 0;
      uint8_t cmd_seq_ = 0;
@@ -126,6 +157,7 @@ private:
      std::mutex command_mutex_;
      mutable size_t last_stats_width_ = 0;
      UiState ui_state_;
+     ShmPowerRingBuffer power_ring_buffer_;
   };
 
 

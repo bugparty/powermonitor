@@ -1,0 +1,119 @@
+/* UI Kit — Power Monitor Viewer
+   Layered on top of ../../colors_and_type.css tokens.
+*/
+
+html,body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font-family: var(--font-sans); }
+#root { min-height: 100vh; display: flex; flex-direction: column; }
+
+/* ── Topbar ───────────────────────────────────────────────────── */
+.pm-topbar {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  background: var(--bg-deep);
+}
+.pm-brand { display: flex; align-items: center; gap: 10px; }
+.pm-brand h1 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.005em; }
+.pm-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.pm-btn, .pm-select, .pm-btn-file {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 80ms ease-out;
+}
+.pm-btn:hover, .pm-select:hover, .pm-btn-file:hover { border-color: var(--accent); }
+.pm-btn:focus-visible, .pm-select:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(63,140,255,0.18);
+}
+.pm-inline { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.pm-inline input[type="checkbox"] { accent-color: var(--accent); }
+.pm-filename { font-family: var(--font-mono); font-size: 11px; color: var(--muted); margin-left: 4px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Meta / status rows ───────────────────────────────────────── */
+.pm-meta {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 13px;
+  font-family: var(--font-mono);
+}
+.pm-status {
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  padding: 10px 16px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+
+/* ── Track chips row ──────────────────────────────────────────── */
+.pm-track-row {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+  display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+}
+.pm-track-title { color: var(--muted); font-size: 13px; }
+.pm-track-list { display: flex; gap: 8px; list-style: none; margin: 0; padding: 0; flex-wrap: wrap; }
+.pm-chip {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: var(--panel);
+  cursor: grab; user-select: none;
+  transition: border-color 80ms ease-out;
+}
+.pm-chip:hover { border-color: var(--accent); }
+.pm-chip:active { cursor: grabbing; }
+.pm-chip label { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; }
+.pm-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+
+/* ── Chart stack ──────────────────────────────────────────────── */
+.pm-chart-area { padding: 12px; flex: 1; display: flex; }
+.pm-stack {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  padding: 10px;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+.pm-panel {
+  border: 1px solid rgba(63,140,255,0.16);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(20,24,31,0.96), rgba(17,19,23,0.96));
+  overflow: hidden;
+}
+.pm-panel-head {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 12px; padding: 10px 12px;
+  border-bottom: 1px solid rgba(47,54,67,0.8);
+}
+.pm-panel-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.pm-panel-meta { font-size: 12px; color: var(--muted); font-family: var(--font-mono); }
+.pm-panel-body { height: 240px; padding: 6px 10px 10px; }
+
+/* ── Empty state ──────────────────────────────────────────────── */
+.pm-empty {
+  flex: 1;
+  display: flex; align-items: center; justify-content: center;
+  padding: 40px;
+}
+.pm-empty-inner {
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  padding: 36px 48px;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  background: var(--panel);
+}
+.pm-empty-title { font-size: 15px; font-weight: 600; }
+.pm-empty-sub { color: var(--muted); font-size: 13px; }
+.pm-empty-hint { color: var(--subtle); font-size: 11px; font-family: var(--font-mono); margin-top: 4px; }

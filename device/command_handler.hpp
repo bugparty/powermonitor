@@ -51,7 +51,7 @@ public:
     }
 
     // Handle a received frame (called from parser callback)
-    void handle_frame(const protocol::Frame& frame) {
+    void handle_frame(const protocol::FixedFrame& frame) {
         // Only process CMD frames
         if (frame.type != protocol::FrameType::kCmd) {
             return;
@@ -199,11 +199,11 @@ public:
     }
 
 private:
-    void handle_ping(const protocol::Frame& frame) {
+    void handle_ping(const protocol::FixedFrame& frame) {
         send_rsp(frame.seq, frame.msgid, protocol::Status::kOk);
     }
 
-    void handle_time_sync(const protocol::Frame& frame) {
+    void handle_time_sync(const protocol::FixedFrame& frame) {
         // T2: use global variable captured at frame receive time
         uint64_t t2_mono = g_last_frame_recv_time_us;
         if (t2_mono == 0) {
@@ -248,7 +248,7 @@ private:
         }
     }
 
-    void handle_time_adjust(const protocol::Frame& frame) {
+    void handle_time_adjust(const protocol::FixedFrame& frame) {
         if (frame.data_len < sizeof(protocol::TimeAdjustPayload)) {
             send_rsp(frame.seq, frame.msgid, protocol::Status::kErrLen);
             return;
@@ -263,7 +263,7 @@ private:
         ctx_.sync_waiting = false;  // Sync complete, resume normal loop
     }
 
-    void handle_time_set(const protocol::Frame& frame) {
+    void handle_time_set(const protocol::FixedFrame& frame) {
         if (frame.data_len < sizeof(protocol::TimeSetPayload)) {
             send_rsp(frame.seq, frame.msgid, protocol::Status::kErrLen);
             return;
@@ -280,7 +280,7 @@ private:
         send_rsp(frame.seq, frame.msgid, protocol::Status::kOk);
     }
 
-    void handle_set_cfg(const protocol::Frame& frame) {
+    void handle_set_cfg(const protocol::FixedFrame& frame) {
         if (frame.data_len < sizeof(protocol::SetCfgPayload)) {
             send_rsp(frame.seq, frame.msgid, protocol::Status::kErrLen);
             return;
@@ -317,13 +317,13 @@ private:
         send_cfg_report();
     }
 
-    void handle_get_cfg(const protocol::Frame& frame) {
+    void handle_get_cfg(const protocol::FixedFrame& frame) {
         // Send RSP(OK) then CFG_REPORT
         send_rsp(frame.seq, frame.msgid, protocol::Status::kOk);
         send_cfg_report();
     }
 
-    void handle_reg_read(const protocol::Frame& frame) {
+    void handle_reg_read(const protocol::FixedFrame& frame) {
         if (frame.data_len < sizeof(protocol::RegReadCmdPayload)) {
             send_rsp(frame.seq, frame.msgid, protocol::Status::kErrLen);
             return;
@@ -390,7 +390,7 @@ private:
         }
     }
 
-    void handle_reg_write(const protocol::Frame& frame) {
+    void handle_reg_write(const protocol::FixedFrame& frame) {
         if (frame.data_len < sizeof(protocol::RegWriteCmdPayload)) {
             send_rsp(frame.seq, frame.msgid, protocol::Status::kErrLen);
             return;
@@ -408,7 +408,7 @@ private:
         send_rsp(frame.seq, frame.msgid, ok ? protocol::Status::kOk : protocol::Status::kErrHw);
     }
 
-    void handle_stream_start(const protocol::Frame& frame) {
+    void handle_stream_start(const protocol::FixedFrame& frame) {
         if (frame.data_len < sizeof(protocol::StreamStartPayload)) {
             send_rsp(frame.seq, frame.msgid, protocol::Status::kErrLen);
             return;
@@ -432,7 +432,7 @@ private:
         send_rsp(frame.seq, frame.msgid, protocol::Status::kOk);
     }
 
-    void handle_stream_stop(const protocol::Frame& frame) {
+    void handle_stream_stop(const protocol::FixedFrame& frame) {
         const uint64_t now_us = time_us_64();
         if (!ctx_.usb_stress_mode) {
             // Signal Core 1 to stop sampling
